@@ -51,7 +51,7 @@ namespace IT8_TechStore
 
             Label lblBrand = new Label
             {
-                Text = "☀️ IT13 TECHSTORE",
+                Text = "☀️ MORPHIC COMPUTERS",
                 Font = new Font("Segoe UI", 16F, FontStyle.Bold),
                 ForeColor = AppTheme.Primary,
                 Location = new Point(20, 16),
@@ -60,10 +60,10 @@ namespace IT8_TechStore
 
             Label lblTagline = new Label
             {
-                Text = "| Store Operations & Inventory System",
+                Text = "| Inventory & POS Operations Center",
                 Font = AppTheme.BodyFont,
                 ForeColor = AppTheme.TextLightMuted,
-                Location = new Point(230, 22),
+                Location = new Point(265, 22),
                 AutoSize = true
             };
 
@@ -141,7 +141,7 @@ namespace IT8_TechStore
 
             Label lblVersion = new Label
             {
-                Text = "IT13 TechStore v1.0.0\nTheme: Sunshine Yellow (#F4D772)",
+                Text = "Morphic Computers v1.0.0\nTheme: Sunshine Yellow (#F4D772)",
                 Font = AppTheme.SmallFont,
                 ForeColor = AppTheme.TextLightMuted,
                 Location = new Point(16, 12),

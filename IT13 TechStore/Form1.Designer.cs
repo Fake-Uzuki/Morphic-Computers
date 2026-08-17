@@ -25,7 +25,7 @@ namespace IT8_TechStore
             MinimumSize = new System.Drawing.Size(1024, 650);
             Name = "Form1";
             StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            Text = "IT13 TechStore - Inventory & POS Operations Center";
+            Text = "Morphic Computers - Inventory & POS Operations Center";
             ResumeLayout(false);
         }
     }
