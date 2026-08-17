@@ -3,7 +3,7 @@ using System.Drawing;
 namespace IT8_TechStore.Theme
 {
     /// <summary>
-    /// Core Design System & Sunshine Color Palette.
+    /// Core Design System, Sunshine Color Palette.
     /// Derived strictly from Sunshine Yellow #F4D772 (RGB: 244, 215, 114)
     /// using the user-defined Tints, Shades, and Tones scale.
     /// </summary>
