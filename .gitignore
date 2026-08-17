@@ -1,0 +1,10 @@
+## Ignore Visual Studio / .NET build outputs and user files
+[Bb]in/
+[Oo]bj/
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.suo
+*.cache
