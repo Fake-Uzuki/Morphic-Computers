@@ -42,25 +42,30 @@ namespace IT8_TechStore.UI.Components
 
         public SunshineMetricCard()
         {
-            Size = new Size(240, 110);
-            Padding = new Padding(14);
+            Height = 110;
+            Padding = new Padding(10);
+            CustomBgColor = AppTheme.CardBackground;
+            CustomBorderColor = AppTheme.BorderColor;
 
             _lblIcon = new Label
             {
                 Text = "📊",
-                Font = new Font("Segoe UI", 22F),
+                Font = new Font("Segoe UI", 20F, FontStyle.Regular),
                 ForeColor = AppTheme.TextDark,
-                AutoSize = true,
-                Location = new Point(14, 14)
+                Size = new Size(38, 38),
+                Location = new Point(10, 14),
+                TextAlign = ContentAlignment.MiddleCenter
             };
 
             _lblTitle = new Label
             {
-                Text = "Metric Title",
-                Font = AppTheme.SmallFont,
+                Text = "METRIC TITLE",
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
                 ForeColor = AppTheme.TextMuted,
-                AutoSize = true,
-                Location = new Point(65, 14)
+                Location = new Point(52, 14),
+                Size = new Size(160, 18),
+                TextAlign = ContentAlignment.MiddleLeft,
+                AutoEllipsis = true
             };
 
             _lblValue = new Label
@@ -68,8 +73,10 @@ namespace IT8_TechStore.UI.Components
                 Text = "0",
                 Font = AppTheme.StatValueFont,
                 ForeColor = AppTheme.TextDark,
-                AutoSize = true,
-                Location = new Point(65, 34)
+                Location = new Point(52, 34),
+                Size = new Size(170, 36),
+                TextAlign = ContentAlignment.MiddleLeft,
+                AutoEllipsis = true
             };
 
             _lblSubtitle = new Label
@@ -77,8 +84,10 @@ namespace IT8_TechStore.UI.Components
                 Text = "+0% vs last month",
                 Font = AppTheme.SmallFont,
                 ForeColor = AppTheme.TextMuted,
-                AutoSize = true,
-                Location = new Point(65, 76)
+                Location = new Point(52, 74),
+                Size = new Size(170, 18),
+                TextAlign = ContentAlignment.MiddleLeft,
+                AutoEllipsis = true
             };
 
             Controls.Add(_lblIcon);

@@ -1,4 +1,5 @@
 using System;
+using System.Data;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
@@ -17,6 +18,8 @@ namespace IT8_TechStore.UI.Views
         private SunshineMetricCard _cardProducts = null!;
         private SunshineMetricCard _cardLowStock = null!;
         private DataGridView _gridRecentOrders = null!;
+        private TableLayoutPanel _tlpMetrics = null!;
+        private TableLayoutPanel _tlpContent = null!;
 
         public DashboardView()
         {
@@ -37,7 +40,7 @@ namespace IT8_TechStore.UI.Views
                 Text = "Dashboard Overview",
                 Font = AppTheme.HeaderFont,
                 ForeColor = AppTheme.TextDark,
-                Location = new Point(24, 20),
+                Location = new Point(20, 16),
                 AutoSize = true
             };
 
@@ -46,27 +49,27 @@ namespace IT8_TechStore.UI.Views
                 Text = "Welcome back! Here is what's happening with your store today.",
                 Font = AppTheme.BodyFont,
                 ForeColor = AppTheme.TextMuted,
-                Location = new Point(24, 52),
+                Location = new Point(20, 48),
                 AutoSize = true
             };
 
             Controls.Add(lblHeader);
             Controls.Add(lblSubHeader);
 
-            // 2. Metric Cards Panel
-            TableLayoutPanel tlpMetrics = new TableLayoutPanel
+            // 2. Metric Cards Panel (Responsive 4-column TableLayoutPanel)
+            _tlpMetrics = new TableLayoutPanel
             {
-                Location = new Point(24, 90),
-                Size = new Size(1000, 120),
+                Location = new Point(20, 80),
+                Size = new Size(ClientSize.Width - 40, 115),
                 ColumnCount = 4,
                 RowCount = 1,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
 
-            tlpMetrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
-            tlpMetrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
-            tlpMetrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
-            tlpMetrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
+            _tlpMetrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
+            _tlpMetrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
+            _tlpMetrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
+            _tlpMetrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
 
             _cardRevenue = new SunshineMetricCard
             {
@@ -74,7 +77,8 @@ namespace IT8_TechStore.UI.Views
                 MetricTitle = "TOTAL REVENUE",
                 MetricValue = $"${_dataService.GetTotalRevenue():N2}",
                 Subtitle = "▲ 14.5% vs last week",
-                Dock = DockStyle.Fill
+                Dock = DockStyle.Fill,
+                Margin = new Padding(0, 0, 8, 0)
             };
 
             _cardOrders = new SunshineMetricCard
@@ -83,7 +87,8 @@ namespace IT8_TechStore.UI.Views
                 MetricTitle = "TOTAL ORDERS",
                 MetricValue = _dataService.GetTotalOrders().ToString(),
                 Subtitle = "Today's transactions",
-                Dock = DockStyle.Fill
+                Dock = DockStyle.Fill,
+                Margin = new Padding(4, 0, 4, 0)
             };
 
             _cardProducts = new SunshineMetricCard
@@ -92,7 +97,8 @@ namespace IT8_TechStore.UI.Views
                 MetricTitle = "TOTAL PRODUCTS",
                 MetricValue = _dataService.GetTotalProductsCount().ToString(),
                 Subtitle = "Active SKUs in store",
-                Dock = DockStyle.Fill
+                Dock = DockStyle.Fill,
+                Margin = new Padding(4, 0, 4, 0)
             };
 
             _cardLowStock = new SunshineMetricCard
@@ -101,22 +107,36 @@ namespace IT8_TechStore.UI.Views
                 MetricTitle = "LOW STOCK ALERTS",
                 MetricValue = _dataService.GetLowStockCount().ToString(),
                 Subtitle = "Items need reordering",
-                Dock = DockStyle.Fill
+                Dock = DockStyle.Fill,
+                Margin = new Padding(8, 0, 0, 0)
             };
 
-            tlpMetrics.Controls.Add(_cardRevenue, 0, 0);
-            tlpMetrics.Controls.Add(_cardOrders, 1, 0);
-            tlpMetrics.Controls.Add(_cardProducts, 2, 0);
-            tlpMetrics.Controls.Add(_cardLowStock, 3, 0);
+            _tlpMetrics.Controls.Add(_cardRevenue, 0, 0);
+            _tlpMetrics.Controls.Add(_cardOrders, 1, 0);
+            _tlpMetrics.Controls.Add(_cardProducts, 2, 0);
+            _tlpMetrics.Controls.Add(_cardLowStock, 3, 0);
 
-            Controls.Add(tlpMetrics);
+            Controls.Add(_tlpMetrics);
 
-            // 3. Middle Section: Recent Orders & Quick Actions Panel
+            // 3. Responsive Lower Content Panel (65% Table / 35% Side Panel)
+            _tlpContent = new TableLayoutPanel
+            {
+                Location = new Point(20, 210),
+                Size = new Size(ClientSize.Width - 40, 460),
+                ColumnCount = 2,
+                RowCount = 1,
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
+            };
+
+            _tlpContent.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 66f));
+            _tlpContent.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34f));
+
+            // 3A. Left Side: Recent Sales DataGrid Container
             SunshineCard cardOrdersContainer = new SunshineCard
             {
-                Location = new Point(24, 230),
-                Size = new Size(650, 420),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+                Dock = DockStyle.Fill,
+                Margin = new Padding(0, 0, 8, 0),
+                Padding = new Padding(12)
             };
 
             Label lblOrdersTitle = new Label
@@ -124,31 +144,39 @@ namespace IT8_TechStore.UI.Views
                 Text = "Recent Store Sales & Orders",
                 Font = AppTheme.SubheaderFont,
                 ForeColor = AppTheme.TextDark,
-                Location = new Point(16, 16),
+                Location = new Point(14, 12),
                 AutoSize = true
             };
 
             _gridRecentOrders = new DataGridView
             {
-                Location = new Point(16, 50),
-                Size = new Size(618, 350),
+                Location = new Point(14, 44),
+                Size = new Size(cardOrdersContainer.Width - 28, cardOrdersContainer.Height - 58),
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 BackgroundColor = AppTheme.CardBackground,
                 BorderStyle = BorderStyle.None,
                 RowHeadersVisible = false,
                 AllowUserToAddRows = false,
+                AllowUserToDeleteRows = false,
+                AllowUserToResizeColumns = false,   // Disable column resizing
+                AllowUserToResizeRows = false,      // Disable row resizing
+                AllowUserToOrderColumns = false,    // Disable column reordering
                 ReadOnly = true,
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                GridColor = AppTheme.BorderColor
+                GridColor = AppTheme.BorderColor,
+                MultiSelect = false
             };
 
-            // Custom Styling for DataGridView
+            // Custom Styling for DataGridView to prevent blue highlights and ensure clean Sunshine theme
             _gridRecentOrders.EnableHeadersVisualStyles = false;
             _gridRecentOrders.ColumnHeadersDefaultCellStyle.BackColor = AppTheme.Primary;
             _gridRecentOrders.ColumnHeadersDefaultCellStyle.ForeColor = AppTheme.TextDark;
             _gridRecentOrders.ColumnHeadersDefaultCellStyle.Font = AppTheme.BodyBoldFont;
+            _gridRecentOrders.ColumnHeadersDefaultCellStyle.SelectionBackColor = AppTheme.Primary;
+            _gridRecentOrders.ColumnHeadersDefaultCellStyle.SelectionForeColor = AppTheme.TextDark;
             _gridRecentOrders.ColumnHeadersHeight = 36;
+            _gridRecentOrders.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
 
             _gridRecentOrders.DefaultCellStyle.BackColor = AppTheme.CardBackground;
             _gridRecentOrders.DefaultCellStyle.ForeColor = AppTheme.TextDark;
@@ -159,14 +187,14 @@ namespace IT8_TechStore.UI.Views
 
             cardOrdersContainer.Controls.Add(lblOrdersTitle);
             cardOrdersContainer.Controls.Add(_gridRecentOrders);
-            Controls.Add(cardOrdersContainer);
+            _tlpContent.Controls.Add(cardOrdersContainer, 0, 0);
 
-            // 4. Right Side Panel: Store Stock Highlights & Quick Shortcuts
+            // 3B. Right Side Panel: Quick Shortcuts & Low Stock Watchlist
             SunshineCard cardSidePanel = new SunshineCard
             {
-                Location = new Point(690, 230),
-                Size = new Size(334, 420),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
+                Dock = DockStyle.Fill,
+                Margin = new Padding(8, 0, 0, 0),
+                Padding = new Padding(14)
             };
 
             Label lblShortcutsTitle = new Label
@@ -174,7 +202,7 @@ namespace IT8_TechStore.UI.Views
                 Text = "Quick Actions & Shortcuts",
                 Font = AppTheme.SubheaderFont,
                 ForeColor = AppTheme.TextDark,
-                Location = new Point(16, 16),
+                Location = new Point(14, 12),
                 AutoSize = true
             };
 
@@ -182,8 +210,10 @@ namespace IT8_TechStore.UI.Views
             {
                 Text = "🛒 New POS Sale",
                 IsPrimary = true,
-                Location = new Point(16, 55),
-                Size = new Size(300, 44),
+                Location = new Point(14, 46),
+                Width = cardSidePanel.Width - 28,
+                Height = 42,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Font = AppTheme.BodyBoldFont
             };
 
@@ -191,8 +221,10 @@ namespace IT8_TechStore.UI.Views
             {
                 Text = "➕ Add New Product",
                 IsPrimary = false,
-                Location = new Point(16, 110),
-                Size = new Size(300, 44),
+                Location = new Point(14, 98),
+                Width = cardSidePanel.Width - 28,
+                Height = 42,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Font = AppTheme.BodyBoldFont
             };
 
@@ -201,14 +233,15 @@ namespace IT8_TechStore.UI.Views
                 Text = "Low Stock Watchlist",
                 Font = AppTheme.SubheaderFont,
                 ForeColor = AppTheme.TextDark,
-                Location = new Point(16, 175),
+                Location = new Point(14, 156),
                 AutoSize = true
             };
 
             ListBox lstLowStock = new ListBox
             {
-                Location = new Point(16, 205),
-                Size = new Size(300, 195),
+                Location = new Point(14, 186),
+                Size = new Size(cardSidePanel.Width - 28, 230),
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 BackColor = AppTheme.AppBackground,
                 ForeColor = AppTheme.TextDark,
                 Font = AppTheme.BodyFont,
@@ -226,7 +259,8 @@ namespace IT8_TechStore.UI.Views
             cardSidePanel.Controls.Add(lblLowStockListTitle);
             cardSidePanel.Controls.Add(lstLowStock);
 
-            Controls.Add(cardSidePanel);
+            _tlpContent.Controls.Add(cardSidePanel, 1, 0);
+            Controls.Add(_tlpContent);
 
             LoadOrderGridData();
 
@@ -244,17 +278,20 @@ namespace IT8_TechStore.UI.Views
 
         private void LoadOrderGridData()
         {
-            var displayData = _dataService.Orders.Select(o => new
-            {
-                Order_ID = o.Id,
-                Customer = o.CustomerName,
-                Date = o.CreatedAt.ToString("g"),
-                Items_Count = o.Items.Count,
-                Payment = o.PaymentMethod,
-                Total = $"${o.TotalAmount:N2}"
-            }).ToList();
+            DataTable dt = new DataTable();
+            dt.Columns.Add("Order ID", typeof(string));
+            dt.Columns.Add("Customer", typeof(string));
+            dt.Columns.Add("Date & Time", typeof(string));
+            dt.Columns.Add("Items Count", typeof(int));
+            dt.Columns.Add("Payment", typeof(string));
+            dt.Columns.Add("Total Amount", typeof(string));
 
-            _gridRecentOrders.DataSource = displayData;
+            foreach (var o in _dataService.Orders)
+            {
+                dt.Rows.Add(o.Id, o.CustomerName, o.CreatedAt.ToString("g"), o.Items.Count, o.PaymentMethod, $"${o.TotalAmount:N2}");
+            }
+
+            _gridRecentOrders.DataSource = dt;
         }
     }
 }
