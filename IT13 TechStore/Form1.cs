@@ -23,7 +23,7 @@ namespace IT8_TechStore
 
         // View Instances
         private DashboardView _dashboardView = null!;
-        private ProductsPlaceholderView _productsView = null!;
+        private ProductsView _productsView = null!;
         private PosPlaceholderView _posView = null!;
         private OrdersPlaceholderView _ordersView = null!;
 
@@ -116,7 +116,7 @@ namespace IT8_TechStore
             _btnNavOrders = CreateNavButton("📋  Sales & Reports", 206);
 
             _dashboardView = new DashboardView();
-            _productsView = new ProductsPlaceholderView();
+            _productsView = new ProductsView();
             _posView = new PosPlaceholderView();
             _ordersView = new OrdersPlaceholderView();
 
