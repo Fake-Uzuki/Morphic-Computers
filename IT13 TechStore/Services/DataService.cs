@@ -34,7 +34,7 @@ namespace IT8_TechStore.Services
             }
             else
             {
-                SeedInitialInMemoryData();
+                LoadCleanCategories();
             }
         }
 
@@ -78,7 +78,7 @@ namespace IT8_TechStore.Services
                         newProds.Add(new Product
                         {
                             Id = reader.GetInt32(0),
-                            SKU = reader.GetString(1),
+                            SKU = reader.IsDBNull(1) ? "" : reader.GetString(1),
                             Name = reader.GetString(2),
                             CategoryName = reader.GetString(3),
                             Price = reader.GetDecimal(4),
@@ -92,11 +92,11 @@ namespace IT8_TechStore.Services
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error loading from SSMS DB: {ex.Message}");
-                SeedInitialInMemoryData();
+                LoadCleanCategories();
             }
         }
 
-        private void SeedInitialInMemoryData()
+        private void LoadCleanCategories()
         {
             Categories = new List<Category>
             {
@@ -107,54 +107,8 @@ namespace IT8_TechStore.Services
                 new Category { Id = 5, Name = "Audio & Headsets", Icon = "🎧", Description = "Studio monitors & Wireless noise canceling headsets" }
             };
 
-            Products = new List<Product>
-            {
-                new Product { Id = 1, SKU = "LAP-001", Name = "ProBook Ultra 16 X1", CategoryName = "Laptops & Notebooks", Price = 1299.99m, StockQuantity = 12, Description = "Intel i9, 32GB RAM, 1TB SSD" },
-                new Product { Id = 2, SKU = "LAP-002", Name = "Aero Blade Gaming G7", CategoryName = "Laptops & Notebooks", Price = 1899.50m, StockQuantity = 4, Description = "RTX 4080, Ryzen 9, 240Hz Display" },
-                new Product { Id = 3, SKU = "KEY-001", Name = "Apex Pro Mechanical Switch", CategoryName = "Keyboards & Mice", Price = 149.99m, StockQuantity = 25, Description = "Hot-swappable RGB Mechanical Keyboard" },
-                new Product { Id = 4, SKU = "MOU-001", Name = "Viper Precision Wireless Mouse", CategoryName = "Keyboards & Mice", Price = 79.99m, StockQuantity = 30, Description = "26K DPI optical sensor, ultra light" },
-                new Product { Id = 5, SKU = "MON-001", Name = "UltraVision 32\" 4K OLED Monitor", CategoryName = "Monitors & Displays", Price = 799.00m, StockQuantity = 3, Description = "32-inch 4K 144Hz 0.03ms Response OLED" },
-                new Product { Id = 6, SKU = "MON-002", Name = "Curved Gaming 27\" 180Hz", CategoryName = "Monitors & Displays", Price = 249.99m, StockQuantity = 18, Description = "1440p QHD Curved display panel" },
-                new Product { Id = 7, SKU = "SSD-001", Name = "Velocity Max 2TB NVMe Gen4 SSD", CategoryName = "Storage & Memory", Price = 159.99m, StockQuantity = 40, Description = "7400MB/s Read speed with heatsink" },
-                new Product { Id = 8, SKU = "RAM-001", Name = "Titanium RGB DDR5 32GB Kit", CategoryName = "Storage & Memory", Price = 119.50m, StockQuantity = 2, Description = "6000MHz CL30 Dual Channel Memory" },
-                new Product { Id = 9, SKU = "AUD-001", Name = "SonicStudio Pro Noise Canceling Headset", CategoryName = "Audio & Headsets", Price = 199.99m, StockQuantity = 15, Description = "Active ANC, spatial audio, 40hr battery" }
-            };
-
-            Orders = new List<Order>
-            {
-                new Order
-                {
-                    Id = "ORD-20260817-001",
-                    CustomerName = "John Doe",
-                    CreatedAt = DateTime.Now.AddHours(-3),
-                    Subtotal = 1449.98m,
-                    Discount = 50.00m,
-                    Tax = 70.00m,
-                    TotalAmount = 1469.98m,
-                    PaymentMethod = "Credit Card",
-                    Items = new List<CartItem>
-                    {
-                        new CartItem { Product = Products[0], Quantity = 1 },
-                        new CartItem { Product = Products[2], Quantity = 1 }
-                    }
-                },
-                new Order
-                {
-                    Id = "ORD-20260817-002",
-                    CustomerName = "Sarah Jenkins",
-                    CreatedAt = DateTime.Now.AddHours(-1),
-                    Subtotal = 239.98m,
-                    Discount = 0m,
-                    Tax = 12.00m,
-                    TotalAmount = 251.98m,
-                    PaymentMethod = "Cash",
-                    Items = new List<CartItem>
-                    {
-                        new CartItem { Product = Products[3], Quantity = 1 },
-                        new CartItem { Product = Products[6], Quantity = 1 }
-                    }
-                }
-            };
+            Products = new List<Product>();
+            Orders = new List<Order>();
         }
 
         public bool AddProduct(Product product)
@@ -174,7 +128,7 @@ namespace IT8_TechStore.Services
                             SELECT SCOPE_IDENTITY();";
 
                         using var cmd = new SqlCommand(sql, conn);
-                        cmd.Parameters.AddWithValue("@sku", product.SKU);
+                        cmd.Parameters.AddWithValue("@sku", product.SKU ?? "");
                         cmd.Parameters.AddWithValue("@name", product.Name);
                         cmd.Parameters.AddWithValue("@cat", product.CategoryName);
                         cmd.Parameters.AddWithValue("@price", product.Price);
@@ -221,7 +175,7 @@ namespace IT8_TechStore.Services
 
                         using var cmd = new SqlCommand(sql, conn);
                         cmd.Parameters.AddWithValue("@id", product.Id);
-                        cmd.Parameters.AddWithValue("@sku", product.SKU);
+                        cmd.Parameters.AddWithValue("@sku", product.SKU ?? "");
                         cmd.Parameters.AddWithValue("@name", product.Name);
                         cmd.Parameters.AddWithValue("@cat", product.CategoryName);
                         cmd.Parameters.AddWithValue("@price", product.Price);
@@ -233,7 +187,6 @@ namespace IT8_TechStore.Services
                         var existing = Products.FirstOrDefault(p => p.Id == product.Id);
                         if (existing != null)
                         {
-                            existing.SKU = product.SKU;
                             existing.Name = product.Name;
                             existing.CategoryName = product.CategoryName;
                             existing.Price = product.Price;
@@ -253,12 +206,11 @@ namespace IT8_TechStore.Services
             var item = Products.FirstOrDefault(p => p.Id == product.Id);
             if (item != null)
             {
-                item.SKU = product.SKU;
                 item.Name = product.Name;
                 item.CategoryName = product.CategoryName;
                 item.Price = product.Price;
                 item.StockQuantity = product.StockQuantity;
-                item.Description = product.Description;
+                item.Description = product.Description ?? string.Empty;
                 return true;
             }
             return false;

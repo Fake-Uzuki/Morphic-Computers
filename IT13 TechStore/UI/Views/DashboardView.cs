@@ -96,7 +96,7 @@ namespace IT8_TechStore.UI.Views
                 IconText = "💻",
                 MetricTitle = "TOTAL PRODUCTS",
                 MetricValue = _dataService.GetTotalProductsCount().ToString(),
-                Subtitle = "Active SKUs in store",
+                Subtitle = "Active items in store",
                 Dock = DockStyle.Fill,
                 Margin = new Padding(4, 0, 4, 0)
             };

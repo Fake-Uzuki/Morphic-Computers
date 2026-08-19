@@ -66,7 +66,7 @@ namespace IT8_TechStore.UI.Views
 
             Label lblSearch = new Label
             {
-                Text = "🔍 Search:",
+                Text = "🔍 Search Name:",
                 Font = AppTheme.BodyBoldFont,
                 ForeColor = AppTheme.TextDark,
                 Location = new Point(14, 22),
@@ -75,8 +75,8 @@ namespace IT8_TechStore.UI.Views
 
             _txtSearch = new TextBox
             {
-                Location = new Point(90, 18),
-                Size = new Size(200, 26),
+                Location = new Point(130, 18),
+                Size = new Size(180, 26),
                 Font = AppTheme.BodyFont,
                 BackColor = AppTheme.InputBackground,
                 ForeColor = AppTheme.TextDark
@@ -88,14 +88,14 @@ namespace IT8_TechStore.UI.Views
                 Text = "Category:",
                 Font = AppTheme.BodyBoldFont,
                 ForeColor = AppTheme.TextDark,
-                Location = new Point(305, 22),
+                Location = new Point(325, 22),
                 AutoSize = true
             };
 
             _cboCategoryFilter = new ComboBox
             {
-                Location = new Point(380, 18),
-                Size = new Size(180, 26),
+                Location = new Point(400, 18),
+                Size = new Size(170, 26),
                 Font = AppTheme.BodyFont,
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 BackColor = AppTheme.InputBackground,
@@ -235,14 +235,12 @@ namespace IT8_TechStore.UI.Views
             var filtered = _dataService.Products.Where(p =>
                 (string.IsNullOrEmpty(search) ||
                  p.Name.ToLower().Contains(search) ||
-                 p.SKU.ToLower().Contains(search) ||
                  p.Description.ToLower().Contains(search)) &&
                 (category == "All Categories" || p.CategoryName == category)
             ).ToList();
 
             DataTable dt = new DataTable();
             dt.Columns.Add("ID", typeof(int));
-            dt.Columns.Add("SKU Code", typeof(string));
             dt.Columns.Add("Product Name", typeof(string));
             dt.Columns.Add("Category", typeof(string));
             dt.Columns.Add("Price ($)", typeof(string));
@@ -252,7 +250,7 @@ namespace IT8_TechStore.UI.Views
 
             foreach (var p in filtered)
             {
-                dt.Rows.Add(p.Id, p.SKU, p.Name, p.CategoryName, $"${p.Price:N2}", p.StockQuantity, p.StockStatus, p.Description);
+                dt.Rows.Add(p.Id, p.Name, p.CategoryName, $"${p.Price:N2}", p.StockQuantity, p.StockStatus, p.Description);
             }
 
             _gridProducts.DataSource = dt;
@@ -266,7 +264,6 @@ namespace IT8_TechStore.UI.Views
         {
             if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
 
-            // Highlight Stock Status Column cells with soft color badges
             if (_gridProducts.Columns[e.ColumnIndex].Name == "Stock Status" && e.Value != null)
             {
                 string status = e.Value.ToString() ?? "";
@@ -334,7 +331,7 @@ namespace IT8_TechStore.UI.Views
             }
 
             var confirm = MessageBox.Show(
-                $"Are you sure you want to delete '{selected.Name}' (SKU: {selected.SKU}) from SSMS database?",
+                $"Are you sure you want to delete '{selected.Name}' from SSMS database?",
                 "Confirm Delete",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);

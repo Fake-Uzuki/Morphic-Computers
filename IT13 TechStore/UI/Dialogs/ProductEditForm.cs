@@ -13,7 +13,6 @@ namespace IT8_TechStore.UI.Dialogs
     {
         private readonly DataService _dataService = DataService.Instance;
 
-        private TextBox _txtSKU = null!;
         private TextBox _txtName = null!;
         private ComboBox _cboCategory = null!;
         private TextBox _txtPrice = null!;
@@ -35,13 +34,12 @@ namespace IT8_TechStore.UI.Dialogs
             else
             {
                 Text = "➕ Add New Product - Morphic Computers";
-                _txtSKU.Text = $"SKU-{DateTime.Now:MMdd}-{new Random().Next(100, 999)}";
             }
         }
 
         private void InitializeComponent()
         {
-            Size = new Size(520, 520);
+            Size = new Size(500, 480);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -52,7 +50,7 @@ namespace IT8_TechStore.UI.Dialogs
             // Title Banner
             Label lblHeader = new Label
             {
-                Text = TargetProduct == null ? "Add New Inventory Product" : "Edit Product Details",
+                Text = TargetProduct == null ? "Add New Product" : "Edit Product Details",
                 Font = AppTheme.HeaderFont,
                 ForeColor = AppTheme.TextDark,
                 Location = new Point(20, 16),
@@ -63,48 +61,42 @@ namespace IT8_TechStore.UI.Dialogs
             Panel pnlFields = new Panel
             {
                 Location = new Point(20, 54),
-                Size = new Size(464, 380),
+                Size = new Size(444, 340),
                 BackColor = AppTheme.CardBackground,
                 Padding = new Padding(16)
             };
 
-            int y = 14;
+            int y = 18;
 
-            // SKU Field
-            Label lblSKU = new Label { Text = "SKU Code:", Font = AppTheme.BodyBoldFont, ForeColor = AppTheme.TextDark, Location = new Point(16, y), AutoSize = true };
-            _txtSKU = new TextBox { Location = new Point(140, y - 3), Size = new Size(300, 26), Font = AppTheme.BodyFont, BackColor = AppTheme.InputBackground, ForeColor = AppTheme.TextDark };
-            y += 42;
-
-            // Name Field
+            // 1. Name Field
             Label lblName = new Label { Text = "Product Name:", Font = AppTheme.BodyBoldFont, ForeColor = AppTheme.TextDark, Location = new Point(16, y), AutoSize = true };
-            _txtName = new TextBox { Location = new Point(140, y - 3), Size = new Size(300, 26), Font = AppTheme.BodyFont, BackColor = AppTheme.InputBackground, ForeColor = AppTheme.TextDark };
-            y += 42;
+            _txtName = new TextBox { Location = new Point(140, y - 3), Size = new Size(280, 26), Font = AppTheme.BodyFont, BackColor = AppTheme.InputBackground, ForeColor = AppTheme.TextDark };
+            y += 46;
 
-            // Category Field
+            // 2. Category Field
             Label lblCategory = new Label { Text = "Category:", Font = AppTheme.BodyBoldFont, ForeColor = AppTheme.TextDark, Location = new Point(16, y), AutoSize = true };
-            _cboCategory = new ComboBox { Location = new Point(140, y - 3), Size = new Size(300, 26), Font = AppTheme.BodyFont, DropDownStyle = ComboBoxStyle.DropDownList, BackColor = AppTheme.InputBackground, ForeColor = AppTheme.TextDark };
+            _cboCategory = new ComboBox { Location = new Point(140, y - 3), Size = new Size(280, 26), Font = AppTheme.BodyFont, DropDownStyle = ComboBoxStyle.DropDownList, BackColor = AppTheme.InputBackground, ForeColor = AppTheme.TextDark };
             foreach (var cat in _dataService.Categories)
             {
                 _cboCategory.Items.Add(cat.Name);
             }
             if (_cboCategory.Items.Count > 0) _cboCategory.SelectedIndex = 0;
-            y += 42;
+            y += 46;
 
-            // Price Field
-            Label lblPrice = new Label { Text = "Unit Price ($):", Font = AppTheme.BodyBoldFont, ForeColor = AppTheme.TextDark, Location = new Point(16, y), AutoSize = true };
-            _txtPrice = new TextBox { Location = new Point(140, y - 3), Size = new Size(300, 26), Font = AppTheme.BodyFont, BackColor = AppTheme.InputBackground, ForeColor = AppTheme.TextDark, Text = "0.00" };
-            y += 42;
+            // 3. Price Field
+            Label lblPrice = new Label { Text = "Price ($):", Font = AppTheme.BodyBoldFont, ForeColor = AppTheme.TextDark, Location = new Point(16, y), AutoSize = true };
+            _txtPrice = new TextBox { Location = new Point(140, y - 3), Size = new Size(280, 26), Font = AppTheme.BodyFont, BackColor = AppTheme.InputBackground, ForeColor = AppTheme.TextDark, Text = "0.00" };
+            y += 46;
 
-            // Stock Quantity Field
+            // 4. Stock Quantity Field
             Label lblStock = new Label { Text = "Stock Quantity:", Font = AppTheme.BodyBoldFont, ForeColor = AppTheme.TextDark, Location = new Point(16, y), AutoSize = true };
-            _numStock = new NumericUpDown { Location = new Point(140, y - 3), Size = new Size(300, 26), Font = AppTheme.BodyFont, Minimum = 0, Maximum = 10000, Value = 10, BackColor = AppTheme.InputBackground, ForeColor = AppTheme.TextDark };
-            y += 42;
+            _numStock = new NumericUpDown { Location = new Point(140, y - 3), Size = new Size(280, 26), Font = AppTheme.BodyFont, Minimum = 0, Maximum = 10000, Value = 10, BackColor = AppTheme.InputBackground, ForeColor = AppTheme.TextDark };
+            y += 46;
 
-            // Description Field
+            // 5. Description Field
             Label lblDesc = new Label { Text = "Description:", Font = AppTheme.BodyBoldFont, ForeColor = AppTheme.TextDark, Location = new Point(16, y), AutoSize = true };
-            _txtDescription = new TextBox { Location = new Point(140, y - 3), Size = new Size(300, 80), Font = AppTheme.BodyFont, Multiline = true, BackColor = AppTheme.InputBackground, ForeColor = AppTheme.TextDark, ScrollBars = ScrollBars.Vertical };
+            _txtDescription = new TextBox { Location = new Point(140, y - 3), Size = new Size(280, 80), Font = AppTheme.BodyFont, Multiline = true, BackColor = AppTheme.InputBackground, ForeColor = AppTheme.TextDark, ScrollBars = ScrollBars.Vertical };
 
-            pnlFields.Controls.Add(lblSKU); pnlFields.Controls.Add(_txtSKU);
             pnlFields.Controls.Add(lblName); pnlFields.Controls.Add(_txtName);
             pnlFields.Controls.Add(lblCategory); pnlFields.Controls.Add(_cboCategory);
             pnlFields.Controls.Add(lblPrice); pnlFields.Controls.Add(_txtPrice);
@@ -116,7 +108,7 @@ namespace IT8_TechStore.UI.Dialogs
             {
                 Text = "💾 Save Product",
                 IsPrimary = true,
-                Location = new Point(230, 442),
+                Location = new Point(210, 404),
                 Size = new Size(130, 38)
             };
             btnSave.Click += BtnSave_Click;
@@ -125,7 +117,7 @@ namespace IT8_TechStore.UI.Dialogs
             {
                 Text = "Cancel",
                 IsPrimary = false,
-                Location = new Point(370, 442),
+                Location = new Point(350, 404),
                 Size = new Size(114, 38)
             };
             btnCancel.Click += (s, e) => DialogResult = DialogResult.Cancel;
@@ -139,7 +131,6 @@ namespace IT8_TechStore.UI.Dialogs
         private void PopulateExistingData()
         {
             if (TargetProduct == null) return;
-            _txtSKU.Text = TargetProduct.SKU;
             _txtName.Text = TargetProduct.Name;
             _cboCategory.SelectedItem = TargetProduct.CategoryName;
             _txtPrice.Text = TargetProduct.Price.ToString("F2");
@@ -149,13 +140,6 @@ namespace IT8_TechStore.UI.Dialogs
 
         private void BtnSave_Click(object? sender, EventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(_txtSKU.Text))
-            {
-                MessageBox.Show("Please enter a valid product SKU code.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                _txtSKU.Focus();
-                return;
-            }
-
             if (string.IsNullOrWhiteSpace(_txtName.Text))
             {
                 MessageBox.Show("Please enter a valid product name.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -174,7 +158,7 @@ namespace IT8_TechStore.UI.Dialogs
             {
                 TargetProduct = new Product
                 {
-                    SKU = _txtSKU.Text.Trim(),
+                    SKU = $"MC-{DateTime.Now:mmss}{new Random().Next(10, 99)}", // System internal code
                     Name = _txtName.Text.Trim(),
                     CategoryName = _cboCategory.SelectedItem?.ToString() ?? "General",
                     Price = price,
@@ -185,7 +169,6 @@ namespace IT8_TechStore.UI.Dialogs
             }
             else
             {
-                TargetProduct.SKU = _txtSKU.Text.Trim();
                 TargetProduct.Name = _txtName.Text.Trim();
                 TargetProduct.CategoryName = _cboCategory.SelectedItem?.ToString() ?? "General";
                 TargetProduct.Price = price;
