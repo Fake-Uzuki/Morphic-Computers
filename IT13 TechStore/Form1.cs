@@ -6,10 +6,15 @@ using IT8_TechStore.UI.Views;
 
 namespace IT8_TechStore
 {
+    /// <summary>
+    /// NAVBAR OPTION 2: Full Top Horizontal Navigation Bar Layout (SELECTED FINAL DESIGN)
+    /// Removes the left sidebar completely so the main content area gets 100% full screen width.
+    /// Features interactive card navigation & automatic Add Product popup triggers from Dashboard.
+    /// </summary>
     public partial class Form1 : Form
     {
         private Panel _pnlHeader = null!;
-        private Panel _pnlSidebar = null!;
+        private Panel _pnlNavStrip = null!;
         private Panel _pnlContentArea = null!;
         private Label _lblClock = null!;
         private System.Windows.Forms.Timer _clockTimer = null!;
@@ -41,29 +46,30 @@ namespace IT8_TechStore
         {
             BackColor = AppTheme.AppBackground;
 
-            // 1. Top Header Bar
+            // 1. Top Integrated Header & Navigation Bar (Navbar Option 2)
             _pnlHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 65,
+                Height = 105,
                 BackColor = AppTheme.HeaderBg
             };
 
+            // Top Header Line: Logo & Status
             Label lblBrand = new Label
             {
                 Text = "☀️ MORPHIC COMPUTERS",
                 Font = new Font("Segoe UI", 16F, FontStyle.Bold),
                 ForeColor = AppTheme.Primary,
-                Location = new Point(20, 16),
+                Location = new Point(20, 14),
                 AutoSize = true
             };
 
             Label lblTagline = new Label
             {
-                Text = "| Inventory & POS Operations Center",
+                Text = "| Store Operations & POS System",
                 Font = AppTheme.BodyFont,
                 ForeColor = AppTheme.TextLightMuted,
-                Location = new Point(265, 22),
+                Location = new Point(265, 20),
                 AutoSize = true
             };
 
@@ -73,7 +79,7 @@ namespace IT8_TechStore
                 Font = AppTheme.BodyFont,
                 ForeColor = AppTheme.TextLight,
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(Width - 360, 22),
+                Location = new Point(Width - 360, 20),
                 AutoSize = true
             };
 
@@ -83,7 +89,7 @@ namespace IT8_TechStore
                 Font = AppTheme.BodyBoldFont,
                 ForeColor = AppTheme.Primary,
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(Width - 100, 22),
+                Location = new Point(Width - 100, 20),
                 AutoSize = true
             };
 
@@ -91,68 +97,52 @@ namespace IT8_TechStore
             _pnlHeader.Controls.Add(lblTagline);
             _pnlHeader.Controls.Add(_lblClock);
             _pnlHeader.Controls.Add(lblUser);
-            Controls.Add(_pnlHeader);
 
-            // 2. Left Sidebar Navigation
-            _pnlSidebar = new Panel
+            // Bottom Header Line: Horizontal Navigation Strip
+            _pnlNavStrip = new Panel
             {
-                Dock = DockStyle.Left,
-                Width = 230,
-                BackColor = AppTheme.SidebarBg
+                Location = new Point(20, 56),
+                Size = new Size(Width - 40, 42),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                BackColor = Color.FromArgb(31, 25, 12)
             };
 
-            Label lblNavSection = new Label
-            {
-                Text = "MAIN NAVIGATION",
-                Font = AppTheme.SmallFont,
-                ForeColor = AppTheme.TextLightMuted,
-                Location = new Point(20, 20),
-                AutoSize = true
-            };
-
-            _btnNavDashboard = CreateNavButton("📊  Dashboard Overview", 50);
-            _btnNavProducts = CreateNavButton("💻  Products & Stock", 102);
-            _btnNavPOS = CreateNavButton("🛒  Point of Sale (POS)", 154);
-            _btnNavOrders = CreateNavButton("📋  Sales & Reports", 206);
+            _btnNavDashboard = CreateHorizontalNavButton("📊  Dashboard Overview", 0);
+            _btnNavProducts = CreateHorizontalNavButton("💻  Products & Stock", 200);
+            _btnNavPOS = CreateHorizontalNavButton("🛒  Point of Sale (POS)", 400);
+            _btnNavOrders = CreateHorizontalNavButton("📋  Sales & Reports", 600);
 
             _dashboardView = new DashboardView();
             _productsView = new ProductsView();
             _posView = new PosPlaceholderView();
             _ordersView = new OrdersPlaceholderView();
 
+            // Wire Dashboard Interactive Card & Action Navigation Delegates
+            _dashboardView.OnNavigateToPOSRequest = () => SwitchView(_posView, _btnNavPOS);
+            _dashboardView.OnNavigateToOrdersRequest = () => SwitchView(_ordersView, _btnNavOrders);
+            _dashboardView.OnNavigateToProductsRequest = (openAddModal) =>
+            {
+                SwitchView(_productsView, _btnNavProducts);
+                if (openAddModal)
+                {
+                    _productsView.OpenAddProductDialog();
+                }
+            };
+
             _btnNavDashboard.Click += (s, e) => SwitchView(_dashboardView, _btnNavDashboard);
             _btnNavProducts.Click += (s, e) => SwitchView(_productsView, _btnNavProducts);
             _btnNavPOS.Click += (s, e) => SwitchView(_posView, _btnNavPOS);
             _btnNavOrders.Click += (s, e) => SwitchView(_ordersView, _btnNavOrders);
 
-            _pnlSidebar.Controls.Add(lblNavSection);
-            _pnlSidebar.Controls.Add(_btnNavDashboard);
-            _pnlSidebar.Controls.Add(_btnNavProducts);
-            _pnlSidebar.Controls.Add(_btnNavPOS);
-            _pnlSidebar.Controls.Add(_btnNavOrders);
+            _pnlNavStrip.Controls.Add(_btnNavDashboard);
+            _pnlNavStrip.Controls.Add(_btnNavProducts);
+            _pnlNavStrip.Controls.Add(_btnNavPOS);
+            _pnlNavStrip.Controls.Add(_btnNavOrders);
 
-            // System Footer inside sidebar
-            Panel pnlSidebarFooter = new Panel
-            {
-                Dock = DockStyle.Bottom,
-                Height = 60,
-                BackColor = Color.FromArgb(42, 34, 4)
-            };
+            _pnlHeader.Controls.Add(_pnlNavStrip);
+            Controls.Add(_pnlHeader);
 
-            Label lblVersion = new Label
-            {
-                Text = "Morphic Computers v1.0.0\nTheme: Sunshine Yellow (#F4D772)",
-                Font = AppTheme.SmallFont,
-                ForeColor = AppTheme.TextLightMuted,
-                Location = new Point(16, 12),
-                AutoSize = true
-            };
-            pnlSidebarFooter.Controls.Add(lblVersion);
-            _pnlSidebar.Controls.Add(pnlSidebarFooter);
-
-            Controls.Add(_pnlSidebar);
-
-            // 3. Dynamic Content View Container
+            // 2. Full-Width Dynamic Content View Container (100% Screen Width!)
             _pnlContentArea = new Panel
             {
                 Dock = DockStyle.Fill,
@@ -163,16 +153,15 @@ namespace IT8_TechStore
             _pnlContentArea.BringToFront();
         }
 
-        private Button CreateNavButton(string text, int top)
+        private Button CreateHorizontalNavButton(string text, int left)
         {
             Button btn = new Button
             {
                 Text = text,
-                Location = new Point(12, top),
-                Size = new Size(206, 44),
+                Location = new Point(left, 2),
+                Size = new Size(195, 38),
                 FlatStyle = FlatStyle.Flat,
-                TextAlign = ContentAlignment.MiddleLeft,
-                Padding = new Padding(12, 0, 0, 0),
+                TextAlign = ContentAlignment.MiddleCenter,
                 Font = AppTheme.BodyBoldFont,
                 ForeColor = AppTheme.TextLight,
                 BackColor = Color.Transparent,

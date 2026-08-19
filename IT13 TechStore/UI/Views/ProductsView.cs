@@ -296,13 +296,18 @@ namespace IT8_TechStore.UI.Views
             return null;
         }
 
-        private void BtnAdd_Click(object? sender, EventArgs e)
+        public void OpenAddProductDialog()
         {
             using var dlg = new ProductEditForm();
             if (dlg.ShowDialog() == DialogResult.OK)
             {
                 ApplyFilters();
             }
+        }
+
+        private void BtnAdd_Click(object? sender, EventArgs e)
+        {
+            OpenAddProductDialog();
         }
 
         private void BtnEdit_Click(object? sender, EventArgs e)

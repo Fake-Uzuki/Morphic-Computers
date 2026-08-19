@@ -46,6 +46,7 @@ namespace IT8_TechStore.UI.Components
             Padding = new Padding(10);
             CustomBgColor = AppTheme.CardBackground;
             CustomBorderColor = AppTheme.BorderColor;
+            Cursor = Cursors.Hand;
 
             _lblIcon = new Label
             {
@@ -54,7 +55,8 @@ namespace IT8_TechStore.UI.Components
                 ForeColor = AppTheme.TextDark,
                 Size = new Size(38, 38),
                 Location = new Point(10, 14),
-                TextAlign = ContentAlignment.MiddleCenter
+                TextAlign = ContentAlignment.MiddleCenter,
+                Cursor = Cursors.Hand
             };
 
             _lblTitle = new Label
@@ -65,7 +67,8 @@ namespace IT8_TechStore.UI.Components
                 Location = new Point(52, 14),
                 Size = new Size(160, 18),
                 TextAlign = ContentAlignment.MiddleLeft,
-                AutoEllipsis = true
+                AutoEllipsis = true,
+                Cursor = Cursors.Hand
             };
 
             _lblValue = new Label
@@ -76,7 +79,8 @@ namespace IT8_TechStore.UI.Components
                 Location = new Point(52, 34),
                 Size = new Size(170, 36),
                 TextAlign = ContentAlignment.MiddleLeft,
-                AutoEllipsis = true
+                AutoEllipsis = true,
+                Cursor = Cursors.Hand
             };
 
             _lblSubtitle = new Label
@@ -87,8 +91,15 @@ namespace IT8_TechStore.UI.Components
                 Location = new Point(52, 74),
                 Size = new Size(170, 18),
                 TextAlign = ContentAlignment.MiddleLeft,
-                AutoEllipsis = true
+                AutoEllipsis = true,
+                Cursor = Cursors.Hand
             };
+
+            // Forward click events from child labels to parent card container
+            _lblIcon.Click += (s, e) => OnClick(e);
+            _lblTitle.Click += (s, e) => OnClick(e);
+            _lblValue.Click += (s, e) => OnClick(e);
+            _lblSubtitle.Click += (s, e) => OnClick(e);
 
             Controls.Add(_lblIcon);
             Controls.Add(_lblTitle);
