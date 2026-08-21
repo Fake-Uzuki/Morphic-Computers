@@ -3,6 +3,7 @@ namespace IT8_TechStore.Models
     public class Product
     {
         public int Id { get; set; }
+        public string TenantCode { get; set; } = "COMPANY_A";
         public string SKU { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string CategoryName { get; set; } = "General";

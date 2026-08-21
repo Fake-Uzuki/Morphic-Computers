@@ -1,21 +1,26 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Microsoft.Data.SqlClient;
 using IT8_TechStore.Database;
 using IT8_TechStore.Models;
 
 namespace IT8_TechStore.Services
 {
+    /// <summary>
+    /// Central Data Access Service utilizing Entity Framework Core (EF Core) DbContext
+    /// and supporting Multi-Tenant company routing (Company A, Company B, Company C).
+    /// </summary>
     public class DataService
     {
         private static DataService? _instance;
         public static DataService Instance => _instance ??= new DataService();
 
+        public List<CompanyTenant> Tenants { get; private set; } = new();
         public List<Product> Products { get; private set; } = new();
         public List<Category> Categories { get; private set; } = new();
         public List<Order> Orders { get; private set; } = new();
 
+        public string ActiveTenantCode { get; set; } = "COMPANY_A";
         public bool IsUsingSsmsDatabase { get; private set; }
 
         private DataService()
@@ -25,7 +30,6 @@ namespace IT8_TechStore.Services
 
         private void InitializeDataStore()
         {
-            // Attempt SSMS SQL Server Initialization
             IsUsingSsmsDatabase = DbInitializer.InitializeDatabase();
 
             if (IsUsingSsmsDatabase)
@@ -40,71 +44,36 @@ namespace IT8_TechStore.Services
 
         public void LoadFromDatabase()
         {
-            string? connStr = DbConfig.GetConnectionString();
-            if (string.IsNullOrEmpty(connStr)) return;
-
             try
             {
-                using var conn = new SqlConnection(connStr);
-                conn.Open();
-
-                // Load Categories from SSMS
-                var newCats = new List<Category>();
-                string catSql = "SELECT Id, Name, Icon, Description FROM Categories";
-                using (var catCmd = new SqlCommand(catSql, conn))
-                using (var reader = catCmd.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        newCats.Add(new Category
-                        {
-                            Id = reader.GetInt32(0),
-                            Name = reader.GetString(1),
-                            Icon = reader.IsDBNull(2) ? "💻" : reader.GetString(2),
-                            Description = reader.IsDBNull(3) ? "" : reader.GetString(3)
-                        });
-                    }
-                }
-                Categories = newCats;
-
-                // Load Products from SSMS
-                var newProds = new List<Product>();
-                string prodSql = "SELECT Id, SKU, Name, CategoryName, Price, StockQuantity, Description FROM Products";
-                using (var prodCmd = new SqlCommand(prodSql, conn))
-                using (var reader = prodCmd.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        newProds.Add(new Product
-                        {
-                            Id = reader.GetInt32(0),
-                            SKU = reader.IsDBNull(1) ? "" : reader.GetString(1),
-                            Name = reader.GetString(2),
-                            CategoryName = reader.GetString(3),
-                            Price = reader.GetDecimal(4),
-                            StockQuantity = reader.GetInt32(5),
-                            Description = reader.IsDBNull(6) ? "" : reader.GetString(6)
-                        });
-                    }
-                }
-                Products = newProds;
+                using var db = new MorphicDbContext();
+                Tenants = db.Tenants.Where(t => t.IsActive).ToList();
+                Categories = db.Categories.Where(c => c.TenantCode == ActiveTenantCode || c.TenantCode == "COMPANY_A").ToList();
+                Products = db.Products.Where(p => p.TenantCode == ActiveTenantCode || p.TenantCode == "COMPANY_A").ToList();
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error loading from SSMS DB: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"EF Core Load Warning: {ex.Message}");
                 LoadCleanCategories();
             }
         }
 
         private void LoadCleanCategories()
         {
+            Tenants = new List<CompanyTenant>
+            {
+                new CompanyTenant { Id = 1, TenantCode = "COMPANY_A", CompanyName = "Company A (Main Store)" },
+                new CompanyTenant { Id = 2, TenantCode = "COMPANY_B", CompanyName = "Company B (Branch Store)" },
+                new CompanyTenant { Id = 3, TenantCode = "COMPANY_C", CompanyName = "Company C (Enterprise Store)" }
+            };
+
             Categories = new List<Category>
             {
-                new Category { Id = 1, Name = "Laptops & Notebooks", Icon = "💻", Description = "High performance gaming & workstation laptops" },
-                new Category { Id = 2, Name = "Keyboards & Mice", Icon = "⌨️", Description = "Mechanical keyboards & wireless gaming mice" },
-                new Category { Id = 3, Name = "Monitors & Displays", Icon = "🖥️", Description = "4K OLED & High Refresh Gaming Monitors" },
-                new Category { Id = 4, Name = "Storage & Memory", Icon = "💾", Description = "NVMe M.2 SSDs & High speed DDR5 RAM" },
-                new Category { Id = 5, Name = "Audio & Headsets", Icon = "🎧", Description = "Studio monitors & Wireless noise canceling headsets" }
+                new Category { Id = 1, TenantCode = ActiveTenantCode, Name = "Laptops & Notebooks", Icon = "💻", Description = "High performance gaming & workstation laptops" },
+                new Category { Id = 2, TenantCode = ActiveTenantCode, Name = "Keyboards & Mice", Icon = "⌨️", Description = "Mechanical keyboards & wireless gaming mice" },
+                new Category { Id = 3, TenantCode = ActiveTenantCode, Name = "Monitors & Displays", Icon = "🖥️", Description = "4K OLED & High Refresh Gaming Monitors" },
+                new Category { Id = 4, TenantCode = ActiveTenantCode, Name = "Storage & Memory", Icon = "💾", Description = "NVMe M.2 SSDs & High speed DDR5 RAM" },
+                new Category { Id = 5, TenantCode = ActiveTenantCode, Name = "Audio & Headsets", Icon = "🎧", Description = "Studio monitors & Wireless noise canceling headsets" }
             };
 
             Products = new List<Product>();
@@ -113,137 +82,91 @@ namespace IT8_TechStore.Services
 
         public bool AddProduct(Product product)
         {
+            product.TenantCode = ActiveTenantCode;
+
             if (IsUsingSsmsDatabase)
             {
-                string? connStr = DbConfig.GetConnectionString();
-                if (!string.IsNullOrEmpty(connStr))
+                try
                 {
-                    try
-                    {
-                        using var conn = new SqlConnection(connStr);
-                        conn.Open();
-                        string sql = @"
-                            INSERT INTO Products (SKU, Name, CategoryName, Price, StockQuantity, Description) 
-                            VALUES (@sku, @name, @cat, @price, @qty, @desc);
-                            SELECT SCOPE_IDENTITY();";
-
-                        using var cmd = new SqlCommand(sql, conn);
-                        cmd.Parameters.AddWithValue("@sku", product.SKU ?? "");
-                        cmd.Parameters.AddWithValue("@name", product.Name);
-                        cmd.Parameters.AddWithValue("@cat", product.CategoryName);
-                        cmd.Parameters.AddWithValue("@price", product.Price);
-                        cmd.Parameters.AddWithValue("@qty", product.StockQuantity);
-                        cmd.Parameters.AddWithValue("@desc", (object?)product.Description ?? DBNull.Value);
-
-                        object result = cmd.ExecuteScalar();
-                        if (result != null && result != DBNull.Value)
-                        {
-                            product.Id = Convert.ToInt32(result);
-                        }
-
-                        Products.Add(product);
-                        return true;
-                    }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"SSMS Add Error: {ex.Message}");
-                    }
+                    using var db = new MorphicDbContext();
+                    db.Products.Add(product);
+                    db.SaveChanges();
+                    Products.Add(product);
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"EF Core Add Product Error: {ex.Message}");
                 }
             }
 
-            // In-Memory Fallback
-            product.Id = Products.Count > 0 ? Products.Max(p => p.Id) + 1 : 1;
+            int nextId = Products.Count > 0 ? Products.Max(p => p.Id) + 1 : 1;
+            product.Id = nextId;
             Products.Add(product);
             return true;
         }
 
         public bool UpdateProduct(Product product)
         {
+            var existing = Products.FirstOrDefault(p => p.Id == product.Id);
+            if (existing == null) return false;
+
+            existing.Name = product.Name;
+            existing.CategoryName = product.CategoryName;
+            existing.Price = product.Price;
+            existing.StockQuantity = product.StockQuantity;
+            existing.Description = product.Description;
+
             if (IsUsingSsmsDatabase)
             {
-                string? connStr = DbConfig.GetConnectionString();
-                if (!string.IsNullOrEmpty(connStr))
+                try
                 {
-                    try
+                    using var db = new MorphicDbContext();
+                    var dbEntity = db.Products.FirstOrDefault(p => p.Id == product.Id);
+                    if (dbEntity != null)
                     {
-                        using var conn = new SqlConnection(connStr);
-                        conn.Open();
-                        string sql = @"
-                            UPDATE Products 
-                            SET SKU = @sku, Name = @name, CategoryName = @cat, Price = @price, StockQuantity = @qty, Description = @desc
-                            WHERE Id = @id;";
-
-                        using var cmd = new SqlCommand(sql, conn);
-                        cmd.Parameters.AddWithValue("@id", product.Id);
-                        cmd.Parameters.AddWithValue("@sku", product.SKU ?? "");
-                        cmd.Parameters.AddWithValue("@name", product.Name);
-                        cmd.Parameters.AddWithValue("@cat", product.CategoryName);
-                        cmd.Parameters.AddWithValue("@price", product.Price);
-                        cmd.Parameters.AddWithValue("@qty", product.StockQuantity);
-                        cmd.Parameters.AddWithValue("@desc", (object?)product.Description ?? DBNull.Value);
-
-                        cmd.ExecuteNonQuery();
-
-                        var existing = Products.FirstOrDefault(p => p.Id == product.Id);
-                        if (existing != null)
-                        {
-                            existing.Name = product.Name;
-                            existing.CategoryName = product.CategoryName;
-                            existing.Price = product.Price;
-                            existing.StockQuantity = product.StockQuantity;
-                            existing.Description = product.Description ?? string.Empty;
-                        }
-                        return true;
+                        dbEntity.Name = product.Name;
+                        dbEntity.CategoryName = product.CategoryName;
+                        dbEntity.Price = product.Price;
+                        dbEntity.StockQuantity = product.StockQuantity;
+                        dbEntity.Description = product.Description;
+                        db.SaveChanges();
                     }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"SSMS Update Error: {ex.Message}");
-                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"EF Core Update Product Error: {ex.Message}");
                 }
             }
 
-            // In-Memory Fallback
-            var item = Products.FirstOrDefault(p => p.Id == product.Id);
-            if (item != null)
-            {
-                item.Name = product.Name;
-                item.CategoryName = product.CategoryName;
-                item.Price = product.Price;
-                item.StockQuantity = product.StockQuantity;
-                item.Description = product.Description ?? string.Empty;
-                return true;
-            }
-            return false;
+            return true;
         }
 
         public bool DeleteProduct(int productId)
         {
+            var prod = Products.FirstOrDefault(p => p.Id == productId);
+            if (prod == null) return false;
+
+            Products.Remove(prod);
+
             if (IsUsingSsmsDatabase)
             {
-                string? connStr = DbConfig.GetConnectionString();
-                if (!string.IsNullOrEmpty(connStr))
+                try
                 {
-                    try
+                    using var db = new MorphicDbContext();
+                    var dbEntity = db.Products.FirstOrDefault(p => p.Id == productId);
+                    if (dbEntity != null)
                     {
-                        using var conn = new SqlConnection(connStr);
-                        conn.Open();
-                        string sql = "DELETE FROM Products WHERE Id = @id;";
-                        using var cmd = new SqlCommand(sql, conn);
-                        cmd.Parameters.AddWithValue("@id", productId);
-                        cmd.ExecuteNonQuery();
-
-                        Products.RemoveAll(p => p.Id == productId);
-                        return true;
+                        db.Products.Remove(dbEntity);
+                        db.SaveChanges();
                     }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"SSMS Delete Error: {ex.Message}");
-                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"EF Core Delete Product Error: {ex.Message}");
                 }
             }
 
-            // In-Memory Fallback
-            Products.RemoveAll(p => p.Id == productId);
             return true;
         }
 

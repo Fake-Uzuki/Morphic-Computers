@@ -29,8 +29,8 @@ namespace IT8_TechStore
         // View Instances
         private DashboardView _dashboardView = null!;
         private ProductsView _productsView = null!;
-        private PosPlaceholderView _posView = null!;
-        private OrdersPlaceholderView _ordersView = null!;
+        private PosView _posView = null!;
+        private OrdersView _ordersView = null!;
 
         public Form1()
         {
@@ -114,8 +114,8 @@ namespace IT8_TechStore
 
             _dashboardView = new DashboardView();
             _productsView = new ProductsView();
-            _posView = new PosPlaceholderView();
-            _ordersView = new OrdersPlaceholderView();
+            _posView = new PosView();
+            _ordersView = new OrdersView();
 
             // Wire Dashboard Interactive Card & Action Navigation Delegates
             _dashboardView.OnNavigateToPOSRequest = () => SwitchView(_posView, _btnNavPOS);
@@ -214,6 +214,11 @@ namespace IT8_TechStore
                 _lblClock.Text = DateTime.Now.ToString("dddd, MMMM dd, yyyy  hh:mm:ss tt");
             };
             _clockTimer.Start();
+        }
+
+        private void Form1_Load(object sender, EventArgs e)
+        {
+
         }
     }
 }

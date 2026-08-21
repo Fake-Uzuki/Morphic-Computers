@@ -19,13 +19,15 @@ namespace IT8_TechStore
             // 
             // Form1
             // 
-            AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
-            AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            ClientSize = new System.Drawing.Size(1280, 780);
-            MinimumSize = new System.Drawing.Size(1024, 650);
+            AutoScaleDimensions = new SizeF(8F, 20F);
+            AutoScaleMode = AutoScaleMode.Font;
+            ClientSize = new Size(1463, 1040);
+            Margin = new Padding(3, 4, 3, 4);
+            MinimumSize = new Size(1168, 851);
             Name = "Form1";
-            StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
+            StartPosition = FormStartPosition.CenterScreen;
             Text = "Morphic Computers - Inventory & POS Operations Center";
+            Load += Form1_Load;
             ResumeLayout(false);
         }
     }

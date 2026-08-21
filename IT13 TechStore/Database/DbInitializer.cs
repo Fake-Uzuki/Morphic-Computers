@@ -1,88 +1,54 @@
 using System;
-using Microsoft.Data.SqlClient;
+using System.Linq;
+using Microsoft.EntityFrameworkCore;
+using IT8_TechStore.Models;
 
 namespace IT8_TechStore.Database
 {
+    /// <summary>
+    /// Database Initializer utilizing Entity Framework Core (EF Core) DbContext
+    /// to ensure SSMS SQL Server Master DB and Tenant Tables exist.
+    /// </summary>
     public static class DbInitializer
     {
         public static bool InitializeDatabase()
         {
-            string? connStr = DbConfig.GetConnectionString();
-            if (string.IsNullOrEmpty(connStr))
-                return false;
-
             try
             {
-                // 1. Ensure Database exists in SSMS
-                string masterConnStr = connStr.Replace($"Database={DbConfig.DatabaseName};", "Database=master;");
-                using (var masterConn = new SqlConnection(masterConnStr))
+                using var db = new MorphicDbContext();
+                
+                // Ensure Database and Tables exist via EF Core
+                db.Database.EnsureCreated();
+
+                // Seed Default Company Tenants (Company A, Company B, Company C as drawn on whiteboard)
+                if (!db.Tenants.Any())
                 {
-                    masterConn.Open();
-                    string createDbSql = $@"
-                        IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = '{DbConfig.DatabaseName}')
-                        BEGIN
-                            CREATE DATABASE [{DbConfig.DatabaseName}];
-                        END;";
-                    using var cmd = new SqlCommand(createDbSql, masterConn);
-                    cmd.ExecuteNonQuery();
+                    db.Tenants.AddRange(
+                        new CompanyTenant { TenantCode = "COMPANY_A", CompanyName = "Company A (Main Store)", Description = "1st Lab Target Tenant" },
+                        new CompanyTenant { TenantCode = "COMPANY_B", CompanyName = "Company B (Branch Store)", Description = "2nd Lab Target Tenant" },
+                        new CompanyTenant { TenantCode = "COMPANY_C", CompanyName = "Company C (Enterprise Store)", Description = "Final Defense Target Tenant" }
+                    );
+                    db.SaveChanges();
                 }
 
-                // 2. Ensure Tables exist
-                using (var conn = new SqlConnection(connStr))
+                // Seed Default Categories if empty
+                if (!db.Categories.Any())
                 {
-                    conn.Open();
-
-                    string createTablesSql = @"
-                        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Categories')
-                        BEGIN
-                            CREATE TABLE Categories (
-                                Id INT PRIMARY KEY IDENTITY(1,1),
-                                Name NVARCHAR(100) NOT NULL UNIQUE,
-                                Icon NVARCHAR(10) NOT NULL,
-                                Description NVARCHAR(255) NULL
-                            );
-                        END;
-
-                        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Products')
-                        BEGIN
-                            CREATE TABLE Products (
-                                Id INT PRIMARY KEY IDENTITY(1,1),
-                                SKU NVARCHAR(50) NULL,
-                                Name NVARCHAR(150) NOT NULL,
-                                CategoryName NVARCHAR(100) NOT NULL,
-                                Price DECIMAL(18,2) NOT NULL,
-                                StockQuantity INT NOT NULL,
-                                Description NVARCHAR(500) NULL
-                            );
-                        END;";
-
-                    using var cmd = new SqlCommand(createTablesSql, conn);
-                    cmd.ExecuteNonQuery();
-
-                    // Seed initial categories if empty
-                    string checkCategories = "SELECT COUNT(*) FROM Categories";
-                    using var checkCmd = new SqlCommand(checkCategories, conn);
-                    int catCount = (int)checkCmd.ExecuteScalar();
-
-                    if (catCount == 0)
-                    {
-                        string seedCatSql = @"
-                            INSERT INTO Categories (Name, Icon, Description) VALUES
-                            ('Laptops & Notebooks', '💻', 'High performance gaming & workstation laptops'),
-                            ('Keyboards & Mice', '⌨️', 'Mechanical keyboards & wireless gaming mice'),
-                            ('Monitors & Displays', '🖥️', '4K OLED & High Refresh Gaming Monitors'),
-                            ('Storage & Memory', '💾', 'High speed NVMe SSDs & DDR5 RAM'),
-                            ('Audio & Headsets', '🎧', 'Studio monitors & ANC headsets');";
-                        using var seedCmd = new SqlCommand(seedCatSql, conn);
-                        seedCmd.ExecuteNonQuery();
-                    }
+                    db.Categories.AddRange(
+                        new Category { TenantCode = "COMPANY_A", Name = "Laptops & Notebooks", Icon = "💻", Description = "Gaming & Workstation Laptops" },
+                        new Category { TenantCode = "COMPANY_A", Name = "Keyboards & Mice", Icon = "⌨️", Description = "Mechanical Keyboards & Wireless Gaming Mice" },
+                        new Category { TenantCode = "COMPANY_A", Name = "Monitors & Displays", Icon = "🖥️", Description = "4K OLED & High Refresh Monitors" },
+                        new Category { TenantCode = "COMPANY_A", Name = "Storage & Memory", Icon = "💾", Description = "NVMe SSDs & DDR5 RAM" },
+                        new Category { TenantCode = "COMPANY_A", Name = "Audio & Headsets", Icon = "🎧", Description = "Studio Monitors & ANC Headsets" }
+                    );
+                    db.SaveChanges();
                 }
 
                 return true;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"SSMS Init Warning: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"EF Core Init Warning: {ex.Message}");
                 return false;
             }
         }

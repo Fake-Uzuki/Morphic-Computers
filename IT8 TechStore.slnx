@@ -1,3 +1,7 @@
 <Solution>
+  <Project Path="ERP.api/ERP.api.csproj" Id="4ded8768-15b9-4a8b-829e-b4f500b571d1" />
+  <Project Path="ERP.domain/ERP.domain.csproj" Id="e7764aa2-e8ce-4a93-854f-f306ff4d73c3" />
+  <Project Path="ERP.infrastructure/ERP.infrastructure.csproj" Id="ab1a580e-4a00-4802-b8b5-095d223eb606" />
+  <Project Path="ERP.winforms/ERP.winforms.csproj" Id="6d2ef22f-691e-4a78-ad29-182e7fe5f7d6" />
   <Project Path="IT13 TechStore/IT8 TechStore.csproj" />
 </Solution>
