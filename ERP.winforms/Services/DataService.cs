@@ -8,7 +8,7 @@ namespace ERP.winforms.Services
 {
     /// <summary>
     /// Data Access Service connecting ERP.winforms UI to ERP.infrastructure (EF Core MasterErpContext)
-    /// and ERP.domain entities for Morphic Computers.
+    /// and ERP.domain entities with Multi-Company support.
     /// </summary>
     public class DataService
     {
@@ -19,6 +19,9 @@ namespace ERP.winforms.Services
         public List<Product> Products { get; private set; } = new();
         public List<Category> Categories { get; private set; } = new();
         public List<Order> Orders { get; private set; } = new();
+
+        private readonly List<Product> _inMemoryProducts = new();
+        private readonly List<Category> _inMemoryCategories = new();
 
         public int ActiveCompanyId { get; set; } = 1;
         public bool IsUsingSsmsDatabase { get; private set; }
@@ -37,18 +40,46 @@ namespace ERP.winforms.Services
 
                 if (!db.Companies.Any())
                 {
-                    db.Companies.Add(new Company { Id = 1, Code = "MORPHIC", Name = "Morphic Computers", Description = "Main Computer Store" });
+                    db.Companies.AddRange(
+                        new Company { Id = 1, Code = "MORPHIC", Name = "Morphic Computers (Main Store)", Description = "Primary Computer Store" },
+                        new Company { Id = 2, Code = "APEX", Name = "Apex Cybernetics (Company B)", Description = "Branch Store Demo" },
+                        new Company { Id = 3, Code = "VANGUARD", Name = "Vanguard Tech (Company C)", Description = "Enterprise Store Demo" }
+                    );
                     db.SaveChanges();
                 }
 
                 if (!db.Categories.Any())
                 {
                     db.Categories.AddRange(
+                        // Company 1 Categories
                         new Category { CompanyId = 1, Name = "Laptops & Notebooks", Icon = "💻", Description = "Gaming & Workstation Laptops" },
-                        new Category { CompanyId = 1, Name = "Keyboards & Mice", Icon = "⌨️", Description = "Mechanical Keyboards & Wireless Gaming Mice" },
-                        new Category { CompanyId = 1, Name = "Monitors & Displays", Icon = "🖥️", Description = "4K OLED & High Refresh Monitors" },
+                        new Category { CompanyId = 1, Name = "Keyboards & Mice", Icon = "⌨️", Description = "Mechanical Keyboards & Wireless Mice" },
+                        new Category { CompanyId = 1, Name = "Monitors & Displays", Icon = "🖥️", Description = "4K OLED Monitors" },
                         new Category { CompanyId = 1, Name = "Storage & Memory", Icon = "💾", Description = "NVMe SSDs & DDR5 RAM" },
-                        new Category { CompanyId = 1, Name = "Audio & Headsets", Icon = "🎧", Description = "Studio Monitors & ANC Headsets" }
+                        new Category { CompanyId = 1, Name = "Audio & Headsets", Icon = "🎧", Description = "Headsets & Speakers" },
+
+                        // Company 2 Categories
+                        new Category { CompanyId = 2, Name = "Gaming Laptops", Icon = "💻", Description = "High FPS Gaming Rigs" },
+                        new Category { CompanyId = 2, Name = "Gaming Accessories", Icon = "⌨️", Description = "RGB Gaming Gear" },
+
+                        // Company 3 Categories
+                        new Category { CompanyId = 3, Name = "Enterprise Servers", Icon = "🖥️", Description = "Rack Servers & Workstations" },
+                        new Category { CompanyId = 3, Name = "Networking Gear", Icon = "💾", Description = "Switches & Routers" }
+                    );
+                    db.SaveChanges();
+                }
+
+                if (!db.Products.Any())
+                {
+                    db.Products.AddRange(
+                        // Company 2 Seed Products
+                        new Product { CompanyId = 2, Name = "Apex CyberBook 15 Pro", CategoryName = "Gaming Laptops", Price = 1599.99m, StockQuantity = 8, Description = "RTX 4070 Gaming Laptop" },
+                        new Product { CompanyId = 2, Name = "Apex Cobra RGB Wireless Mouse", CategoryName = "Gaming Accessories", Price = 79.99m, StockQuantity = 15, Description = "Ultra light gaming mouse" },
+                        new Product { CompanyId = 2, Name = "Apex Mechanical Keyboard RGB", CategoryName = "Gaming Accessories", Price = 129.99m, StockQuantity = 3, Description = "Custom switches" },
+
+                        // Company 3 Seed Products
+                        new Product { CompanyId = 3, Name = "Vanguard Enterprise Rack Server Z1", CategoryName = "Enterprise Servers", Price = 3499.00m, StockQuantity = 5, Description = "Dual Xeon 128GB RAM" },
+                        new Product { CompanyId = 3, Name = "Vanguard 48-Port Managed Switch", CategoryName = "Networking Gear", Price = 899.99m, StockQuantity = 12, Description = "10GbE Switch" }
                     );
                     db.SaveChanges();
                 }
@@ -59,43 +90,71 @@ namespace ERP.winforms.Services
             {
                 System.Diagnostics.Debug.WriteLine($"EF Core Connection Warning: {ex.Message}");
                 IsUsingSsmsDatabase = false;
-                LoadCleanCategories();
+                SeedInMemoryDemoStore();
             }
         }
 
         public void LoadFromDatabase()
         {
-            try
+            if (IsUsingSsmsDatabase)
             {
-                using var db = new MasterErpContext();
-                Companies = db.Companies.Where(c => c.IsActive).ToList();
-                Categories = db.Categories.Where(c => c.CompanyId == ActiveCompanyId).ToList();
-                Products = db.Products.Where(p => p.CompanyId == ActiveCompanyId).ToList();
+                try
+                {
+                    using var db = new MasterErpContext();
+                    Companies = db.Companies.Where(c => c.IsActive).ToList();
+                    Categories = db.Categories.Where(c => c.CompanyId == ActiveCompanyId).ToList();
+                    Products = db.Products.Where(p => p.CompanyId == ActiveCompanyId).ToList();
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"EF Core Load Warning: {ex.Message}");
+                }
             }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"EF Core Load Warning: {ex.Message}");
-                LoadCleanCategories();
-            }
+
+            // Fallback in-memory query
+            Categories = _inMemoryCategories.Where(c => c.CompanyId == ActiveCompanyId).ToList();
+            Products = _inMemoryProducts.Where(p => p.CompanyId == ActiveCompanyId).ToList();
         }
 
-        private void LoadCleanCategories()
+        private void SeedInMemoryDemoStore()
         {
             Companies = new List<Company>
             {
-                new Company { Id = 1, Code = "MORPHIC", Name = "Morphic Computers", Description = "Main Computer Store" }
+                new Company { Id = 1, Code = "MORPHIC", Name = "Morphic Computers (Main Store)", Description = "Primary Computer Store" },
+                new Company { Id = 2, Code = "APEX", Name = "Apex Cybernetics (Company B)", Description = "Branch Store Demo" },
+                new Company { Id = 3, Code = "VANGUARD", Name = "Vanguard Tech (Company C)", Description = "Enterprise Store Demo" }
             };
 
-            Categories = new List<Category>
+            _inMemoryCategories.Clear();
+            _inMemoryCategories.AddRange(new[]
             {
-                new Category { Id = 1, CompanyId = 1, Name = "Laptops & Notebooks", Icon = "💻", Description = "High performance gaming & workstation laptops" },
-                new Category { Id = 2, CompanyId = 1, Name = "Keyboards & Mice", Icon = "⌨️", Description = "Mechanical keyboards & wireless gaming mice" },
-                new Category { Id = 3, CompanyId = 1, Name = "Monitors & Displays", Icon = "🖥️", Description = "4K OLED & High Refresh Gaming Monitors" },
-                new Category { Id = 4, CompanyId = 1, Name = "Storage & Memory", Icon = "💾", Description = "NVMe M.2 SSDs & High speed DDR5 RAM" },
-                new Category { Id = 5, CompanyId = 1, Name = "Audio & Headsets", Icon = "🎧", Description = "Studio monitors & Wireless noise canceling headsets" }
-            };
+                new Category { Id = 1, CompanyId = 1, Name = "Laptops & Notebooks", Icon = "💻", Description = "Gaming & Workstation Laptops" },
+                new Category { Id = 2, CompanyId = 1, Name = "Keyboards & Mice", Icon = "⌨️", Description = "Mechanical Keyboards & Wireless Mice" },
+                new Category { Id = 3, CompanyId = 1, Name = "Monitors & Displays", Icon = "🖥️", Description = "4K OLED Monitors" },
+                new Category { Id = 4, CompanyId = 1, Name = "Storage & Memory", Icon = "💾", Description = "NVMe SSDs & DDR5 RAM" },
+                new Category { Id = 5, CompanyId = 1, Name = "Audio & Headsets", Icon = "🎧", Description = "Headsets & Speakers" },
 
-            Products = new List<Product>();
+                new Category { Id = 6, CompanyId = 2, Name = "Gaming Laptops", Icon = "💻", Description = "High FPS Gaming Rigs" },
+                new Category { Id = 7, CompanyId = 2, Name = "Gaming Accessories", Icon = "⌨️", Description = "RGB Gaming Gear" },
+
+                new Category { Id = 8, CompanyId = 3, Name = "Enterprise Servers", Icon = "🖥️", Description = "Rack Servers & Workstations" },
+                new Category { Id = 9, CompanyId = 3, Name = "Networking Gear", Icon = "💾", Description = "Switches & Routers" }
+            });
+
+            _inMemoryProducts.Clear();
+            _inMemoryProducts.AddRange(new[]
+            {
+                new Product { Id = 101, CompanyId = 2, Name = "Apex CyberBook 15 Pro", CategoryName = "Gaming Laptops", Price = 1599.99m, StockQuantity = 8, Description = "RTX 4070 Gaming Laptop" },
+                new Product { Id = 102, CompanyId = 2, Name = "Apex Cobra RGB Wireless Mouse", CategoryName = "Gaming Accessories", Price = 79.99m, StockQuantity = 15, Description = "Ultra light gaming mouse" },
+                new Product { Id = 103, CompanyId = 2, Name = "Apex Mechanical Keyboard RGB", CategoryName = "Gaming Accessories", Price = 129.99m, StockQuantity = 3, Description = "Custom switches" },
+
+                new Product { Id = 201, CompanyId = 3, Name = "Vanguard Enterprise Rack Server Z1", CategoryName = "Enterprise Servers", Price = 3499.00m, StockQuantity = 5, Description = "Dual Xeon 128GB RAM" },
+                new Product { Id = 202, CompanyId = 3, Name = "Vanguard 48-Port Managed Switch", CategoryName = "Networking Gear", Price = 899.99m, StockQuantity = 12, Description = "10GbE Switch" }
+            });
+
+            Categories = _inMemoryCategories.Where(c => c.CompanyId == ActiveCompanyId).ToList();
+            Products = _inMemoryProducts.Where(p => p.CompanyId == ActiveCompanyId).ToList();
             Orders = new List<Order>();
         }
 
@@ -119,8 +178,9 @@ namespace ERP.winforms.Services
                 }
             }
 
-            int nextId = Products.Count > 0 ? Products.Max(p => p.Id) + 1 : 1;
+            int nextId = _inMemoryProducts.Count > 0 ? _inMemoryProducts.Max(p => p.Id) + 1 : 1;
             product.Id = nextId;
+            _inMemoryProducts.Add(product);
             Products.Add(product);
             return true;
         }
@@ -167,6 +227,7 @@ namespace ERP.winforms.Services
             if (prod == null) return false;
 
             Products.Remove(prod);
+            _inMemoryProducts.RemoveAll(p => p.Id == productId);
 
             if (IsUsingSsmsDatabase)
             {

@@ -1,6 +1,8 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using ERP.domain.entities;
+using ERP.winforms.Services;
 using ERP.winforms.Theme;
 using ERP.winforms.UI.Views;
 
@@ -8,6 +10,8 @@ namespace ERP.winforms
 {
     public partial class Form1 : Form
     {
+        private readonly DataService _dataService = DataService.Instance;
+
         private Panel _pnlHeader = null!;
         private Panel _pnlNavStrip = null!;
         private Panel _pnlContentArea = null!;
@@ -18,6 +22,7 @@ namespace ERP.winforms
         private Button _btnNavProducts = null!;
         private Button _btnNavPOS = null!;
         private Button _btnNavOrders = null!;
+        private ComboBox _cboCompanySelector = null!;
         private Button? _activeNavButton;
 
         private DashboardView _dashboardView = null!;
@@ -101,6 +106,52 @@ namespace ERP.winforms
             _btnNavPOS = CreateHorizontalNavButton("🛒  Point of Sale (POS)", 400);
             _btnNavOrders = CreateHorizontalNavButton("📋  Sales & Reports", 600);
 
+            // Multi-Tenant Company Selector Dropdown
+            Label lblTenant = new Label
+            {
+                Text = "🏬 Active Company:",
+                Font = AppTheme.SmallFont,
+                ForeColor = AppTheme.TextLightMuted,
+                Location = new Point(810, 12),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                AutoSize = true
+            };
+
+            _cboCompanySelector = new ComboBox
+            {
+                Font = AppTheme.SmallFont,
+                Location = new Point(925, 8),
+                Width = 200,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+
+            foreach (var company in _dataService.Companies)
+            {
+                _cboCompanySelector.Items.Add(company);
+            }
+
+            if (_cboCompanySelector.Items.Count > 0)
+            {
+                _cboCompanySelector.SelectedIndex = 0;
+            }
+
+            _cboCompanySelector.SelectedIndexChanged += (s, e) =>
+            {
+                if (_cboCompanySelector.SelectedItem is Company selComp)
+                {
+                    _dataService.ActiveCompanyId = selComp.Id;
+                    _dataService.LoadFromDatabase();
+                    if (_pnlContentArea.Controls.Count > 0 && _activeNavButton != null)
+                    {
+                        if (_pnlContentArea.Controls[0] is DashboardView dbView) dbView.RefreshDashboard();
+                        else if (_pnlContentArea.Controls[0] is ProductsView prodView) prodView.ApplyFilters();
+                        else if (_pnlContentArea.Controls[0] is PosView posView) posView.PopulateProductsGrid();
+                        else if (_pnlContentArea.Controls[0] is OrdersView ordView) ordView.RefreshData();
+                    }
+                }
+            };
+
             _dashboardView = new DashboardView();
             _productsView = new ProductsView();
             _posView = new PosView();
@@ -126,6 +177,8 @@ namespace ERP.winforms
             _pnlNavStrip.Controls.Add(_btnNavProducts);
             _pnlNavStrip.Controls.Add(_btnNavPOS);
             _pnlNavStrip.Controls.Add(_btnNavOrders);
+            _pnlNavStrip.Controls.Add(lblTenant);
+            _pnlNavStrip.Controls.Add(_cboCompanySelector);
 
             _pnlHeader.Controls.Add(_pnlNavStrip);
             Controls.Add(_pnlHeader);
