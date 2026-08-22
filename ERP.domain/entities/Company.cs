@@ -1,10 +1,16 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+using System;
 
 namespace ERP.domain.entities
 {
-    internal class Company
+    public class Company
     {
+        public int Id { get; set; }
+        public string Code { get; set; } = "MORPHIC";
+        public string Name { get; set; } = "Morphic Computers";
+        public string Description { get; set; } = "Main Computer Hardware & IT Store";
+        public bool IsActive { get; set; } = true;
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+        public override string ToString() => Name;
     }
 }

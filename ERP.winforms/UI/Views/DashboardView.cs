@@ -3,16 +3,12 @@ using System.Data;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
-using IT8_TechStore.Services;
-using IT8_TechStore.Theme;
-using IT8_TechStore.UI.Components;
+using ERP.winforms.Services;
+using ERP.winforms.Theme;
+using ERP.winforms.UI.Components;
 
-namespace IT8_TechStore.UI.Views
+namespace ERP.winforms.UI.Views
 {
-    /// <summary>
-    /// CONCEPT 2 LAYOUT with Full Interactive Navigation
-    /// Cards and Quick Action buttons redirect smoothly to their respective views.
-    /// </summary>
     public class DashboardView : UserControl
     {
         private readonly DataService _dataService = DataService.Instance;
@@ -41,7 +37,6 @@ namespace IT8_TechStore.UI.Views
             SuspendLayout();
             Controls.Clear();
 
-            
             Label lblHeader = new Label
             {
                 Text = "Dashboard Overview",
@@ -53,7 +48,7 @@ namespace IT8_TechStore.UI.Views
 
             Label lblSubHeader = new Label
             {
-                Text = "Welcome back! Here is what's happening with your store today.",
+                Text = "Welcome back! Here is what's happening with Morphic Computers today.",
                 Font = AppTheme.BodyFont,
                 ForeColor = AppTheme.TextMuted,
                 Location = new Point(20, 48),
@@ -63,7 +58,6 @@ namespace IT8_TechStore.UI.Views
             Controls.Add(lblHeader);
             Controls.Add(lblSubHeader);
 
-            // 2. Metric Cards Panel (Interactive Floating Stat Cards)
             TableLayoutPanel tlpMetrics = new TableLayoutPanel
             {
                 Location = new Point(20, 80),
@@ -129,7 +123,6 @@ namespace IT8_TechStore.UI.Views
 
             Controls.Add(tlpMetrics);
 
-            // 3. Middle Section: Recent Sales & Department Breakdown Split (60% / 40%)
             TableLayoutPanel tlpMiddle = new TableLayoutPanel
             {
                 Location = new Point(20, 210),
@@ -141,7 +134,6 @@ namespace IT8_TechStore.UI.Views
             tlpMiddle.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60f));
             tlpMiddle.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40f));
 
-            // 3A. Left Side: Sales Orders DataGrid
             SunshineCard cardOrders = new SunshineCard
             {
                 Dock = DockStyle.Fill,
@@ -185,7 +177,6 @@ namespace IT8_TechStore.UI.Views
             _gridRecentOrders.ColumnHeadersDefaultCellStyle.SelectionBackColor = AppTheme.Primary;
             _gridRecentOrders.ColumnHeadersDefaultCellStyle.SelectionForeColor = AppTheme.TextDark;
             _gridRecentOrders.ColumnHeadersHeight = 36;
-            _gridRecentOrders.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
 
             _gridRecentOrders.DefaultCellStyle.BackColor = AppTheme.CardBackground;
             _gridRecentOrders.DefaultCellStyle.ForeColor = AppTheme.TextDark;
@@ -198,7 +189,6 @@ namespace IT8_TechStore.UI.Views
             cardOrders.Controls.Add(_gridRecentOrders);
             tlpMiddle.Controls.Add(cardOrders, 0, 0);
 
-            // 3B. Right Side: Department Stock Breakdown
             SunshineCard cardBreakdown = new SunshineCard
             {
                 Dock = DockStyle.Fill,
@@ -232,7 +222,6 @@ namespace IT8_TechStore.UI.Views
 
             Controls.Add(tlpMiddle);
 
-            // 4. Bottom Horizontal Command Hub Bar
             SunshineCard cardActionHub = new SunshineCard
             {
                 Location = new Point(20, 580),
