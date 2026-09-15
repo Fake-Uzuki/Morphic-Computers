@@ -10,7 +10,8 @@ namespace ERP.winforms.UI.Components
         private readonly Label _lblTitle;
         private readonly Label _lblValue;
         private readonly Label _lblSubtitle;
-        private readonly Label _lblIcon;
+        private readonly Label _lblBadge;
+        private bool _isMainCard;
 
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public string MetricTitle
@@ -34,38 +35,62 @@ namespace ERP.winforms.UI.Components
         }
 
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public string BadgeText
+        {
+            get => _lblBadge.Text;
+            set
+            {
+                _lblBadge.Text = value;
+                _lblBadge.Visible = !string.IsNullOrWhiteSpace(value);
+            }
+        }
+
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public string IconText
         {
-            get => _lblIcon.Text;
-            set => _lblIcon.Text = value;
+            get => BadgeText;
+            set => BadgeText = value; // compatibility
+        }
+
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public bool IsMainCard
+        {
+            get => _isMainCard;
+            set
+            {
+                _isMainCard = value;
+                ApplyMainCardStyle();
+            }
         }
 
         public SunshineMetricCard()
         {
-            Height = 110;
-            Padding = new Padding(10);
+            Height = 120;
+            Padding = new Padding(16);
             CustomBgColor = AppTheme.CardBackground;
             CustomBorderColor = AppTheme.BorderColor;
             Cursor = Cursors.Hand;
 
-            _lblIcon = new Label
+            _lblBadge = new Label
             {
-                Text = "📊",
-                Font = new Font("Segoe UI", 20F, FontStyle.Regular),
-                ForeColor = AppTheme.TextDark,
-                Size = new Size(38, 38),
-                Location = new Point(10, 14),
+                Text = "",
+                Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                ForeColor = AppTheme.Primary,
+                BackColor = Color.FromArgb(45, 36, 20),
+                Size = new Size(70, 20),
+                Location = new Point(16, 14),
                 TextAlign = ContentAlignment.MiddleCenter,
+                Visible = false,
                 Cursor = Cursors.Hand
             };
 
             _lblTitle = new Label
             {
                 Text = "METRIC TITLE",
-                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
                 ForeColor = AppTheme.TextMuted,
-                Location = new Point(52, 14),
-                Size = new Size(160, 18),
+                Location = new Point(16, 16),
+                Size = new Size(240, 20),
                 TextAlign = ContentAlignment.MiddleLeft,
                 AutoEllipsis = true,
                 Cursor = Cursors.Hand
@@ -76,8 +101,8 @@ namespace ERP.winforms.UI.Components
                 Text = "0",
                 Font = AppTheme.StatValueFont,
                 ForeColor = AppTheme.TextDark,
-                Location = new Point(52, 34),
-                Size = new Size(170, 36),
+                Location = new Point(16, 40),
+                Size = new Size(280, 42),
                 TextAlign = ContentAlignment.MiddleLeft,
                 AutoEllipsis = true,
                 Cursor = Cursors.Hand
@@ -85,25 +110,50 @@ namespace ERP.winforms.UI.Components
 
             _lblSubtitle = new Label
             {
-                Text = "+0% vs last month",
+                Text = "",
                 Font = AppTheme.SmallFont,
                 ForeColor = AppTheme.TextMuted,
-                Location = new Point(52, 74),
-                Size = new Size(170, 18),
+                Location = new Point(16, 84),
+                Size = new Size(280, 20),
                 TextAlign = ContentAlignment.MiddleLeft,
                 AutoEllipsis = true,
                 Cursor = Cursors.Hand
             };
 
-            _lblIcon.Click += (s, e) => OnClick(e);
+            _lblBadge.Click += (s, e) => OnClick(e);
             _lblTitle.Click += (s, e) => OnClick(e);
             _lblValue.Click += (s, e) => OnClick(e);
             _lblSubtitle.Click += (s, e) => OnClick(e);
 
-            Controls.Add(_lblIcon);
+            Controls.Add(_lblBadge);
             Controls.Add(_lblTitle);
             Controls.Add(_lblValue);
             Controls.Add(_lblSubtitle);
+        }
+
+        private void ApplyMainCardStyle()
+        {
+            if (_isMainCard)
+            {
+                CustomBgColor = Color.FromArgb(38, 30, 15);
+                CustomBorderColor = AppTheme.Primary;
+                _lblTitle.ForeColor = AppTheme.Primary;
+                _lblTitle.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+                _lblValue.Font = new Font("Segoe UI", 26F, FontStyle.Bold);
+                _lblValue.ForeColor = Color.White;
+                _lblSubtitle.ForeColor = Color.FromArgb(240, 190, 80);
+            }
+            else
+            {
+                CustomBgColor = AppTheme.CardBackground;
+                CustomBorderColor = AppTheme.BorderColor;
+                _lblTitle.ForeColor = AppTheme.TextMuted;
+                _lblTitle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+                _lblValue.Font = AppTheme.StatValueFont;
+                _lblValue.ForeColor = AppTheme.TextDark;
+                _lblSubtitle.ForeColor = AppTheme.TextMuted;
+            }
+            Invalidate();
         }
     }
 }

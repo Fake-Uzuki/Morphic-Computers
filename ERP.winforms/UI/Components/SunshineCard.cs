@@ -9,18 +9,18 @@ namespace ERP.winforms.UI.Components
     public class SunshineCard : Panel
     {
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        public int BorderRadius { get; set; } = 12;
+        public int BorderRadius { get; set; } = 4;
 
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        public Color CustomBgColor { get; set; } = AppTheme.CardBackground;
+        public Color CustomBgColor { get; set; } = Color.White;
 
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        public Color CustomBorderColor { get; set; } = AppTheme.BorderColor;
+        public Color CustomBorderColor { get; set; } = AppTheme.CardBorder;
 
         public SunshineCard()
         {
             DoubleBuffered = true;
-            BackColor = CustomBgColor;
+            BackColor = Color.White;
             Padding = new Padding(12);
         }
 

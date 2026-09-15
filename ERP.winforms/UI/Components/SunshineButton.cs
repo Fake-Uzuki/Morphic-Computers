@@ -15,7 +15,19 @@ namespace ERP.winforms.UI.Components
         public bool IsPrimary { get; set; } = true;
 
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        public int BorderRadius { get; set; } = 8;
+        public bool IsDark { get; set; } = false;
+
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public Color? CustomBgColor { get; set; }
+
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public Color? CustomTextColor { get; set; }
+
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public Color? CustomBorderColor { get; set; }
+
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public int BorderRadius { get; set; } = 4;
 
         public SunshineButton()
         {
@@ -23,7 +35,7 @@ namespace ERP.winforms.UI.Components
             FlatAppearance.BorderSize = 0;
             Font = AppTheme.BodyBoldFont;
             Cursor = Cursors.Hand;
-            Size = new Size(140, 40);
+            Size = new Size(130, 36);
             DoubleBuffered = true;
         }
 
@@ -60,25 +72,62 @@ namespace ERP.winforms.UI.Components
             Graphics g = pevent.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
-            Color bgColor = IsPrimary
-                ? (_isPressed ? AppTheme.PrimaryPressed : (_isHovered ? AppTheme.PrimaryHover : AppTheme.Primary))
-                : (_isPressed ? AppTheme.CardHover : (_isHovered ? AppTheme.CardBackground : AppTheme.AppBackground));
+            Color bgColor;
+            Color textColor;
+            Color borderColor;
 
-            Color textColor = IsPrimary ? AppTheme.TextDark : AppTheme.TextDark;
-            Color borderColor = AppTheme.BorderColor;
-
-            using (GraphicsPath path = GetRoundedPath(ClientRectangle, BorderRadius))
+            if (CustomBgColor.HasValue)
             {
-                Region = new Region(path);
+                bgColor = _isPressed ? Color.FromArgb(Math.Max(0, CustomBgColor.Value.R - 20), Math.Max(0, CustomBgColor.Value.G - 20), Math.Max(0, CustomBgColor.Value.B - 20))
+                    : (_isHovered ? Color.FromArgb(Math.Min(255, CustomBgColor.Value.R + 15), Math.Min(255, CustomBgColor.Value.G + 15), Math.Min(255, CustomBgColor.Value.B + 15)) : CustomBgColor.Value);
+                textColor = CustomTextColor ?? AppTheme.TextDark;
+                borderColor = CustomBorderColor ?? AppTheme.CardBorder;
+            }
+            else if (IsDark)
+            {
+                bgColor = _isPressed ? Color.FromArgb(10, 10, 8) : (_isHovered ? Color.FromArgb(35, 36, 30) : AppTheme.HeaderBg);
+                textColor = Color.White;
+                borderColor = Color.FromArgb(60, 62, 52);
+            }
+            else if (IsPrimary)
+            {
+                bgColor = _isPressed ? AppTheme.PrimaryPressed : (_isHovered ? AppTheme.PrimaryHover : AppTheme.Primary);
+                textColor = AppTheme.TextDark;
+                borderColor = Color.FromArgb(215, 175, 45);
+            }
+            else
+            {
+                bgColor = _isPressed ? Color.FromArgb(240, 238, 230) : (_isHovered ? Color.FromArgb(250, 248, 242) : Color.White);
+                textColor = AppTheme.TextDark;
+                borderColor = CustomBorderColor ?? AppTheme.CardBorder;
+            }
 
+            Rectangle drawRect = new Rectangle(ClientRectangle.X, ClientRectangle.Y, ClientRectangle.Width - 1, ClientRectangle.Height - 1);
+
+            if (BorderRadius > 0)
+            {
+                using (GraphicsPath path = GetRoundedPath(drawRect, BorderRadius))
+                {
+                    using (SolidBrush brush = new SolidBrush(bgColor))
+                    {
+                        g.FillPath(brush, path);
+                    }
+
+                    using (Pen pen = new Pen(borderColor, 1f))
+                    {
+                        g.DrawPath(pen, path);
+                    }
+                }
+            }
+            else
+            {
                 using (SolidBrush brush = new SolidBrush(bgColor))
                 {
-                    g.FillPath(brush, path);
+                    g.FillRectangle(brush, drawRect);
                 }
-
-                using (Pen pen = new Pen(borderColor, 1.5f))
+                using (Pen pen = new Pen(borderColor, 1f))
                 {
-                    g.DrawPath(pen, path);
+                    g.DrawRectangle(pen, drawRect);
                 }
             }
 

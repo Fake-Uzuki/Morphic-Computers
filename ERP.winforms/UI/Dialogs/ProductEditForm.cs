@@ -14,6 +14,7 @@ namespace ERP.winforms.UI.Dialogs
         private readonly DataService _dataService = DataService.Instance;
         private readonly Product? _targetProduct;
 
+        private TextBox _txtCode = null!;
         private TextBox _txtName = null!;
         private ComboBox _cboCategory = null!;
         private NumericUpDown _numPrice = null!;
@@ -26,7 +27,7 @@ namespace ERP.winforms.UI.Dialogs
         {
             _targetProduct = product;
 
-            Text = _targetProduct == null ? "➕ Add New Product" : "✏️ Edit Product Details";
+            Text = _targetProduct == null ? "Add New Product" : "Edit Product Details";
             Size = new Size(460, 480);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -38,8 +39,31 @@ namespace ERP.winforms.UI.Dialogs
 
             if (_targetProduct != null)
             {
-                PopulateFields(_targetProduct);
+                _txtCode.Text = _targetProduct.ProductCode;
+                _txtName.Text = _targetProduct.ProductName;
+                int cIdx = _cboCategory.FindStringExact(_targetProduct.CategoryName);
+                if (cIdx >= 0) _cboCategory.SelectedIndex = cIdx;
+                else if (_cboCategory.Items.Count > 0) _cboCategory.SelectedIndex = 0;
+                _numPrice.Value = Math.Min(_targetProduct.UnitPrice, _numPrice.Maximum);
+                _numStock.Value = Math.Min(_targetProduct.StockQuantity, _numStock.Maximum);
+                _txtDescription.Text = _targetProduct.Description;
             }
+
+            _dataService.CategoriesChanged += () =>
+            {
+                if (IsHandleCreated && !IsDisposed)
+                {
+                    Action act = () =>
+                    {
+                        string cur = _cboCategory.SelectedItem?.ToString() ?? "";
+                        _cboCategory.Items.Clear();
+                        foreach (var c in _dataService.Categories) _cboCategory.Items.Add(c.Name);
+                        int idx = _cboCategory.FindStringExact(cur);
+                        _cboCategory.SelectedIndex = idx >= 0 ? idx : (_cboCategory.Items.Count > 0 ? 0 : -1);
+                    };
+                    if (InvokeRequired) BeginInvoke(act); else act();
+                }
+            };
         }
 
         private void InitializeForm()
@@ -48,55 +72,96 @@ namespace ERP.winforms.UI.Dialogs
 
             Label lblTitle = new Label
             {
-                Text = _targetProduct == null ? "Add New Inventory Product" : "Edit Product Information",
-                Font = AppTheme.HeaderFont,
-                ForeColor = AppTheme.TextDark,
+                Text = _targetProduct == null ? "NEW PRODUCT ENTRY" : "UPDATE PRODUCT DETAILS",
+                Font = AppTheme.SubheaderFont,
+                ForeColor = Color.FromArgb(160, 110, 10),
                 Location = new Point(20, 16),
                 AutoSize = true
             };
 
+            int y = 50;
+
+            // Product Code
+            Label lblCode = new Label { Text = "Product Code (SKU):", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(20, y), AutoSize = true };
+            _txtCode = new TextBox { Font = AppTheme.BodyFont, Location = new Point(20, y + 18), Width = 404 };
+            y += 48;
+
             // Product Name
-            Label lblName = new Label { Text = "Product Name *", Font = AppTheme.BodyBoldFont, ForeColor = AppTheme.TextDark, Location = new Point(20, 60), AutoSize = true };
-            _txtName = new TextBox { Font = AppTheme.BodyFont, Location = new Point(20, 82), Width = 404 };
+            Label lblName = new Label { Text = "Product Name / Model:", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(20, y), AutoSize = true };
+            _txtName = new TextBox { Font = AppTheme.BodyFont, Location = new Point(20, y + 18), Width = 404 };
+            y += 48;
 
             // Category
-            Label lblCat = new Label { Text = "Category *", Font = AppTheme.BodyBoldFont, ForeColor = AppTheme.TextDark, Location = new Point(20, 122), AutoSize = true };
-            _cboCategory = new ComboBox { Font = AppTheme.BodyFont, Location = new Point(20, 144), Width = 404, DropDownStyle = ComboBoxStyle.DropDownList };
+            Label lblCategory = new Label { Text = "Category:", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(20, y), AutoSize = true };
+            _cboCategory = new ComboBox { Font = AppTheme.BodyFont, Location = new Point(20, y + 18), Width = 270, DropDownStyle = ComboBoxStyle.DropDownList };
             foreach (var cat in _dataService.Categories)
             {
                 _cboCategory.Items.Add(cat.Name);
             }
             if (_cboCategory.Items.Count > 0) _cboCategory.SelectedIndex = 0;
 
-            // Unit Price
-            Label lblPrice = new Label { Text = "Unit Price ($) *", Font = AppTheme.BodyBoldFont, ForeColor = AppTheme.TextDark, Location = new Point(20, 184), AutoSize = true };
-            _numPrice = new NumericUpDown
+            Button btnAddCat = new Button
             {
-                Font = AppTheme.BodyFont,
-                Location = new Point(20, 206),
-                Width = 190,
-                DecimalPlaces = 2,
-                Maximum = 1000000m,
-                Value = 99.99m
+                Text = "+ New",
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
+                Location = new Point(296, y + 17),
+                Size = new Size(58, 26),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(245, 243, 238),
+                ForeColor = AppTheme.TextDark,
+                Cursor = Cursors.Hand
+            };
+            btnAddCat.FlatAppearance.BorderColor = Color.FromArgb(215, 210, 198);
+            btnAddCat.Click += (s, e) =>
+            {
+                using var dlg = new AddCategoryDialog();
+                if (dlg.ShowDialog() == DialogResult.OK && dlg.CreatedCategory != null)
+                {
+                    _cboCategory.Items.Clear();
+                    foreach (var c in _dataService.Categories) _cboCategory.Items.Add(c.Name);
+                    int idx = _cboCategory.FindStringExact(dlg.CreatedCategory.Name);
+                    if (idx >= 0) _cboCategory.SelectedIndex = idx;
+                }
             };
 
-            // Stock Quantity
-            Label lblStock = new Label { Text = "Initial Stock Qty *", Font = AppTheme.BodyBoldFont, ForeColor = AppTheme.TextDark, Location = new Point(234, 184), AutoSize = true };
-            _numStock = new NumericUpDown
+            Button btnManageCat = new Button
             {
-                Font = AppTheme.BodyFont,
-                Location = new Point(234, 206),
-                Width = 190,
-                Maximum = 10000,
-                Value = 10
+                Text = "Manage",
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
+                Location = new Point(358, y + 17),
+                Size = new Size(66, 26),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(245, 243, 238),
+                ForeColor = AppTheme.TextDark,
+                Cursor = Cursors.Hand
             };
+            btnManageCat.FlatAppearance.BorderColor = Color.FromArgb(215, 210, 198);
+            btnManageCat.Click += (s, e) =>
+            {
+                using var dlg = new ManageCategoriesDialog();
+                dlg.ShowDialog(this);
+                string cur = _cboCategory.SelectedItem?.ToString() ?? "";
+                _cboCategory.Items.Clear();
+                foreach (var c in _dataService.Categories) _cboCategory.Items.Add(c.Name);
+                int idx = _cboCategory.FindStringExact(cur);
+                _cboCategory.SelectedIndex = idx >= 0 ? idx : (_cboCategory.Items.Count > 0 ? 0 : -1);
+            };
+            y += 48;
+
+            // Price & Stock
+            Label lblPrice = new Label { Text = "Unit Price (₱):", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(20, y), AutoSize = true };
+            _numPrice = new NumericUpDown { Font = AppTheme.BodyFont, Location = new Point(20, y + 18), Width = 195, DecimalPlaces = 2, Maximum = 100000, Value = 10.00m };
+
+            Label lblStock = new Label { Text = "Initial Stock Qty:", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(229, y), AutoSize = true };
+            _numStock = new NumericUpDown { Font = AppTheme.BodyFont, Location = new Point(229, y + 18), Width = 195, Maximum = 10000, Value = 10 };
+            y += 48;
 
             // Description
-            Label lblDesc = new Label { Text = "Description (Optional)", Font = AppTheme.BodyBoldFont, ForeColor = AppTheme.TextDark, Location = new Point(20, 246), AutoSize = true };
+            Label lblDesc = new Label { Text = "Specifications / Description:", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(20, y), AutoSize = true };
             _txtDescription = new TextBox
             {
                 Font = AppTheme.BodyFont,
-                Location = new Point(20, 268),
+                Location = new Point(20, y + 18),
                 Size = new Size(404, 80),
                 Multiline = true
             };
@@ -104,7 +169,7 @@ namespace ERP.winforms.UI.Dialogs
             // Action Buttons
             _btnSave = new SunshineButton
             {
-                Text = _targetProduct == null ? "➕ Add Product" : "💾 Save Changes",
+                Text = _targetProduct == null ? "Add Product" : "Save Changes",
                 IsPrimary = true,
                 Location = new Point(20, 370),
                 Width = 195,
@@ -114,7 +179,7 @@ namespace ERP.winforms.UI.Dialogs
 
             _btnCancel = new SunshineButton
             {
-                Text = "❌ Cancel",
+                Text = "Cancel",
                 IsPrimary = false,
                 Location = new Point(229, 370),
                 Width = 195,
@@ -123,10 +188,14 @@ namespace ERP.winforms.UI.Dialogs
             _btnCancel.Click += (s, e) => DialogResult = DialogResult.Cancel;
 
             Controls.Add(lblTitle);
+            Controls.Add(lblCode);
+            Controls.Add(_txtCode);
             Controls.Add(lblName);
             Controls.Add(_txtName);
-            Controls.Add(lblCat);
+            Controls.Add(lblCategory);
             Controls.Add(_cboCategory);
+            Controls.Add(btnAddCat);
+            Controls.Add(btnManageCat);
             Controls.Add(lblPrice);
             Controls.Add(_numPrice);
             Controls.Add(lblStock);
@@ -155,12 +224,16 @@ namespace ERP.winforms.UI.Dialogs
                 return;
             }
 
+            string code = string.IsNullOrWhiteSpace(_txtCode.Text) ? $"PRD{DateTime.Now:fff}" : _txtCode.Text.Trim();
+            string cat = _cboCategory.SelectedItem?.ToString() ?? "Graphics Cards (GPU)";
+
             if (_targetProduct == null)
             {
                 Product newProd = new Product
                 {
+                    ProductCode = code,
                     Name = _txtName.Text.Trim(),
-                    CategoryName = _cboCategory.SelectedItem?.ToString() ?? "General",
+                    CategoryName = cat,
                     Price = _numPrice.Value,
                     StockQuantity = (int)_numStock.Value,
                     Description = _txtDescription.Text.Trim()
@@ -169,8 +242,9 @@ namespace ERP.winforms.UI.Dialogs
             }
             else
             {
+                _targetProduct.ProductCode = code;
                 _targetProduct.Name = _txtName.Text.Trim();
-                _targetProduct.CategoryName = _cboCategory.SelectedItem?.ToString() ?? "General";
+                _targetProduct.CategoryName = cat;
                 _targetProduct.Price = _numPrice.Value;
                 _targetProduct.StockQuantity = (int)_numStock.Value;
                 _targetProduct.Description = _txtDescription.Text.Trim();
