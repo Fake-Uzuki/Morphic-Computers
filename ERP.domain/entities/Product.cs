@@ -1,15 +1,35 @@
+using System;
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace ERP.domain.entities
 {
     public class Product
     {
-        public int Id { get; set; }
+        public int ProductId { get; set; }
+        public string ProductCode { get; set; } = string.Empty;
+        public string ProductName { get; set; } = string.Empty;
+        public decimal UnitPrice { get; set; }
+        public bool IsActive { get; set; } = true;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        // Backward compatibility helpers for WinForms UI
+        [NotMapped]
+        public int Id { get => ProductId; set => ProductId = value; }
+        [NotMapped]
+        public string SKU { get => ProductCode; set => ProductCode = value; }
+        [NotMapped]
+        public string Name { get => ProductName; set => ProductName = value; }
+        [NotMapped]
+        public decimal Price { get => UnitPrice; set => UnitPrice = value; }
+        [NotMapped]
         public int CompanyId { get; set; } = 1;
-        public string SKU { get; set; } = string.Empty;
-        public string Name { get; set; } = string.Empty;
-        public string CategoryName { get; set; } = "General";
-        public decimal Price { get; set; }
+
+        public string CategoryName { get; set; } = "Graphics Cards (GPU)";
+
+        [NotMapped]
         public int StockQuantity { get; set; }
-        public string Description { get; set; } = string.Empty;
+
+        public string? Description { get; set; } = string.Empty;
 
         public bool IsLowStock => StockQuantity <= 5;
         public string StockStatus => StockQuantity switch

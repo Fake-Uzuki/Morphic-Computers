@@ -9,6 +9,7 @@ namespace ERP.domain.entities
         public int CompanyId { get; set; } = 1;
         public string CustomerName { get; set; } = "Walk-in Customer";
         public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public string ItemsJson { get; set; } = "[]";
         public List<CartItem> Items { get; set; } = new List<CartItem>();
         public decimal Subtotal { get; set; }
         public decimal Discount { get; set; }

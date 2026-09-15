@@ -5,8 +5,8 @@ namespace ERP.domain.entities
         public int Id { get; set; }
         public int CompanyId { get; set; } = 1;
         public string Name { get; set; } = string.Empty;
-        public string Icon { get; set; } = "💻";
-        public string Description { get; set; } = string.Empty;
+        public string? Icon { get; set; } = string.Empty;
+        public string? Description { get; set; } = string.Empty;
 
         public override string ToString() => Name;
     }
