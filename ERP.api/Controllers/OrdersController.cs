@@ -1,0 +1,142 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using ERP.domain.entities;
+using ERP.infrastructure.data;
+using ERP.infrastructure.services;
+
+namespace ERP.api.Controllers
+{
+    [ApiController]
+    [Route("api/tenant/{companyId:int}/[controller]")]
+    public class OrdersController : ControllerBase
+    {
+        private readonly ITenantDbContextFactory _tenantFactory;
+        private static bool _tableEnsured;
+
+        public OrdersController(ITenantDbContextFactory tenantFactory)
+        {
+            _tenantFactory = tenantFactory;
+        }
+
+        private static async Task EnsureOrdersTableAsync(TenantErpDbContext db)
+        {
+            if (_tableEnsured) return;
+            try
+            {
+                const string sql = @"
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Orders')
+BEGIN
+    CREATE TABLE Orders (
+        Id NVARCHAR(100) NOT NULL PRIMARY KEY,
+        CompanyId INT NOT NULL,
+        CustomerName NVARCHAR(200) NOT NULL,
+        CreatedAt DATETIME2 NOT NULL,
+        ItemsJson NVARCHAR(MAX) NOT NULL,
+        Subtotal DECIMAL(18,2) NOT NULL,
+        Discount DECIMAL(18,2) NOT NULL,
+        Tax DECIMAL(18,2) NOT NULL,
+        TotalAmount DECIMAL(18,2) NOT NULL,
+        PaymentMethod NVARCHAR(50) NOT NULL
+    );
+END";
+                await db.Database.ExecuteSqlRawAsync(sql);
+                _tableEnsured = true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"EnsureOrdersTable note: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Retrieves all orders for the specified tenant from MonsterASP database.
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GetOrders(int companyId)
+        {
+            try
+            {
+                await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
+                await EnsureOrdersTableAsync(tenantDb);
+
+                var orders = await tenantDb.Orders
+                    .AsNoTracking()
+                    .Where(o => o.CompanyId == companyId)
+                    .OrderByDescending(o => o.CreatedAt)
+                    .ToListAsync();
+
+                foreach (var o in orders)
+                {
+                    if (!string.IsNullOrWhiteSpace(o.ItemsJson) && (o.Items == null || o.Items.Count == 0))
+                    {
+                        try
+                        {
+                            o.Items = JsonSerializer.Deserialize<List<CartItem>>(o.ItemsJson) ?? new();
+                        }
+                        catch
+                        {
+                            o.Items = new();
+                        }
+                    }
+                }
+
+                return Ok(orders);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"GetOrders error: {ex.Message}");
+                return Ok(new List<Order>());
+            }
+        }
+
+        /// <summary>
+        /// Processes a POS checkout order: logs the order to MonsterASP database and deducts inventory quantities atomically.
+        /// </summary>
+        [HttpPost]
+        public async Task<IActionResult> ProcessOrder(int companyId, [FromBody] Order order)
+        {
+            if (order == null || order.Items == null || order.Items.Count == 0)
+            {
+                return BadRequest(new { error = "Order must contain at least one item." });
+            }
+
+            await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
+            await EnsureOrdersTableAsync(tenantDb);
+
+            order.CompanyId = companyId;
+            if (string.IsNullOrWhiteSpace(order.ItemsJson) || order.ItemsJson == "[]")
+            {
+                order.ItemsJson = JsonSerializer.Serialize(order.Items);
+            }
+
+            // Persist order in MonsterASP cloud database
+            var existingOrder = await tenantDb.Orders.FirstOrDefaultAsync(o => o.Id == order.Id);
+            if (existingOrder == null)
+            {
+                tenantDb.Orders.Add(order);
+            }
+
+            // Deduct stock for purchased items
+            foreach (var item in order.Items)
+            {
+                var inv = await tenantDb.Inventories
+                    .FirstOrDefaultAsync(i => i.ProductId == item.ProductId);
+
+                if (inv != null)
+                {
+                    inv.QuantityOnHand = Math.Max(0, inv.QuantityOnHand - item.Quantity);
+                    inv.LastUpdatedAt = DateTime.UtcNow;
+                }
+            }
+
+            await tenantDb.SaveChangesAsync();
+
+            return Created($"/api/tenant/{companyId}/orders/{order.Id}", order);
+        }
+    }
+}

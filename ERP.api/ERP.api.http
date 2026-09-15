@@ -1,6 +1,81 @@
-@ERP.api_HostAddress = http://localhost:5156
+@ERP.api_HostAddress = https://localhost:7021
+@ApiKey = MorphicErp_SecureKey_2026
 
-GET {{ERP.api_HostAddress}}/weatherforecast/
+### 1. Test Security Gate (Missing API Key - Expected: 401 Unauthorized)
+GET {{ERP.api_HostAddress}}/api/companies
 Accept: application/json
 
-###
+### 2. User Authentication / Login (Tenant A - Cirunay)
+POST {{ERP.api_HostAddress}}/api/auth/login
+Content-Type: application/json
+X-API-KEY: {{ApiKey}}
+
+{
+  "companyName": "Tenant A",
+  "username": "cirunay",
+  "password": "09092121"
+}
+
+### 3. Get Products for Tenant 1 (Live Stock from Tenant DB)
+GET {{ERP.api_HostAddress}}/api/tenant/1/products
+Accept: application/json
+X-API-KEY: {{ApiKey}}
+
+### 4. Create Product in Tenant 1
+POST {{ERP.api_HostAddress}}/api/tenant/1/products
+Content-Type: application/json
+X-API-KEY: {{ApiKey}}
+
+{
+  "productCode": "GPU002",
+  "productName": "NVIDIA GeForce RTX 4070 12GB",
+  "unitPrice": 599.99,
+  "stockQuantity": 5,
+  "categoryName": "Graphics Cards (GPU)",
+  "description": "12GB GDDR6X Dual Fan GPU",
+  "isActive": true
+}
+
+### 5. Update Product in Tenant 1 (Price & Stock)
+PUT {{ERP.api_HostAddress}}/api/tenant/1/products/1
+Content-Type: application/json
+X-API-KEY: {{ApiKey}}
+
+{
+  "productCode": "GPU001",
+  "productName": "NVIDIA GeForce RTX 4060 8GB (Updated)",
+  "unitPrice": 319.99,
+  "stockQuantity": 15,
+  "categoryName": "Graphics Cards (GPU)",
+  "description": "High-performance ray-tracing GPU",
+  "isActive": true
+}
+
+### 6. Process POS Order (Checkout & Deduct Stock)
+POST {{ERP.api_HostAddress}}/api/tenant/1/orders
+Content-Type: application/json
+X-API-KEY: {{ApiKey}}
+
+{
+  "companyId": 1,
+  "customerName": "Walk-in Customer",
+  "subtotal": 319.99,
+  "discount": 0.00,
+  "tax": 38.40,
+  "totalAmount": 358.39,
+  "paymentMethod": "Cash",
+  "items": [
+    {
+      "productId": 1,
+      "productName": "NVIDIA GeForce RTX 4060 8GB",
+      "unitPrice": 319.99,
+      "quantity": 1,
+      "totalPrice": 319.99
+    }
+  ]
+}
+
+### 7. Query Company Subscription Plan
+GET {{ERP.api_HostAddress}}/api/companies/1/subscription
+Accept: application/json
+X-API-KEY: {{ApiKey}}
