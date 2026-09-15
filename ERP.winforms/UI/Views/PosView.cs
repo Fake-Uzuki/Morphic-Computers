@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Data;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
@@ -17,199 +16,254 @@ namespace ERP.winforms.UI.Views
         private readonly DataService _dataService = DataService.Instance;
         private readonly List<CartItem> _cart = new();
 
-        private string _selectedCategory = "All";
-        private string _searchQuery = "";
+        public Action? OnOrderCompleted;
 
         private FlowLayoutPanel _flpProducts = null!;
+        private FlowLayoutPanel _flpCategories = null!;
         private DataGridView _gridCart = null!;
-        private TextBox _txtCustomerName = null!;
-        private TextBox _txtDiscount = null!;
         private Label _lblSubtotal = null!;
         private Label _lblTax = null!;
-        private Label _lblDiscount = null!;
         private Label _lblGrandTotal = null!;
+        private Label _lblCartSummary = null!;
         private SunshineButton _btnCheckout = null!;
+
+        private string _selectedCategory = "All";
+        private string _searchQuery = "";
 
         public PosView()
         {
             Dock = DockStyle.Fill;
             BackColor = AppTheme.AppBackground;
-            InitializeView();
+            InitializeLayout();
+
+            _dataService.CategoriesChanged += () =>
+            {
+                if (IsHandleCreated && !IsDisposed)
+                {
+                    if (InvokeRequired)
+                    {
+                        BeginInvoke(new Action(() => PopulateCategoryTabs()));
+                    }
+                    else
+                    {
+                        PopulateCategoryTabs();
+                    }
+                }
+            };
         }
 
-        private void InitializeView()
+        private void InitializeLayout()
         {
             SuspendLayout();
             Controls.Clear();
 
+            // Split 2 columns: 62% Catalog on Left, 38% Active Cart on Right
             TableLayoutPanel tlpMain = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
                 RowCount = 1,
-                Padding = new Padding(16)
+                Padding = new Padding(16, 12, 16, 12)
             };
             tlpMain.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62f));
             tlpMain.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38f));
 
-            Panel pnlLeft = new Panel
-            {
-                Dock = DockStyle.Fill,
-                Margin = new Padding(0, 0, 8, 0)
-            };
+            // ==========================================
+            // LEFT: PRODUCT SEARCH & HARDWARE CATALOG
+            // ==========================================
+            Panel pnlLeft = new Panel { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 10, 0) };
 
-            Label lblPosTitle = new Label
-            {
-                Text = "Point of Sale (POS Terminal)",
-                Font = AppTheme.HeaderFont,
-                ForeColor = AppTheme.TextDark,
-                Location = new Point(0, 4),
-                AutoSize = true
-            };
+            // 1. Search Bar with empty placeholder (clean) and [Fast Scanner] button
+            Panel pnlSearch = new Panel { Dock = DockStyle.Top, Height = 40 };
 
             TextBox txtSearch = new TextBox
             {
-                PlaceholderText = "🔍 Search products by name...",
-                Font = AppTheme.BodyFont,
-                Location = new Point(0, 44),
-                Width = 320
+                PlaceholderText = "", // Removed placeholder text as requested
+                Font = new Font("Segoe UI", 9.5F, FontStyle.Regular),
+                Location = new Point(0, 6),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                Width = pnlLeft.Width - 140
             };
             txtSearch.TextChanged += (s, e) =>
             {
-                _searchQuery = txtSearch.Text;
-                PopulateProductsGrid();
+                _searchQuery = txtSearch.Text.Trim();
+                PopulateCatalog();
             };
 
-            FlowLayoutPanel flpCategoryTabs = new FlowLayoutPanel
+            SunshineButton btnScanner = new SunshineButton
             {
-                Location = new Point(0, 82),
-                Size = new Size(pnlLeft.Width, 42),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                AutoScroll = false
+                Text = "Fast Scanner",
+                IsPrimary = false,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Location = new Point(pnlLeft.Width - 130, 4),
+                Size = new Size(120, 30),
+                Font = new Font("Segoe UI", 8F, FontStyle.Bold)
             };
+            btnScanner.Click += (s, e) => MessageBox.Show("Barcode optical scanner ready. Scan any hardware box.", "Scanner Ready", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-            Button btnAll = CreateCategoryTabButton("All Items", "All");
-            flpCategoryTabs.Controls.Add(btnAll);
+            pnlSearch.Controls.Add(txtSearch);
+            pnlSearch.Controls.Add(btnScanner);
 
-            foreach (var cat in _dataService.Categories)
+            // 2. Category Filter Tabs Row
+            _flpCategories = new FlowLayoutPanel
             {
-                flpCategoryTabs.Controls.Add(CreateCategoryTabButton($"{cat.Icon} {cat.Name}", cat.Name));
-            }
+                Dock = DockStyle.Top,
+                Height = 36,
+                WrapContents = false,
+                AutoScroll = false,
+                Margin = new Padding(0, 4, 0, 8)
+            };
+            PopulateCategoryTabs();
 
+            // 3. FlowLayoutPanel for hardware cards
             _flpProducts = new FlowLayoutPanel
             {
-                Location = new Point(0, 130),
-                Size = new Size(pnlLeft.Width, pnlLeft.Height - 130),
-                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+                Dock = DockStyle.Fill,
                 AutoScroll = true,
-                BackColor = AppTheme.AppBackground
+                BackColor = AppTheme.AppBackground,
+                Padding = new Padding(0, 6, 0, 0)
             };
+            _flpProducts.Resize += (s, e) => AdjustProductCardSizes();
 
-            pnlLeft.Controls.Add(lblPosTitle);
-            pnlLeft.Controls.Add(txtSearch);
-            pnlLeft.Controls.Add(flpCategoryTabs);
             pnlLeft.Controls.Add(_flpProducts);
+            pnlLeft.Controls.Add(_flpCategories);
+            pnlLeft.Controls.Add(pnlSearch);
 
             tlpMain.Controls.Add(pnlLeft, 0, 0);
 
+            // ==========================================
+            // RIGHT: ACTIVE CASHIER CART
+            // ==========================================
             SunshineCard cardCart = new SunshineCard
             {
                 Dock = DockStyle.Fill,
-                Margin = new Padding(8, 0, 0, 0),
-                Padding = new Padding(14)
+                Padding = new Padding(16),
+                BorderRadius = 4,
+                CustomBgColor = Color.White,
+                CustomBorderColor = AppTheme.CardBorder
             };
 
-            Label lblCartTitle = new Label
+            // 1. Cart Header: Title & TRANS #
+            Panel pnlCartHeader = new Panel { Dock = DockStyle.Top, Height = 36 };
+            Label lblCartTitle = new Label { Text = "Active Cashier Cart", Font = new Font("Segoe UI", 12F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Location = new Point(0, 4), AutoSize = true };
+
+            Panel pnlTrans = new Panel { Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(cardCart.Width - 140, 4), Size = new Size(115, 26), BackColor = Color.FromArgb(20, 21, 17) };
+            Label lblTrans = new Label { Text = $"TRANS #{DateTime.Now:fff}", Font = new Font("Segoe UI", 7.5F, FontStyle.Bold), ForeColor = AppTheme.Primary, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter };
+            pnlTrans.Controls.Add(lblTrans);
+
+            pnlCartHeader.Controls.Add(lblCartTitle);
+            pnlCartHeader.Controls.Add(pnlTrans);
+
+            // 2. Customer Box (Clean: Removed "No customer account assigned", F4, and + buttons)
+            Panel pnlCustomer = new Panel { Dock = DockStyle.Top, Height = 34, BackColor = Color.FromArgb(254, 252, 245), Margin = new Padding(0, 4, 0, 6) };
+            pnlCustomer.Paint += (s, e) =>
             {
-                Text = "🛒 Active Cashier Cart",
-                Font = AppTheme.SubheaderFont,
-                ForeColor = AppTheme.TextDark,
-                Location = new Point(14, 12),
-                AutoSize = true
+                using Pen pen = new Pen(Color.FromArgb(235, 230, 218), 1);
+                e.Graphics.DrawRectangle(pen, 0, 0, pnlCustomer.Width - 1, pnlCustomer.Height - 1);
             };
 
-            Label lblCustomer = new Label
-            {
-                Text = "Customer Name:",
-                Font = AppTheme.SmallFont,
-                ForeColor = AppTheme.TextMuted,
-                Location = new Point(14, 44),
-                AutoSize = true
-            };
+            Label lblCustName = new Label { Text = "Walk-in Customer", Font = new Font("Segoe UI", 8.5F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Location = new Point(10, 8), AutoSize = true };
+            Label lblCustPill = new Label { Text = "Standard", Font = new Font("Segoe UI", 7F, FontStyle.Bold), ForeColor = Color.White, BackColor = Color.FromArgb(20, 21, 17), Location = new Point(148, 7), Size = new Size(62, 18), TextAlign = ContentAlignment.MiddleCenter };
 
-            _txtCustomerName = new TextBox
-            {
-                Text = "Walk-in Customer",
-                Font = AppTheme.BodyFont,
-                Location = new Point(14, 64),
-                Width = cardCart.Width - 28,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-            };
+            pnlCustomer.Controls.Add(lblCustName);
+            pnlCustomer.Controls.Add(lblCustPill);
 
+            // 3. Cart DataGridView
             _gridCart = new DataGridView
             {
-                Location = new Point(14, 100),
-                Size = new Size(cardCart.Width - 28, cardCart.Height - 340),
-                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
-                BackgroundColor = AppTheme.CardBackground,
-                BorderStyle = BorderStyle.FixedSingle,
+                Dock = DockStyle.Fill,
+                BackgroundColor = Color.White,
+                BorderStyle = BorderStyle.None,
+                CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
+                GridColor = Color.FromArgb(240, 238, 230),
                 RowHeadersVisible = false,
                 AllowUserToAddRows = false,
                 AllowUserToDeleteRows = false,
-                AllowUserToResizeColumns = false,
-                AllowUserToResizeRows = false,
-                AllowUserToOrderColumns = false,
                 ReadOnly = true,
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+                MultiSelect = false,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                GridColor = AppTheme.BorderColor,
-                MultiSelect = false
+                RowTemplate = { Height = 42 }
             };
 
             _gridCart.EnableHeadersVisualStyles = false;
-            _gridCart.ColumnHeadersDefaultCellStyle.BackColor = AppTheme.Primary;
-            _gridCart.ColumnHeadersDefaultCellStyle.ForeColor = AppTheme.TextDark;
-            _gridCart.ColumnHeadersDefaultCellStyle.Font = AppTheme.BodyBoldFont;
-            _gridCart.ColumnHeadersDefaultCellStyle.SelectionBackColor = AppTheme.Primary;
-            _gridCart.ColumnHeadersDefaultCellStyle.SelectionForeColor = AppTheme.TextDark;
-            _gridCart.ColumnHeadersHeight = 32;
-
-            _gridCart.DefaultCellStyle.BackColor = AppTheme.CardBackground;
-            _gridCart.DefaultCellStyle.ForeColor = AppTheme.TextDark;
-            _gridCart.DefaultCellStyle.Font = AppTheme.BodyFont;
-            _gridCart.DefaultCellStyle.SelectionBackColor = AppTheme.CardHover;
-            _gridCart.DefaultCellStyle.SelectionForeColor = AppTheme.TextDark;
-            _gridCart.RowTemplate.Height = 32;
-
-            _gridCart.CellClick += GridCart_CellClick;
-
-            Panel pnlSummary = new Panel
+            _gridCart.ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
             {
-                Location = new Point(14, cardCart.Height - 230),
-                Size = new Size(cardCart.Width - 28, 215),
-                Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
-                BackColor = AppTheme.AppBackground,
-                Padding = new Padding(10)
+                BackColor = AppTheme.GridHeaderBg,
+                ForeColor = AppTheme.GridHeaderText,
+                Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                Alignment = DataGridViewContentAlignment.MiddleLeft,
+                Padding = new Padding(6, 0, 0, 0)
+            };
+            _gridCart.ColumnHeadersHeight = 32;
+            _gridCart.DefaultCellStyle = new DataGridViewCellStyle
+            {
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
+                ForeColor = AppTheme.TextDark,
+                SelectionBackColor = AppTheme.GridRowSelected,
+                SelectionForeColor = AppTheme.TextDark,
+                Padding = new Padding(6, 0, 0, 0)
             };
 
-            _lblSubtotal = new Label { Text = "Subtotal: $0.00", Font = AppTheme.BodyFont, ForeColor = AppTheme.TextDark, Location = new Point(10, 8), AutoSize = true };
-            _lblTax = new Label { Text = "Tax (12% VAT): $0.00", Font = AppTheme.BodyFont, ForeColor = AppTheme.TextDark, Location = new Point(10, 32), AutoSize = true };
+            _gridCart.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ITEM DESCRIPTION", FillWeight = 46, Name = "ColDesc" });
+            _gridCart.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PRICE", FillWeight = 20, Name = "ColPrice" });
+            _gridCart.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "QTY", FillWeight = 14, Name = "ColQty" });
+            _gridCart.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TOTAL (PHP)", FillWeight = 20, Name = "ColTotal" });
 
-            Label lblDiscountLabel = new Label { Text = "Discount ($):", Font = AppTheme.BodyFont, ForeColor = AppTheme.TextDark, Location = new Point(10, 58), AutoSize = true };
-            _txtDiscount = new TextBox { Text = "0", Font = AppTheme.BodyFont, Location = new Point(110, 54), Width = 80 };
-            _txtDiscount.TextChanged += (s, e) => UpdateCartTotals();
+            // 4. Cart Sub-note: Items count (Removed "Add Sale Note")
+            Panel pnlNote = new Panel { Dock = DockStyle.Bottom, Height = 24 };
+            _lblCartSummary = new Label { Text = "Cart Items: 0 lines (0 units)", Font = new Font("Segoe UI", 7.5F, FontStyle.Regular), ForeColor = AppTheme.TextMuted, Location = new Point(0, 4), AutoSize = true };
+            pnlNote.Controls.Add(_lblCartSummary);
 
-            _lblDiscount = new Label { Text = "-$0.00", Font = AppTheme.BodyFont, ForeColor = Color.DarkRed, Location = new Point(200, 58), AutoSize = true };
-            _lblGrandTotal = new Label { Text = "TOTAL: $0.00", Font = new Font("Segoe UI", 15F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Location = new Point(10, 92), AutoSize = true };
+            // 5. Financial Summary & Totals in PHP (Removed Discount option & Split button)
+            Panel pnlTotals = new Panel { Dock = DockStyle.Bottom, Height = 145 };
+
+            Label lblSubtotalTxt = new Label { Text = "Subtotal", Font = new Font("Segoe UI", 8.5F, FontStyle.Regular), ForeColor = AppTheme.TextMuted, Location = new Point(0, 8), AutoSize = true };
+            _lblSubtotal = new Label { Text = "₱0.00", Font = new Font("Segoe UI", 9F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(cardCart.Width - 140, 8), Size = new Size(130, 18), TextAlign = ContentAlignment.MiddleRight };
+
+            Label lblTaxTxt = new Label { Text = "Tax (12% VAT)", Font = new Font("Segoe UI", 8.5F, FontStyle.Regular), ForeColor = AppTheme.TextMuted, Location = new Point(0, 30), AutoSize = true };
+            _lblTax = new Label { Text = "₱0.00", Font = new Font("Segoe UI", 9F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(cardCart.Width - 140, 30), Size = new Size(130, 18), TextAlign = ContentAlignment.MiddleRight };
+
+            Panel pnlLine = new Panel { Location = new Point(0, 56), Size = new Size(cardCart.Width - 20, 1), BackColor = Color.FromArgb(225, 220, 208), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+
+            Label lblPayable = new Label { Text = "AMOUNT PAYABLE", Font = new Font("Segoe UI", 7F, FontStyle.Bold), ForeColor = AppTheme.TextMuted, Location = new Point(0, 64), AutoSize = true };
+            Label lblTotalTxt = new Label { Text = "TOTAL:", Font = new Font("Segoe UI", 13F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Location = new Point(0, 80), AutoSize = true };
+            _lblGrandTotal = new Label { Text = "₱0.00", Font = new Font("Segoe UI", 20F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(cardCart.Width - 220, 74), Size = new Size(210, 36), TextAlign = ContentAlignment.MiddleRight };
+
+            // Quick payment method pills: Cash & Card (POS) - No Split button
+            Panel pnlQuickPay = new Panel { Location = new Point(0, 114), Size = new Size(cardCart.Width - 20, 30), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            string[] payOpts = { "Cash", "Card (POS)" };
+            int qx = 0;
+            int qWidth = (cardCart.Width - 36) / 2;
+            foreach (var opt in payOpts)
+            {
+                Button btnQ = new Button { Text = opt, Location = new Point(qx, 0), Size = new Size(qWidth, 28), FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 7.5F, FontStyle.Bold), BackColor = Color.White };
+                btnQ.FlatAppearance.BorderColor = Color.FromArgb(220, 215, 205);
+                btnQ.Click += (s, e) => Checkout(opt);
+                pnlQuickPay.Controls.Add(btnQ);
+                qx += qWidth + 8;
+            }
+
+            pnlTotals.Controls.Add(lblSubtotalTxt);
+            pnlTotals.Controls.Add(_lblSubtotal);
+            pnlTotals.Controls.Add(lblTaxTxt);
+            pnlTotals.Controls.Add(_lblTax);
+            pnlTotals.Controls.Add(pnlLine);
+            pnlTotals.Controls.Add(lblPayable);
+            pnlTotals.Controls.Add(lblTotalTxt);
+            pnlTotals.Controls.Add(_lblGrandTotal);
+            pnlTotals.Controls.Add(pnlQuickPay);
+
+            // 6. Action Footer: [Clear Cart] [Hold] [Checkout / Pay (F12)]
+            Panel pnlActions = new Panel { Dock = DockStyle.Bottom, Height = 46, Margin = new Padding(0, 8, 0, 0) };
 
             SunshineButton btnClear = new SunshineButton
             {
-                Text = "🗑️ Clear Cart",
+                Text = "Clear Cart",
                 IsPrimary = false,
-                Location = new Point(10, 145),
-                Width = 120,
-                Height = 42,
-                Font = AppTheme.BodyBoldFont
+                Location = new Point(0, 6),
+                Size = new Size(95, 38),
+                Font = new Font("Segoe UI", 8F, FontStyle.Bold)
             };
             btnClear.Click += (s, e) =>
             {
@@ -217,148 +271,194 @@ namespace ERP.winforms.UI.Views
                 UpdateCartTotals();
             };
 
+            SunshineButton btnHold = new SunshineButton
+            {
+                Text = "Hold",
+                IsPrimary = false,
+                Location = new Point(102, 6),
+                Size = new Size(70, 38),
+                Font = new Font("Segoe UI", 8F, FontStyle.Bold)
+            };
+            btnHold.Click += (s, e) => MessageBox.Show("Cart order held as active pending session.", "Order Held", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
             _btnCheckout = new SunshineButton
             {
-                Text = "💳 Checkout & Pay",
+                Text = "Checkout / Pay (F12)",
                 IsPrimary = true,
-                Location = new Point(140, 145),
-                Width = pnlSummary.Width - 150,
-                Height = 42,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                Font = AppTheme.BodyBoldFont
+                Location = new Point(180, 6),
+                Size = new Size(cardCart.Width - 190, 38),
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold)
             };
-            _btnCheckout.Click += BtnCheckout_Click;
+            _btnCheckout.Click += (s, e) => Checkout("Cash");
 
-            pnlSummary.Controls.Add(_lblSubtotal);
-            pnlSummary.Controls.Add(_lblTax);
-            pnlSummary.Controls.Add(lblDiscountLabel);
-            pnlSummary.Controls.Add(_txtDiscount);
-            pnlSummary.Controls.Add(_lblDiscount);
-            pnlSummary.Controls.Add(_lblGrandTotal);
-            pnlSummary.Controls.Add(btnClear);
-            pnlSummary.Controls.Add(_btnCheckout);
+            pnlActions.Controls.Add(btnClear);
+            pnlActions.Controls.Add(btnHold);
+            pnlActions.Controls.Add(_btnCheckout);
 
-            cardCart.Controls.Add(lblCartTitle);
-            cardCart.Controls.Add(lblCustomer);
-            cardCart.Controls.Add(_txtCustomerName);
             cardCart.Controls.Add(_gridCart);
-            cardCart.Controls.Add(pnlSummary);
+            cardCart.Controls.Add(pnlNote);
+            cardCart.Controls.Add(pnlTotals);
+            cardCart.Controls.Add(pnlActions);
+            cardCart.Controls.Add(pnlCustomer);
+            cardCart.Controls.Add(pnlCartHeader);
 
             tlpMain.Controls.Add(cardCart, 1, 0);
 
             Controls.Add(tlpMain);
-
-            PopulateProductsGrid();
-            UpdateCartTotals();
-
             ResumeLayout(false);
+
+            PopulateCatalog();
         }
 
-        private Button CreateCategoryTabButton(string text, string categoryName)
+        public void PopulateCatalog()
         {
-            Button btn = new Button
-            {
-                Text = text,
-                AutoSize = true,
-                Height = 32,
-                FlatStyle = FlatStyle.Flat,
-                Font = AppTheme.SmallFont,
-                BackColor = _selectedCategory == categoryName ? AppTheme.Primary : AppTheme.CardBackground,
-                ForeColor = AppTheme.TextDark,
-                Cursor = Cursors.Hand,
-                Margin = new Padding(0, 0, 6, 0)
-            };
-            btn.FlatAppearance.BorderColor = AppTheme.BorderColor;
-
-            btn.Click += (s, e) =>
-            {
-                _selectedCategory = categoryName;
-                PopulateProductsGrid();
-            };
-
-            return btn;
-        }
-
-        public void PopulateProductsGrid()
-        {
+            if (_flpProducts == null) return;
+            _flpProducts.SuspendLayout();
             _flpProducts.Controls.Clear();
 
             var prods = _dataService.Products.AsEnumerable();
 
             if (_selectedCategory != "All")
             {
-                prods = prods.Where(p => p.CategoryName == _selectedCategory);
+                prods = prods.Where(p => p.CategoryName.Equals(_selectedCategory, StringComparison.OrdinalIgnoreCase));
             }
 
             if (!string.IsNullOrWhiteSpace(_searchQuery))
             {
-                prods = prods.Where(p => p.Name.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) || p.CategoryName.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase));
+                prods = prods.Where(p => p.Name.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                                         p.ProductCode.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase));
             }
 
             foreach (var prod in prods)
             {
-                _flpProducts.Controls.Add(CreateProductCard(prod));
+                _flpProducts.Controls.Add(CreateHardwareCard(prod));
             }
+
+            _flpProducts.ResumeLayout(true);
         }
 
-        private SunshineCard CreateProductCard(Product prod)
+        private int CalculateCardWidth()
         {
-            SunshineCard card = new SunshineCard
+            if (_flpProducts == null) return 240;
+            int scrollWidth = SystemInformation.VerticalScrollBarWidth + 14;
+            int usableWidth = _flpProducts.ClientSize.Width - scrollWidth;
+            if (usableWidth < 280) return 240;
+            int cols = Math.Max(2, (usableWidth + 10) / 235);
+            int cardWidth = (usableWidth - ((cols - 1) * 10)) / cols;
+            return Math.Max(180, cardWidth);
+        }
+
+        private void AdjustProductCardSizes()
+        {
+            if (_flpProducts == null || _flpProducts.Controls.Count == 0) return;
+            int newWidth = CalculateCardWidth();
+            _flpProducts.SuspendLayout();
+            foreach (Control ctrl in _flpProducts.Controls)
             {
-                Size = new Size(185, 140),
+                if (ctrl is Panel p)
+                {
+                    p.Width = newWidth;
+                    foreach (Control inner in p.Controls)
+                    {
+                        if (inner.Name == "StockBadge")
+                        {
+                            inner.Location = new Point(newWidth - inner.Width - 8, inner.Location.Y);
+                        }
+                        else if (inner.Name == "AddBtn")
+                        {
+                            inner.Location = new Point(newWidth - inner.Width - 8, inner.Location.Y);
+                        }
+                        else if (inner.Name == "Title" || inner.Name == "Specs")
+                        {
+                            inner.Width = newWidth - 16;
+                        }
+                    }
+                }
+            }
+            _flpProducts.ResumeLayout(true);
+        }
+
+        private Panel CreateHardwareCard(Product prod)
+        {
+            int cardWidth = CalculateCardWidth();
+            Panel card = new Panel
+            {
+                Size = new Size(cardWidth, 160),
                 Margin = new Padding(0, 0, 10, 10),
-                Padding = new Padding(10),
-                Cursor = Cursors.Hand
+                BackColor = Color.White
+            };
+            card.Paint += (s, e) =>
+            {
+                using Pen pen = new Pen(AppTheme.CardBorder, 1);
+                e.Graphics.DrawRectangle(pen, 0, 0, card.Width - 1, card.Height - 1);
             };
 
-            Label lblName = new Label
+            // Top Row: SKU code on left, stock badge on right
+            Label lblSku = new Label { Text = prod.ProductCode, Font = new Font("Segoe UI", 7F, FontStyle.Bold), ForeColor = AppTheme.TextMuted, Location = new Point(8, 8), AutoSize = true };
+
+            Panel pnlStockBadge = new Panel
             {
+                Name = "StockBadge",
+                Location = new Point(cardWidth - 92, 6),
+                Size = new Size(84, 20),
+                BackColor = prod.StockQuantity > 2 ? AppTheme.GreenPillBg : AppTheme.AmberPillBg
+            };
+            Label lblStockBadge = new Label
+            {
+                Text = prod.StockQuantity > 2 ? $"● {prod.StockQuantity} In Stock" : $"● {prod.StockQuantity} Low Stock",
+                Font = new Font("Segoe UI", 6.5F, FontStyle.Bold),
+                ForeColor = prod.StockQuantity > 2 ? AppTheme.GreenPillText : AppTheme.AmberPillText,
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+            pnlStockBadge.Controls.Add(lblStockBadge);
+
+            // Title
+            Label lblTitle = new Label
+            {
+                Name = "Title",
                 Text = prod.Name,
-                Font = AppTheme.BodyBoldFont,
+                Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
                 ForeColor = AppTheme.TextDark,
-                Location = new Point(8, 8),
-                Size = new Size(168, 38),
+                Location = new Point(8, 30),
+                Size = new Size(cardWidth - 16, 38),
                 AutoEllipsis = true
             };
 
-            Label lblPrice = new Label
+            // Specs / Description
+            Label lblSpecs = new Label
             {
-                Text = $"${prod.Price:N2}",
-                Font = new Font("Segoe UI", 12F, FontStyle.Bold),
-                ForeColor = AppTheme.Primary,
-                Location = new Point(8, 48),
-                AutoSize = true
+                Name = "Specs",
+                Text = string.IsNullOrWhiteSpace(prod.Description) ? "Hardware Component SKU" : prod.Description,
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Regular),
+                ForeColor = AppTheme.TextMuted,
+                Location = new Point(8, 70),
+                Size = new Size(cardWidth - 16, 28),
+                AutoEllipsis = true
             };
 
-            Label lblStock = new Label
-            {
-                Text = prod.StockQuantity > 0 ? $"Qty: {prod.StockQuantity}" : "Out of Stock",
-                Font = AppTheme.SmallFont,
-                ForeColor = prod.StockQuantity > 0 ? AppTheme.TextMuted : Color.Red,
-                Location = new Point(8, 74),
-                AutoSize = true
-            };
+            // Bottom: MSRP Tender on left, [+ Add] button on right
+            Label lblMsrp = new Label { Text = "MSRP Tender", Font = new Font("Segoe UI", 7F, FontStyle.Regular), ForeColor = AppTheme.TextMuted, Location = new Point(8, 104), AutoSize = true };
+            Label lblPrice = new Label { Text = $"₱{prod.Price:N2}", Font = new Font("Segoe UI", 12F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Location = new Point(8, 118), AutoSize = true };
 
             SunshineButton btnAdd = new SunshineButton
             {
-                Text = "➕ Add",
+                Name = "AddBtn",
+                Text = "+ Add",
                 IsPrimary = prod.StockQuantity > 0,
-                Enabled = prod.StockQuantity > 0,
-                Location = new Point(8, 98),
-                Size = new Size(168, 32),
-                Font = AppTheme.SmallFont
+                Location = new Point(cardWidth - 78, 114),
+                Size = new Size(70, 30),
+                Font = new Font("Segoe UI", 8F, FontStyle.Bold)
             };
+            btnAdd.Click += (s, e) => AddToCart(prod);
 
-            EventHandler addAction = (s, e) => AddToCart(prod);
-            btnAdd.Click += addAction;
-            card.Click += addAction;
-            lblName.Click += addAction;
-            lblPrice.Click += addAction;
-            lblStock.Click += addAction;
-
-            card.Controls.Add(lblName);
+            card.Controls.Add(lblSku);
+            card.Controls.Add(pnlStockBadge);
+            card.Controls.Add(lblTitle);
+            card.Controls.Add(lblSpecs);
+            card.Controls.Add(lblMsrp);
             card.Controls.Add(lblPrice);
-            card.Controls.Add(lblStock);
             card.Controls.Add(btnAdd);
 
             return card;
@@ -368,108 +468,143 @@ namespace ERP.winforms.UI.Views
         {
             if (prod.StockQuantity <= 0)
             {
-                MessageBox.Show($"{prod.Name} is currently out of stock!", "Stock Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("This item is currently out of stock!", "Out of Stock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            var item = _cart.FirstOrDefault(c => c.ProductId == prod.Id);
+            var item = _cart.FirstOrDefault(c => c.ProductId == prod.ProductId);
             if (item != null)
             {
-                if (item.Quantity + 1 > prod.StockQuantity)
+                if (item.Quantity >= prod.StockQuantity)
                 {
-                    MessageBox.Show($"Cannot add more {prod.Name}. Only {prod.StockQuantity} available in stock!", "Stock Limit", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show("Requested quantity exceeds available inventory.", "Stock Limit", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
                 item.Quantity++;
             }
             else
             {
-                _cart.Add(new CartItem
-                {
-                    ProductId = prod.Id,
-                    ProductName = prod.Name,
-                    UnitPrice = prod.Price,
-                    Quantity = 1
-                });
+                _cart.Add(new CartItem { ProductId = prod.ProductId, ProductName = prod.Name, UnitPrice = prod.Price, Quantity = 1 });
             }
 
             UpdateCartTotals();
         }
 
-        private void GridCart_CellClick(object? sender, DataGridViewCellEventArgs e)
-        {
-            if (e.RowIndex < 0 || e.RowIndex >= _cart.Count) return;
-
-            if (e.ColumnIndex == 4)
-            {
-                _cart.RemoveAt(e.RowIndex);
-                UpdateCartTotals();
-            }
-        }
-
         private void UpdateCartTotals()
         {
-            DataTable dt = new DataTable();
-            dt.Columns.Add("Item Name", typeof(string));
-            dt.Columns.Add("Price", typeof(string));
-            dt.Columns.Add("Qty", typeof(int));
-            dt.Columns.Add("Total", typeof(string));
+            _gridCart.Rows.Clear();
+
+            decimal subtotal = 0;
+            int totalUnits = 0;
 
             foreach (var item in _cart)
             {
-                dt.Rows.Add(item.ProductName, $"${item.UnitPrice:N2}", item.Quantity, $"${item.Subtotal:N2}");
+                subtotal += item.TotalPrice;
+                totalUnits += item.Quantity;
+                _gridCart.Rows.Add(item.ProductName, $"₱{item.UnitPrice:N2}", item.Quantity, $"₱{item.TotalPrice:N2}");
             }
-            _gridCart.DataSource = dt;
 
-            decimal subtotal = _cart.Sum(c => c.Subtotal);
             decimal tax = subtotal * 0.12m;
+            decimal total = subtotal + tax; // No discount
 
-            decimal discount = 0;
-            if (decimal.TryParse(_txtDiscount.Text, out decimal dVal))
-            {
-                discount = dVal;
-            }
-
-            decimal grandTotal = Math.Max(0, subtotal + tax - discount);
-
-            _lblSubtotal.Text = $"Subtotal: ${subtotal:N2}";
-            _lblTax.Text = $"Tax (12% VAT): ${tax:N2}";
-            _lblDiscount.Text = $"-$" + discount.ToString("N2");
-            _lblGrandTotal.Text = $"TOTAL: ${grandTotal:N2}";
-
-            _btnCheckout.Enabled = _cart.Count > 0;
+            _lblSubtotal.Text = $"₱{subtotal:N2}";
+            _lblTax.Text = $"₱{tax:N2}";
+            _lblGrandTotal.Text = $"₱{total:N2}";
+            _lblCartSummary.Text = $"Cart Items: {_cart.Count} lines ({totalUnits} units)";
         }
 
-        private void BtnCheckout_Click(object? sender, EventArgs e)
+        private void Checkout(string paymentMethod)
         {
-            if (_cart.Count == 0) return;
+            if (_cart.Count == 0)
+            {
+                MessageBox.Show("Please add hardware items to the cart before checking out.", "Empty Cart", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
-            decimal subtotal = _cart.Sum(c => c.Subtotal);
+            decimal subtotal = _cart.Sum(c => c.TotalPrice);
             decimal tax = subtotal * 0.12m;
-            decimal discount = 0;
-            if (decimal.TryParse(_txtDiscount.Text, out decimal dVal)) discount = dVal;
-            decimal grandTotal = Math.Max(0, subtotal + tax - discount);
+            decimal total = subtotal + tax;
 
             Order order = new Order
             {
-                CustomerName = string.IsNullOrWhiteSpace(_txtCustomerName.Text) ? "Walk-in Customer" : _txtCustomerName.Text,
+                CompanyId = _dataService.ActiveCompanyId,
+                CustomerName = "Walk-in Customer",
+                CreatedAt = DateTime.Now,
                 Items = new List<CartItem>(_cart),
                 Subtotal = subtotal,
                 Tax = tax,
-                Discount = discount,
-                TotalAmount = grandTotal,
-                CreatedAt = DateTime.Now,
-                PaymentMethod = "Cash"
+                Discount = 0,
+                TotalAmount = total,
+                PaymentMethod = paymentMethod
             };
 
-            using var receiptDlg = new ReceiptForm(order);
-            if (receiptDlg.ShowDialog() == DialogResult.OK)
+            using var receipt = new ReceiptForm(order);
+            if (receipt.ShowDialog(this) == DialogResult.OK)
             {
+                _dataService.ProcessOrder(order);
                 _cart.Clear();
-                _txtDiscount.Text = "0";
                 UpdateCartTotals();
-                PopulateProductsGrid();
+                PopulateCatalog();
+                OnOrderCompleted?.Invoke();
             }
+        }
+
+        private void PopulateCategoryTabs()
+        {
+            if (_flpCategories == null) return;
+            _flpCategories.SuspendLayout();
+            _flpCategories.Controls.Clear();
+
+            var catList = new List<string> { "All Items" };
+            catList.AddRange(_dataService.Categories.Select(c => c.Name));
+
+            // If selected category no longer exists, fall back to All
+            if (_selectedCategory != "All" && !_dataService.Categories.Any(c => c.Name.Equals(_selectedCategory, StringComparison.OrdinalIgnoreCase)))
+            {
+                _selectedCategory = "All";
+            }
+
+            foreach (var c in catList)
+            {
+                bool isSel = (c == "All Items" && _selectedCategory == "All") || (c == _selectedCategory);
+                Button btnC = new Button
+                {
+                    Text = c,
+                    AutoSize = true,
+                    Height = 28,
+                    FlatStyle = FlatStyle.Flat,
+                    Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                    ForeColor = isSel ? Color.White : AppTheme.TextDark,
+                    BackColor = isSel ? Color.FromArgb(20, 21, 17) : Color.White,
+                    Cursor = Cursors.Hand,
+                    Margin = new Padding(0, 2, 6, 2)
+                };
+                btnC.FlatAppearance.BorderColor = Color.FromArgb(215, 210, 198);
+                string catName = c;
+                btnC.Click += (s, e) =>
+                {
+                    _selectedCategory = catName == "All Items" ? "All" : catName;
+                    foreach (Control ctrl in _flpCategories.Controls)
+                    {
+                        if (ctrl is Button b)
+                        {
+                            bool sel = (b.Text == catName);
+                            b.BackColor = sel ? Color.FromArgb(20, 21, 17) : Color.White;
+                            b.ForeColor = sel ? Color.White : AppTheme.TextDark;
+                        }
+                    }
+                    PopulateCatalog();
+                };
+                _flpCategories.Controls.Add(btnC);
+            }
+
+            _flpCategories.ResumeLayout(true);
+        }
+
+        public void RefreshCatalog()
+        {
+            PopulateCategoryTabs();
+            PopulateCatalog();
         }
     }
 }

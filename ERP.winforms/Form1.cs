@@ -1,9 +1,12 @@
 using System;
 using System.Drawing;
+using System.IO;
 using System.Windows.Forms;
 using ERP.domain.entities;
 using ERP.winforms.Services;
 using ERP.winforms.Theme;
+using ERP.winforms.UI.Components;
+using ERP.winforms.UI.Dialogs;
 using ERP.winforms.UI.Views;
 
 namespace ERP.winforms
@@ -11,30 +14,43 @@ namespace ERP.winforms
     public partial class Form1 : Form
     {
         private readonly DataService _dataService = DataService.Instance;
+        private readonly string _currentUser;
+        private readonly string _currentRole;
 
-        private Panel _pnlHeader = null!;
-        private Panel _pnlNavStrip = null!;
+        // Top Header & Sub-bars
+        private Panel _pnlTopBar = null!;
+        private Panel _pnlNavTabs = null!;
+        private Panel _pnlBottomBar = null!;
         private Panel _pnlContentArea = null!;
-        private Label _lblClock = null!;
-        private System.Windows.Forms.Timer _clockTimer = null!;
 
+        // Navigation tab buttons
         private Button _btnNavDashboard = null!;
         private Button _btnNavProducts = null!;
         private Button _btnNavPOS = null!;
         private Button _btnNavOrders = null!;
-        private ComboBox _cboCompanySelector = null!;
+        private Button? _btnNavRepairs;
         private Button? _activeNavButton;
 
+        // Views
         private DashboardView _dashboardView = null!;
         private ProductsView _productsView = null!;
         private PosView _posView = null!;
         private OrdersView _ordersView = null!;
 
-        public Form1()
+        public Form1(string userName = "Cirunay", string userRole = "Store Administrator", Company? company = null)
         {
+            _currentUser = userName;
+            _currentRole = userRole;
+            if (company != null)
+            {
+                _dataService.CurrentCompany = company;
+            }
+
             InitializeComponent();
+            KeyPreview = true;
+            KeyDown += Form1_KeyDown;
+
             SetupCustomLayout();
-            SetupClockTimer();
 
             SwitchView(_dashboardView, _btnNavDashboard);
         }
@@ -42,185 +58,241 @@ namespace ERP.winforms
         private void SetupCustomLayout()
         {
             BackColor = AppTheme.AppBackground;
+            Size = new Size(1380, 860);
+            MinimumSize = new Size(1240, 780);
+            StartPosition = FormStartPosition.CenterScreen;
+            Text = $"{_dataService.CurrentCompany?.CompanyName ?? "Tenant A"} | {_dataService.CurrentCompany?.PlanName ?? "Micro"} Company Operations - User: {_currentUser}";
 
-            _pnlHeader = new Panel
+            // ========================================================
+            // 1. TOP HEADER BANNER (Height: 54px, Dark Charcoal #141511)
+            // ========================================================
+            _pnlTopBar = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 105,
+                Height = 54,
                 BackColor = AppTheme.HeaderBg
             };
 
-            Label lblBrand = new Label
+            // [M] Gold Brand Badge
+            Label lblLogoBadge = new Label
             {
-                Text = "☀️ MORPHIC COMPUTERS",
-                Font = new Font("Segoe UI", 16F, FontStyle.Bold),
-                ForeColor = AppTheme.Primary,
-                Location = new Point(20, 14),
+                Text = "M",
+                Font = new Font("Segoe UI", 12F, FontStyle.Bold),
+                ForeColor = AppTheme.TextDark,
+                BackColor = AppTheme.HeaderBrandGold,
+                Location = new Point(20, 13),
+                Size = new Size(28, 28),
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+
+            // Dynamic Tenant Brand Title
+            Label lblBrandName = new Label
+            {
+                Text = _dataService.CurrentCompany?.CompanyName ?? "Tenant A",
+                Font = new Font("Segoe UI", 14F, FontStyle.Bold),
+                ForeColor = Color.White,
+                Location = new Point(56, 12),
                 AutoSize = true
             };
 
+            // Subtitle tag cleanly aligned
             Label lblTagline = new Label
             {
-                Text = "| Store Operations & POS System (ERP Multi-Tenant Architecture)",
-                Font = AppTheme.BodyFont,
-                ForeColor = AppTheme.TextLightMuted,
-                Location = new Point(265, 20),
+                Text = $"|  {_dataService.CurrentCompany?.PlanName ?? "Micro"} Company Operations",
+                Font = new Font("Segoe UI", 10F, FontStyle.Regular),
+                ForeColor = Color.FromArgb(170, 168, 158),
+                Location = new Point(56 + lblBrandName.PreferredSize.Width + 8, 17),
                 AutoSize = true
             };
 
-            _lblClock = new Label
+            // Right Header Utilities
+            Label lblCloudSync = new Label
             {
-                Text = DateTime.Now.ToString("dddd, MMMM dd, yyyy  hh:mm:ss tt"),
-                Font = AppTheme.BodyFont,
-                ForeColor = AppTheme.TextLight,
+                Text = "Central Cloud Sync: Active (100%)",
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
+                ForeColor = Color.FromArgb(180, 178, 168),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(Width - 360, 20),
+                Location = new Point(Width - 560, 18),
                 AutoSize = true
             };
 
-            Label lblUser = new Label
+            SunshineButton btnNewSale = new SunshineButton
             {
-                Text = "👤 Admin",
-                Font = AppTheme.BodyBoldFont,
-                ForeColor = AppTheme.Primary,
+                Text = "+ New Sale (F2)",
+                IsPrimary = true,
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(Width - 100, 20),
-                AutoSize = true
+                Location = new Point(Width - 340, 11),
+                Size = new Size(130, 32),
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold)
             };
+            btnNewSale.Click += (s, e) => SwitchView(_posView, _btnNavPOS);
 
-            _pnlHeader.Controls.Add(lblBrand);
-            _pnlHeader.Controls.Add(lblTagline);
-            _pnlHeader.Controls.Add(_lblClock);
-            _pnlHeader.Controls.Add(lblUser);
-
-            _pnlNavStrip = new Panel
+            // User Avatar Pill
+            Panel pnlUser = new Panel
             {
-                Location = new Point(20, 56),
-                Size = new Size(Width - 40, 42),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                BackColor = Color.FromArgb(31, 25, 12)
-            };
-
-            _btnNavDashboard = CreateHorizontalNavButton("📊  Dashboard Overview", 0);
-            _btnNavProducts = CreateHorizontalNavButton("💻  Products & Stock", 200);
-            _btnNavPOS = CreateHorizontalNavButton("🛒  Point of Sale (POS)", 400);
-            _btnNavOrders = CreateHorizontalNavButton("📋  Sales & Reports", 600);
-
-            // Multi-Tenant Company Selector Dropdown
-            Label lblTenant = new Label
-            {
-                Text = "🏬 Active Company:",
-                Font = AppTheme.SmallFont,
-                ForeColor = AppTheme.TextLightMuted,
-                Location = new Point(810, 12),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                AutoSize = true
+                Location = new Point(Width - 195, 8),
+                Size = new Size(175, 38),
+                BackColor = Color.FromArgb(32, 34, 28)
+            };
+            Label lblUserAvatar = new Label
+            {
+                Text = _currentUser.Substring(0, 1).ToUpperInvariant(),
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                ForeColor = AppTheme.TextDark,
+                BackColor = AppTheme.Primary,
+                Location = new Point(6, 6),
+                Size = new Size(26, 26),
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+            Label lblUserName = new Label
+            {
+                Text = $"{_currentUser}\n{_currentRole}",
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
+                ForeColor = Color.White,
+                Location = new Point(36, 4),
+                Size = new Size(135, 30)
+            };
+            pnlUser.Controls.Add(lblUserAvatar);
+            pnlUser.Controls.Add(lblUserName);
+
+            _pnlTopBar.Controls.Add(lblLogoBadge);
+            _pnlTopBar.Controls.Add(lblBrandName);
+            _pnlTopBar.Controls.Add(lblTagline);
+            _pnlTopBar.Controls.Add(lblCloudSync);
+            _pnlTopBar.Controls.Add(btnNewSale);
+            _pnlTopBar.Controls.Add(pnlUser);
+
+            // ========================================================
+            // 2. NAVIGATION TABS BAR (Height: 42px, Flush Dark Background)
+            // ========================================================
+            _pnlNavTabs = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 42,
+                BackColor = AppTheme.HeaderBg
             };
 
-            _cboCompanySelector = new ComboBox
-            {
-                Font = AppTheme.SmallFont,
-                Location = new Point(925, 8),
-                Width = 200,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                DropDownStyle = ComboBoxStyle.DropDownList
-            };
+            int tabX = 20;
+            _btnNavDashboard = CreateEnterpriseTab("Dashboard", tabX, 130);
+            tabX += 132;
+            _btnNavProducts = CreateEnterpriseTab("Products Stock", tabX, 145);
+            tabX += 147;
+            _btnNavPOS = CreateEnterpriseTab("Point of Sale", tabX, 135);
+            tabX += 137;
+            _btnNavOrders = CreateEnterpriseTab("Sales Reports", tabX, 140);
+            tabX += 142;
 
-            foreach (var company in _dataService.Companies)
+            // ONLY show Repair Services if current plan allows it (NOT on Micro plan!)
+            var company = _dataService.ActiveCompany;
+            if (company != null && company.IsRepairAllowed)
             {
-                _cboCompanySelector.Items.Add(company);
+                _btnNavRepairs = CreateEnterpriseTab("Repair Services", tabX, 145);
+                _btnNavRepairs.Click += (s, e) => MessageBox.Show("Repair Services bench active.", "Repairs", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                _pnlNavTabs.Controls.Add(_btnNavRepairs);
+                tabX += 147;
             }
-
-            if (_cboCompanySelector.Items.Count > 0)
-            {
-                _cboCompanySelector.SelectedIndex = 0;
-            }
-
-            _cboCompanySelector.SelectedIndexChanged += (s, e) =>
-            {
-                if (_cboCompanySelector.SelectedItem is Company selComp)
-                {
-                    _dataService.ActiveCompanyId = selComp.Id;
-                    _dataService.LoadFromDatabase();
-                    if (_pnlContentArea.Controls.Count > 0 && _activeNavButton != null)
-                    {
-                        if (_pnlContentArea.Controls[0] is DashboardView dbView) dbView.RefreshDashboard();
-                        else if (_pnlContentArea.Controls[0] is ProductsView prodView) prodView.ApplyFilters();
-                        else if (_pnlContentArea.Controls[0] is PosView posView) posView.PopulateProductsGrid();
-                        else if (_pnlContentArea.Controls[0] is OrdersView ordView) ordView.RefreshData();
-                    }
-                }
-            };
-
-            _dashboardView = new DashboardView();
-            _productsView = new ProductsView();
-            _posView = new PosView();
-            _ordersView = new OrdersView();
-
-            _dashboardView.OnNavigateToPOSRequest = () => SwitchView(_posView, _btnNavPOS);
-            _dashboardView.OnNavigateToOrdersRequest = () => SwitchView(_ordersView, _btnNavOrders);
-            _dashboardView.OnNavigateToProductsRequest = (openAddModal) =>
-            {
-                SwitchView(_productsView, _btnNavProducts);
-                if (openAddModal)
-                {
-                    _productsView.OpenAddProductDialog();
-                }
-            };
 
             _btnNavDashboard.Click += (s, e) => SwitchView(_dashboardView, _btnNavDashboard);
             _btnNavProducts.Click += (s, e) => SwitchView(_productsView, _btnNavProducts);
             _btnNavPOS.Click += (s, e) => SwitchView(_posView, _btnNavPOS);
             _btnNavOrders.Click += (s, e) => SwitchView(_ordersView, _btnNavOrders);
 
-            _pnlNavStrip.Controls.Add(_btnNavDashboard);
-            _pnlNavStrip.Controls.Add(_btnNavProducts);
-            _pnlNavStrip.Controls.Add(_btnNavPOS);
-            _pnlNavStrip.Controls.Add(_btnNavOrders);
-            _pnlNavStrip.Controls.Add(lblTenant);
-            _pnlNavStrip.Controls.Add(_cboCompanySelector);
+            _pnlNavTabs.Controls.Add(_btnNavDashboard);
+            _pnlNavTabs.Controls.Add(_btnNavProducts);
+            _pnlNavTabs.Controls.Add(_btnNavPOS);
+            _pnlNavTabs.Controls.Add(_btnNavOrders);
 
-            _pnlHeader.Controls.Add(_pnlNavStrip);
-            Controls.Add(_pnlHeader);
+            // ========================================================
+            // 3. BOTTOM SYSTEM STATUS BAR (Height: 28px, Dark Charcoal)
+            // ========================================================
+            _pnlBottomBar = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 28,
+                BackColor = AppTheme.BottomBarBg
+            };
 
+            Label lblBottomLeft = new Label
+            {
+                Text = $"Morphic Core ERP  |  Company: {_dataService.CurrentCompany?.CompanyName ?? "Tenant A"}  |  Plan: {_dataService.CurrentCompany?.PlanName ?? "Micro"}  |  Currency: Philippine Peso (PHP ₱)",
+                Font = new Font("Segoe UI", 8F, FontStyle.Regular),
+                ForeColor = AppTheme.BottomBarText,
+                Location = new Point(20, 6),
+                AutoSize = true
+            };
+
+            Label lblBottomRight = new Label
+            {
+                Text = $"Latency: 14ms  |  MonsterASP Cloud ({(_dataService.CurrentCompany?.CompanyId == 1 ? "db67673" : "Isolated Tenant")}) Connected  |  [F2 New Sale]  [F3 Catalog]",
+                Font = new Font("Segoe UI", 8F, FontStyle.Regular),
+                ForeColor = AppTheme.BottomBarText,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Location = new Point(Width - 560, 6),
+                AutoSize = true
+            };
+            _pnlBottomBar.Controls.Add(lblBottomLeft);
+            _pnlBottomBar.Controls.Add(lblBottomRight);
+
+            // ========================================================
+            // 4. MAIN CONTENT AREA (Canvas Background #F7F5EE)
+            // ========================================================
             _pnlContentArea = new Panel
             {
                 Dock = DockStyle.Fill,
                 BackColor = AppTheme.AppBackground
             };
 
+            // Instantiate Views
+            _dashboardView = new DashboardView();
+            _productsView = new ProductsView();
+            _posView = new PosView();
+            _ordersView = new OrdersView();
+
+            // Wire inter-view navigation events
+            _dashboardView.OnNavigateToPOSRequest = () => SwitchView(_posView, _btnNavPOS);
+            _dashboardView.OnNavigateToProductsRequest = (lowStock) =>
+            {
+                SwitchView(_productsView, _btnNavProducts);
+                if (lowStock) _productsView.FilterLowStockOnly();
+            };
+            _dashboardView.OnNavigateToOrdersRequest = () => SwitchView(_ordersView, _btnNavOrders);
+
+            _posView.OnOrderCompleted = () =>
+            {
+                _dashboardView.RefreshMetrics();
+                _ordersView.RefreshData();
+            };
+
+            _productsView.OnProductsChanged = () =>
+            {
+                _posView.RefreshCatalog();
+                _dashboardView.RefreshMetrics();
+            };
+
+            // Add containers in docking sequence
             Controls.Add(_pnlContentArea);
-            _pnlContentArea.BringToFront();
+            Controls.Add(_pnlNavTabs);
+            Controls.Add(_pnlTopBar);
+            Controls.Add(_pnlBottomBar);
         }
 
-        private Button CreateHorizontalNavButton(string text, int left)
+        private Button CreateEnterpriseTab(string text, int x, int width)
         {
             Button btn = new Button
             {
                 Text = text,
-                Location = new Point(left, 2),
-                Size = new Size(195, 38),
+                Location = new Point(x, 0),
+                Size = new Size(width, 42),
                 FlatStyle = FlatStyle.Flat,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Font = AppTheme.BodyBoldFont,
-                ForeColor = AppTheme.TextLight,
+                Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
+                ForeColor = AppTheme.NavTabInactiveText,
                 BackColor = Color.Transparent,
-                Cursor = Cursors.Hand
+                Cursor = Cursors.Hand,
+                TextAlign = ContentAlignment.MiddleCenter
             };
             btn.FlatAppearance.BorderSize = 0;
-
-            btn.MouseEnter += (s, e) =>
-            {
-                if (btn != _activeNavButton)
-                    btn.BackColor = AppTheme.SidebarHover;
-            };
-
-            btn.MouseLeave += (s, e) =>
-            {
-                if (btn != _activeNavButton)
-                    btn.BackColor = Color.Transparent;
-            };
-
+            btn.FlatAppearance.MouseOverBackColor = AppTheme.NavTabHover;
             return btn;
         }
 
@@ -229,31 +301,58 @@ namespace ERP.winforms
             if (_activeNavButton != null)
             {
                 _activeNavButton.BackColor = Color.Transparent;
-                _activeNavButton.ForeColor = AppTheme.TextLight;
+                _activeNavButton.ForeColor = AppTheme.NavTabInactiveText;
             }
 
             _activeNavButton = navButton;
-            _activeNavButton.BackColor = AppTheme.SidebarSelected;
-            _activeNavButton.ForeColor = AppTheme.SidebarSelectedText;
+            _activeNavButton.BackColor = AppTheme.NavTabActive;
+            _activeNavButton.ForeColor = AppTheme.NavTabActiveText;
 
             _pnlContentArea.Controls.Clear();
             view.Dock = DockStyle.Fill;
             _pnlContentArea.Controls.Add(view);
 
-            if (view is DashboardView dbView)
+            if (view is DashboardView db) db.RefreshMetrics();
+            if (view is ProductsView pv) pv.ApplyFilters();
+            if (view is PosView pos) pos.RefreshCatalog();
+            if (view is OrdersView ov) ov.RefreshData();
+        }
+
+        private void Form1_KeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.F2)
             {
-                dbView.RefreshDashboard();
+                SwitchView(_posView, _btnNavPOS);
+                e.Handled = true;
+            }
+            else if (e.KeyCode == Keys.F3)
+            {
+                SwitchView(_productsView, _btnNavProducts);
+                e.Handled = true;
             }
         }
 
-        private void SetupClockTimer()
+        private void BtnNavBackup_Click(object? sender, EventArgs e)
         {
-            _clockTimer = new System.Windows.Forms.Timer { Interval = 1000 };
-            _clockTimer.Tick += (s, e) =>
+            using SaveFileDialog sfd = new SaveFileDialog
             {
-                _lblClock.Text = DateTime.Now.ToString("dddd, MMMM dd, yyyy  hh:mm:ss tt");
+                Title = "Backup Isolated Tenant Store Data",
+                Filter = "JSON Backup File (*.json)|*.json",
+                FileName = $"TenantA_Backup_{DateTime.Now:yyyyMMdd_HHmm}.json"
             };
-            _clockTimer.Start();
+
+            if (sfd.ShowDialog(this) == DialogResult.OK)
+            {
+                try
+                {
+                    _dataService.ExportTenantBackup(sfd.FileName);
+                    MessageBox.Show($"Tenant A database backup created successfully!\n\nFile saved to:\n{sfd.FileName}", "Backup Completed", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to export tenant backup: {ex.Message}", "Backup Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
         }
     }
 }
