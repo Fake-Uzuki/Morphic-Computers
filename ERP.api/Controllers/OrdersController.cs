@@ -26,6 +26,7 @@ namespace ERP.api.Controllers
         private static async Task EnsureOrdersTableAsync(TenantErpDbContext db)
         {
             if (_tableEnsured) return;
+            if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable()) return;
             try
             {
                 const string sql = @"
@@ -59,6 +60,11 @@ END";
         [HttpGet]
         public async Task<IActionResult> GetOrders(int companyId)
         {
+            if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
+            {
+                return Ok(new List<Order>());
+            }
+
             try
             {
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
@@ -105,38 +111,51 @@ END";
                 return BadRequest(new { error = "Order must contain at least one item." });
             }
 
-            await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
-            await EnsureOrdersTableAsync(tenantDb);
-
-            order.CompanyId = companyId;
-            if (string.IsNullOrWhiteSpace(order.ItemsJson) || order.ItemsJson == "[]")
+            if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
             {
-                order.ItemsJson = JsonSerializer.Serialize(order.Items);
+                return StatusCode(503, new { error = "Database offline. Network unavailable." });
             }
 
-            // Persist order in MonsterASP cloud database
-            var existingOrder = await tenantDb.Orders.FirstOrDefaultAsync(o => o.Id == order.Id);
-            if (existingOrder == null)
+            try
             {
-                tenantDb.Orders.Add(order);
-            }
+                await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
+                await EnsureOrdersTableAsync(tenantDb);
 
-            // Deduct stock for purchased items
-            foreach (var item in order.Items)
-            {
-                var inv = await tenantDb.Inventories
-                    .FirstOrDefaultAsync(i => i.ProductId == item.ProductId);
-
-                if (inv != null)
+                order.CompanyId = companyId;
+                if (string.IsNullOrWhiteSpace(order.ItemsJson) || order.ItemsJson == "[]")
                 {
-                    inv.QuantityOnHand = Math.Max(0, inv.QuantityOnHand - item.Quantity);
-                    inv.LastUpdatedAt = DateTime.UtcNow;
+                    order.ItemsJson = JsonSerializer.Serialize(order.Items);
                 }
+
+                // Persist order in MonsterASP cloud database
+                var existingOrder = await tenantDb.Orders.FirstOrDefaultAsync(o => o.Id == order.Id);
+                if (existingOrder == null)
+                {
+                    tenantDb.Orders.Add(order);
+                }
+
+                // Deduct stock for purchased items
+                foreach (var item in order.Items)
+                {
+                    var inv = await tenantDb.Inventories
+                        .FirstOrDefaultAsync(i => i.ProductId == item.ProductId);
+
+                    if (inv != null)
+                    {
+                        inv.QuantityOnHand = Math.Max(0, inv.QuantityOnHand - item.Quantity);
+                        inv.LastUpdatedAt = DateTime.UtcNow;
+                    }
+                }
+
+                await tenantDb.SaveChangesAsync();
+
+                return Created($"/api/tenant/{companyId}/orders/{order.Id}", order);
             }
-
-            await tenantDb.SaveChangesAsync();
-
-            return Created($"/api/tenant/{companyId}/orders/{order.Id}", order);
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ProcessOrder error: {ex.Message}");
+                return StatusCode(503, new { error = $"Database offline or unreachable: {ex.Message}" });
+            }
         }
     }
 }

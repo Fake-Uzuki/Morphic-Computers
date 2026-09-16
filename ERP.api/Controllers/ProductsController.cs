@@ -25,6 +25,7 @@ namespace ERP.api.Controllers
         private static async Task EnsureProductsSchemaAsync(TenantErpDbContext db, int companyId)
         {
             if (_ensuredSchemas.ContainsKey(companyId)) return;
+            if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable()) return;
             try
             {
                 const string sql = @"
@@ -39,6 +40,10 @@ END
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Products') AND name = 'Description')
 BEGIN
     ALTER TABLE Products ADD Description NVARCHAR(MAX) NULL;
+END
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Products') AND name = 'ArchivedAt')
+BEGIN
+    ALTER TABLE Products ADD ArchivedAt DATETIME2 NULL;
 END";
                 await db.Database.ExecuteSqlRawAsync(sql);
                 _ensuredSchemas.TryAdd(companyId, true);
@@ -55,6 +60,11 @@ END";
         [HttpGet]
         public async Task<IActionResult> GetProducts(int companyId)
         {
+            if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
+            {
+                return Ok(new List<Product>());
+            }
+
             try
             {
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
@@ -105,24 +115,111 @@ END";
                 return BadRequest(new { error = "Product payload is required." });
             }
 
-            await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
-            await EnsureProductsSchemaAsync(tenantDb, companyId);
-
-            // Check if product code already exists
-            var existing = await tenantDb.Products
-                .FirstOrDefaultAsync(p => p.ProductCode == product.ProductCode);
-
-            if (existing != null)
+            if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
             {
-                // Update existing product instead of creating duplicate
-                existing.ProductName = product.ProductName;
-                existing.UnitPrice = product.UnitPrice;
-                existing.CategoryName = product.CategoryName;
-                existing.Description = product.Description;
-                existing.IsActive = product.IsActive;
+                return StatusCode(503, new { error = "Database offline. Network unavailable." });
+            }
+
+            try
+            {
+                await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
+                await EnsureProductsSchemaAsync(tenantDb, companyId);
+
+                // Check if product code already exists
+                var existing = await tenantDb.Products
+                    .FirstOrDefaultAsync(p => p.ProductCode == product.ProductCode);
+
+                if (existing != null)
+                {
+                    // Update existing product instead of creating duplicate
+                    existing.ProductName = product.ProductName;
+                    existing.UnitPrice = product.UnitPrice;
+                    existing.CategoryName = product.CategoryName;
+                    existing.Description = product.Description;
+                    existing.IsActive = product.IsActive;
+
+                    var inv = await tenantDb.Inventories
+                        .FirstOrDefaultAsync(i => i.ProductId == existing.ProductId);
+
+                    if (inv != null)
+                    {
+                        inv.QuantityOnHand = product.StockQuantity;
+                        inv.LastUpdatedAt = DateTime.UtcNow;
+                    }
+                    else
+                    {
+                        tenantDb.Inventories.Add(new Inventory
+                        {
+                            ProductId = existing.ProductId,
+                            QuantityOnHand = product.StockQuantity,
+                            ReorderLevel = 3,
+                            LastUpdatedAt = DateTime.UtcNow
+                        });
+                    }
+
+                    await tenantDb.SaveChangesAsync();
+                    product.ProductId = existing.ProductId;
+                    return Ok(product);
+                }
+
+                // Ensure ProductId is 0 for database identity generation
+                product.ProductId = 0;
+                tenantDb.Products.Add(product);
+                await tenantDb.SaveChangesAsync();
+
+                // Create corresponding Inventory record
+                var newInv = new Inventory
+                {
+                    ProductId = product.ProductId,
+                    QuantityOnHand = product.StockQuantity,
+                    ReorderLevel = 3,
+                    LastUpdatedAt = DateTime.UtcNow
+                };
+                tenantDb.Inventories.Add(newInv);
+                await tenantDb.SaveChangesAsync();
+
+                return Created($"/api/tenant/{companyId}/products/{product.ProductId}", product);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"CreateProduct tenantDb error: {ex.Message}");
+                return StatusCode(503, new { error = $"Database offline or unreachable: {ex.Message}" });
+            }
+        }
+
+        /// <summary>
+        /// Updates an existing product and its inventory stock.
+        /// </summary>
+        [HttpPut("{productId:int}")]
+        public async Task<IActionResult> UpdateProduct(int companyId, int productId, [FromBody] Product product)
+        {
+            if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
+            {
+                return StatusCode(503, new { error = "Database offline. Network unavailable." });
+            }
+
+            try
+            {
+                await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
+                await EnsureProductsSchemaAsync(tenantDb, companyId);
+
+                var dbProduct = await tenantDb.Products
+                    .FirstOrDefaultAsync(p => p.ProductId == productId || p.ProductCode == product.ProductCode);
+
+                if (dbProduct == null)
+                {
+                    return NotFound(new { error = $"Product with ID {productId} not found." });
+                }
+
+                dbProduct.ProductName = product.ProductName;
+                dbProduct.ProductCode = product.ProductCode;
+                dbProduct.UnitPrice = product.UnitPrice;
+                dbProduct.CategoryName = product.CategoryName;
+                dbProduct.Description = product.Description;
+                dbProduct.IsActive = product.IsActive;
 
                 var inv = await tenantDb.Inventories
-                    .FirstOrDefaultAsync(i => i.ProductId == existing.ProductId);
+                    .FirstOrDefaultAsync(i => i.ProductId == dbProduct.ProductId);
 
                 if (inv != null)
                 {
@@ -133,7 +230,7 @@ END";
                 {
                     tenantDb.Inventories.Add(new Inventory
                     {
-                        ProductId = existing.ProductId,
+                        ProductId = dbProduct.ProductId,
                         QuantityOnHand = product.StockQuantity,
                         ReorderLevel = 3,
                         LastUpdatedAt = DateTime.UtcNow
@@ -141,97 +238,92 @@ END";
                 }
 
                 await tenantDb.SaveChangesAsync();
-                product.ProductId = existing.ProductId;
-                return Ok(product);
+                return Ok(dbProduct);
             }
-
-            // Ensure ProductId is 0 for database identity generation
-            product.ProductId = 0;
-            tenantDb.Products.Add(product);
-            await tenantDb.SaveChangesAsync();
-
-            // Create corresponding Inventory record
-            var newInv = new Inventory
+            catch (Exception ex)
             {
-                ProductId = product.ProductId,
-                QuantityOnHand = product.StockQuantity,
-                ReorderLevel = 3,
-                LastUpdatedAt = DateTime.UtcNow
-            };
-            tenantDb.Inventories.Add(newInv);
-            await tenantDb.SaveChangesAsync();
-
-            return Created($"/api/tenant/{companyId}/products/{product.ProductId}", product);
+                System.Diagnostics.Debug.WriteLine($"UpdateProduct tenantDb error: {ex.Message}");
+                return StatusCode(503, new { error = $"Database offline or unreachable: {ex.Message}" });
+            }
         }
 
         /// <summary>
-        /// Updates an existing product and its inventory stock.
+        /// Enterprise Soft Delete: Archives product and marks inactive. Preserves order history.
         /// </summary>
-        [HttpPut("{productId:int}")]
-        public async Task<IActionResult> UpdateProduct(int companyId, int productId, [FromBody] Product product)
+        [HttpPut("{productId:int}/archive")]
+        public async Task<IActionResult> ArchiveProduct(int companyId, int productId)
         {
-            await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
-            await EnsureProductsSchemaAsync(tenantDb, companyId);
-
-            var dbProduct = await tenantDb.Products
-                .FirstOrDefaultAsync(p => p.ProductId == productId || p.ProductCode == product.ProductCode);
-
-            if (dbProduct == null)
+            if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
             {
-                return NotFound(new { error = $"Product with ID {productId} not found." });
+                return StatusCode(503, new { error = "Database offline. Network unavailable." });
             }
 
-            dbProduct.ProductName = product.ProductName;
-            dbProduct.ProductCode = product.ProductCode;
-            dbProduct.UnitPrice = product.UnitPrice;
-            dbProduct.CategoryName = product.CategoryName;
-            dbProduct.Description = product.Description;
-            dbProduct.IsActive = product.IsActive;
-
-            var inv = await tenantDb.Inventories
-                .FirstOrDefaultAsync(i => i.ProductId == dbProduct.ProductId);
-
-            if (inv != null)
+            try
             {
-                inv.QuantityOnHand = product.StockQuantity;
-                inv.LastUpdatedAt = DateTime.UtcNow;
-            }
-            else
-            {
-                tenantDb.Inventories.Add(new Inventory
+                await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
+                await EnsureProductsSchemaAsync(tenantDb, companyId);
+
+                var dbProduct = await tenantDb.Products.FirstOrDefaultAsync(p => p.ProductId == productId);
+                if (dbProduct == null)
                 {
-                    ProductId = dbProduct.ProductId,
-                    QuantityOnHand = product.StockQuantity,
-                    ReorderLevel = 3,
-                    LastUpdatedAt = DateTime.UtcNow
-                });
-            }
+                    return NotFound(new { error = $"Product with ID {productId} not found." });
+                }
 
-            await tenantDb.SaveChangesAsync();
-            return Ok(dbProduct);
+                dbProduct.IsActive = false;
+                dbProduct.ArchivedAt = DateTime.UtcNow;
+
+                await tenantDb.SaveChangesAsync();
+                return Ok(new { success = true, message = $"Product #{productId} archived successfully." });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ArchiveProduct tenantDb error: {ex.Message}");
+                return StatusCode(503, new { error = $"Database offline or unreachable: {ex.Message}" });
+            }
         }
 
         /// <summary>
-        /// Deletes a product and its associated inventory records.
+        /// Restores an archived product back to active catalog.
+        /// </summary>
+        [HttpPut("{productId:int}/restore")]
+        public async Task<IActionResult> RestoreProduct(int companyId, int productId)
+        {
+            if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
+            {
+                return StatusCode(503, new { error = "Database offline. Network unavailable." });
+            }
+
+            try
+            {
+                await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
+                await EnsureProductsSchemaAsync(tenantDb, companyId);
+
+                var dbProduct = await tenantDb.Products.FirstOrDefaultAsync(p => p.ProductId == productId);
+                if (dbProduct == null)
+                {
+                    return NotFound(new { error = $"Product with ID {productId} not found." });
+                }
+
+                dbProduct.IsActive = true;
+                dbProduct.ArchivedAt = null;
+
+                await tenantDb.SaveChangesAsync();
+                return Ok(new { success = true, message = $"Product #{productId} restored successfully." });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"RestoreProduct tenantDb error: {ex.Message}");
+                return StatusCode(503, new { error = $"Database offline or unreachable: {ex.Message}" });
+            }
+        }
+
+        /// <summary>
+        /// Enterprise Soft Delete via DELETE verb to preserve historical orders.
         /// </summary>
         [HttpDelete("{productId:int}")]
         public async Task<IActionResult> DeleteProduct(int companyId, int productId)
         {
-            await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
-            await EnsureProductsSchemaAsync(tenantDb, companyId);
-
-            var dbProduct = await tenantDb.Products.FirstOrDefaultAsync(p => p.ProductId == productId);
-            if (dbProduct == null)
-            {
-                return NotFound(new { error = $"Product with ID {productId} not found." });
-            }
-
-            var inventories = tenantDb.Inventories.Where(i => i.ProductId == productId);
-            tenantDb.Inventories.RemoveRange(inventories);
-            tenantDb.Products.Remove(dbProduct);
-
-            await tenantDb.SaveChangesAsync();
-            return NoContent();
+            return await ArchiveProduct(companyId, productId);
         }
     }
 }

@@ -1,5 +1,7 @@
 using System;
 using System.Linq;
+using System.Net.NetworkInformation;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -53,32 +55,36 @@ namespace ERP.api.Controllers
             string username = request.Username.Trim();
             string password = request.Password;
 
-            // 1. Resolve Company from Master DB
+            // 1. Resolve Company from Master DB (or fast fallback if offline/unreachable)
             domain.entities.Company? company = null;
-            try
+            if (NetworkInterface.GetIsNetworkAvailable())
             {
-                company = await _masterDb.Companies.AsNoTracking()
-                    .FirstOrDefaultAsync(c =>
-                        c.CompanyName.ToLower() == companyInput.ToLower() ||
-                        c.CompanyCode.ToLower() == companyInput.ToLower());
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Master DB query note: {ex.Message}");
+                try
+                {
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                    company = await _masterDb.Companies.AsNoTracking()
+                        .FirstOrDefaultAsync(c =>
+                            c.CompanyName.ToLower() == companyInput.ToLower() ||
+                            c.CompanyCode.ToLower() == companyInput.ToLower(), cts.Token);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Master DB query note: {ex.Message}");
+                }
             }
 
             if (company == null)
             {
-                // Fallback for standard demo tenants if not yet seeded
-                if (companyInput.Equals("Tenant A", StringComparison.OrdinalIgnoreCase))
+                // Fallback for standard demo tenants if offline or not yet seeded
+                if (companyInput.Equals("Tenant A", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("TENANT_A", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("Morphic Computers", StringComparison.OrdinalIgnoreCase))
                 {
                     company = new domain.entities.Company { CompanyId = 1, CompanyCode = "TENANT_A", CompanyName = "Tenant A", PlanName = "Micro" };
                 }
-                else if (companyInput.Equals("Tenant B", StringComparison.OrdinalIgnoreCase))
+                else if (companyInput.Equals("Tenant B", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("TENANT_B", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("Apex Cybernetics", StringComparison.OrdinalIgnoreCase))
                 {
                     company = new domain.entities.Company { CompanyId = 2, CompanyCode = "TENANT_B", CompanyName = "Tenant B", PlanName = "SmallBusiness" };
                 }
-                else if (companyInput.Equals("Tenant C", StringComparison.OrdinalIgnoreCase))
+                else if (companyInput.Equals("Tenant C", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("TENANT_C", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("Vanguard Tech", StringComparison.OrdinalIgnoreCase))
                 {
                     company = new domain.entities.Company { CompanyId = 3, CompanyCode = "TENANT_C", CompanyName = "Tenant C", PlanName = "Enterprise" };
                 }
