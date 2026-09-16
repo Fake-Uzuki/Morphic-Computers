@@ -229,51 +229,55 @@ namespace ERP.winforms.UI.Dialogs
             _btnLogin.Text = "Signing In...";
             Cursor = Cursors.WaitCursor;
 
-            // 3. Authenticate against ERP.api asynchronously without blocking UI thread
-            try
+            // 3. Authenticate against ERP.api asynchronously if network is available
+            bool isOnline = System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable();
+            if (isOnline)
             {
-                var loginResult = await ApiClient.Instance.LoginAsync(targetCompanyName, username, password);
-
-                if (loginResult != null && loginResult.Success)
+                try
                 {
-                    AuthenticatedUser = loginResult.Username;
-                    AuthenticatedRole = loginResult.Role;
-                    SelectedCompany = new Company
+                    var loginResult = await ApiClient.Instance.LoginAsync(targetCompanyName, username, password);
+
+                    if (loginResult != null && loginResult.Success)
                     {
-                        CompanyId = loginResult.CompanyId,
-                        CompanyCode = loginResult.CompanyCode,
-                        CompanyName = loginResult.CompanyName,
-                        PlanName = loginResult.PlanName
-                    };
+                        AuthenticatedUser = loginResult.Username;
+                        AuthenticatedRole = loginResult.Role;
+                        SelectedCompany = new Company
+                        {
+                            CompanyId = loginResult.CompanyId,
+                            CompanyCode = loginResult.CompanyCode,
+                            CompanyName = loginResult.CompanyName,
+                            PlanName = loginResult.PlanName
+                        };
 
-                    _dataService.ActiveCompanyId = loginResult.CompanyId;
-                    _dataService.CurrentCompany = SelectedCompany;
-                    _dataService.LoadFromDatabase();
+                        _dataService.ActiveCompanyId = loginResult.CompanyId;
+                        _dataService.CurrentCompany = SelectedCompany;
+                        _dataService.LoadFromDatabase();
 
-                    // Securely cache credentials in machine DPAPI-encrypted vault for offline operations
-                    OfflineAuthService.Instance.CacheSuccessfulLogin(loginResult, password);
+                        // Securely cache credentials in machine DPAPI-encrypted vault for offline operations
+                        OfflineAuthService.Instance.CacheSuccessfulLogin(loginResult, password);
 
-                    DialogResult = DialogResult.OK;
-                    Close();
-                    return;
+                        DialogResult = DialogResult.OK;
+                        Close();
+                        return;
+                    }
+
+                    // If API returned a specific rejection (e.g. invalid credentials or company not found)
+                    if (loginResult != null && !string.IsNullOrEmpty(loginResult.Message) && !loginResult.Message.StartsWith("API Connection Error"))
+                    {
+                        _lblError.Text = loginResult.Message;
+                        return;
+                    }
                 }
-
-                // If API returned a specific rejection (e.g. invalid credentials or company not found)
-                if (loginResult != null && !string.IsNullOrEmpty(loginResult.Message) && !loginResult.Message.StartsWith("API Connection Error"))
+                catch (Exception ex)
                 {
-                    _lblError.Text = loginResult.Message;
-                    return;
+                    System.Diagnostics.Debug.WriteLine($"API Login Exception: {ex.Message}");
                 }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"API Login Exception: {ex.Message}");
-            }
-            finally
-            {
-                _btnLogin.Enabled = true;
-                _btnLogin.Text = "Sign In";
-                Cursor = Cursors.Default;
+                finally
+                {
+                    _btnLogin.Enabled = true;
+                    _btnLogin.Text = "Sign In";
+                    Cursor = Cursors.Default;
+                }
             }
 
             // 4. Secure Offline Authentication via DPAPI Salted Hash Vault

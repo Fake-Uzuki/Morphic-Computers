@@ -175,12 +175,21 @@ namespace ERP.winforms.UI.Dialogs
                 Padding = new Padding(8, 0, 0, 0)
             };
 
-            _gridCategories.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CATEGORY NAME", FillWeight = 32, Name = "ColName" });
-            _gridCategories.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "DESCRIPTION", FillWeight = 36, Name = "ColDesc" });
-            _gridCategories.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PRODUCTS", FillWeight = 16, Name = "ColCount" });
-            _gridCategories.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TYPE", FillWeight = 16, Name = "ColType" });
+            _gridCategories.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CATEGORY NAME", FillWeight = 30, Name = "ColName" });
+            _gridCategories.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "DESCRIPTION", FillWeight = 32, Name = "ColDesc" });
+            _gridCategories.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PRODUCTS", FillWeight = 14, Name = "ColCount" });
+            _gridCategories.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TYPE", FillWeight = 12, Name = "ColType" });
+            _gridCategories.Columns.Add(new DataGridViewButtonColumn { HeaderText = "ACTION", FillWeight = 14, Name = "ColAction" });
 
             _gridCategories.SelectionChanged += GridCategories_SelectionChanged;
+            _gridCategories.CellContentClick += (s, e) =>
+            {
+                if (e.RowIndex >= 0 && _gridCategories.Columns["ColAction"] != null && e.ColumnIndex == _gridCategories.Columns["ColAction"]!.Index)
+                {
+                    _gridCategories.Rows[e.RowIndex].Selected = true;
+                    BtnDelete_Click(s, e);
+                }
+            };
 
             Panel pnlCenter = new Panel
             {
@@ -206,8 +215,9 @@ namespace ERP.winforms.UI.Dialogs
                 bool isPreset = _dataService.IsDefaultPreset(c.Name);
                 string typeBadge = isPreset ? "[Preset]" : "[Custom]";
                 string prodText = prodCount == 1 ? "1 product" : $"{prodCount} products";
+                string actionText = isPreset ? "🔒 Preset" : "🗑️ Delete";
 
-                int rowIndex = _gridCategories.Rows.Add(c.Name, c.Description ?? "", prodText, typeBadge);
+                int rowIndex = _gridCategories.Rows.Add(c.Name, c.Description ?? "", prodText, typeBadge, actionText);
                 var row = _gridCategories.Rows[rowIndex];
                 row.Tag = c;
 
@@ -215,11 +225,14 @@ namespace ERP.winforms.UI.Dialogs
                 {
                     row.Cells["ColType"].Style.ForeColor = Color.FromArgb(160, 110, 10);
                     row.Cells["ColType"].Style.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+                    row.Cells["ColAction"].Style.ForeColor = Color.FromArgb(140, 140, 140);
                 }
                 else
                 {
                     row.Cells["ColType"].Style.ForeColor = Color.FromArgb(30, 140, 60);
                     row.Cells["ColType"].Style.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+                    row.Cells["ColAction"].Style.ForeColor = Color.FromArgb(184, 50, 38);
+                    row.Cells["ColAction"].Style.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
                 }
             }
 

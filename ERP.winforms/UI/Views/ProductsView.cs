@@ -26,6 +26,7 @@ namespace ERP.winforms.UI.Views
         private TextBox _txtFormDesc = null!;
         private Label _lblFormMode = null!;
         private SunshineButton _btnSave = null!;
+        private SunshineButton _btnArchiveRestore = null!;
         private Product? _selectedProduct;
 
         // Pagination
@@ -38,6 +39,7 @@ namespace ERP.winforms.UI.Views
         private TextBox _txtSearch = null!;
         private ComboBox _cboCategory = null!;
         private ComboBox _cboStockStatus = null!;
+        private ComboBox _cboArchiveFilter = null!;
         private Label _lblFooterSummary = null!;
         private Panel _pnlPagination = null!;
 
@@ -272,16 +274,17 @@ namespace ERP.winforms.UI.Views
             btnClear.Click += (s, e) => ClearForm();
             y += 38;
 
-            SunshineButton btnDelete = new SunshineButton
+            _btnArchiveRestore = new SunshineButton
             {
-                Text = "Delete Selected Product",
+                Text = "Archive Product",
                 IsPrimary = false,
                 CustomTextColor = Color.FromArgb(184, 50, 38),
                 Location = new Point(12, y),
-                Size = new Size(298, 30),
-                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold)
+                Size = new Size(298, 32),
+                Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                Enabled = false
             };
-            btnDelete.Click += BtnDelete_Click;
+            _btnArchiveRestore.Click += BtnArchiveRestore_Click;
 
             card.Controls.Add(lblCardTitle);
             card.Controls.Add(_lblFormMode);
@@ -306,7 +309,7 @@ namespace ERP.winforms.UI.Views
             card.Controls.Add(_btnSave);
             card.Controls.Add(btnUpdate);
             card.Controls.Add(btnClear);
-            card.Controls.Add(btnDelete);
+            card.Controls.Add(_btnArchiveRestore);
 
             return card;
         }
@@ -323,15 +326,15 @@ namespace ERP.winforms.UI.Views
                 PlaceholderText = "Search product by name, SKU or barcode...",
                 Font = new Font("Segoe UI", 9F, FontStyle.Regular),
                 Location = new Point(0, 8),
-                Width = 260
+                Width = 230
             };
             _txtSearch.TextChanged += (s, e) => { _currentPage = 1; ApplyFilters(); };
 
             _cboCategory = new ComboBox
             {
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
-                Location = new Point(270, 8),
-                Width = 155,
+                Location = new Point(235, 8),
+                Width = 135,
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
             _cboCategory.Items.Add("All Categories");
@@ -342,20 +345,31 @@ namespace ERP.winforms.UI.Views
             _cboStockStatus = new ComboBox
             {
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
-                Location = new Point(435, 8),
-                Width = 135,
+                Location = new Point(375, 8),
+                Width = 120,
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
             _cboStockStatus.Items.AddRange(new object[] { "All Stock Status", "In Stock", "Low Stock", "Out of Stock" });
             _cboStockStatus.SelectedIndex = 0;
             _cboStockStatus.SelectedIndexChanged += (s, e) => { _currentPage = 1; ApplyFilters(); };
 
+            _cboArchiveFilter = new ComboBox
+            {
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                Location = new Point(500, 8),
+                Width = 130,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            _cboArchiveFilter.Items.AddRange(new object[] { "Active Products", "Archived Catalog", "All Products" });
+            _cboArchiveFilter.SelectedIndex = 0;
+            _cboArchiveFilter.SelectedIndexChanged += (s, e) => { _currentPage = 1; ApplyFilters(); };
+
             Button btnReset = new Button
             {
                 Text = "Reset",
                 Font = new Font("Segoe UI", 7.5F, FontStyle.Regular),
-                Location = new Point(580, 8),
-                Size = new Size(60, 26),
+                Location = new Point(635, 8),
+                Size = new Size(55, 26),
                 FlatStyle = FlatStyle.Flat
             };
             btnReset.FlatAppearance.BorderColor = Color.FromArgb(215, 210, 198);
@@ -364,9 +378,21 @@ namespace ERP.winforms.UI.Views
                 _txtSearch.Clear();
                 _cboCategory.SelectedIndex = 0;
                 _cboStockStatus.SelectedIndex = 0;
+                _cboArchiveFilter.SelectedIndex = 0;
                 _currentPage = 1;
                 ApplyFilters();
             };
+
+            SunshineButton btnToolbarArchive = new SunshineButton
+            {
+                Text = "📦 Archive / Restore",
+                IsPrimary = false,
+                CustomTextColor = Color.FromArgb(184, 50, 38),
+                Location = new Point(698, 7),
+                Size = new Size(130, 28),
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold)
+            };
+            btnToolbarArchive.Click += (s, e) => BtnArchiveRestore_Click(s, e);
 
             SunshineButton btnExport = new SunshineButton
             {
@@ -382,7 +408,9 @@ namespace ERP.winforms.UI.Views
             pnlFilterBar.Controls.Add(_txtSearch);
             pnlFilterBar.Controls.Add(_cboCategory);
             pnlFilterBar.Controls.Add(_cboStockStatus);
+            pnlFilterBar.Controls.Add(_cboArchiveFilter);
             pnlFilterBar.Controls.Add(btnReset);
+            pnlFilterBar.Controls.Add(btnToolbarArchive);
             pnlFilterBar.Controls.Add(btnExport);
 
             // 2. DATA GRID VIEW
@@ -438,8 +466,49 @@ namespace ERP.winforms.UI.Views
             _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "COST (PHP)", FillWeight = 11, Name = "ColCost" });
             _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STOCK", FillWeight = 11, Name = "ColStock" });
             _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STATUS", FillWeight = 11, Name = "ColStatus" });
+            _gridProducts.Columns.Add(new DataGridViewButtonColumn { HeaderText = "ACTIONS", FillWeight = 14, Name = "ColAction" });
 
             _gridProducts.SelectionChanged += (s, e) => LoadSelectedRowToForm();
+            _gridProducts.CellContentClick += (s, e) =>
+            {
+                if (e.RowIndex >= 0 && _gridProducts.Columns["ColAction"] != null && e.ColumnIndex == _gridProducts.Columns["ColAction"]!.Index)
+                {
+                    var row = _gridProducts.Rows[e.RowIndex];
+                    if (row.Tag is Product p)
+                    {
+                        _selectedProduct = p;
+                        BtnArchiveRestore_Click(s, e);
+                    }
+                }
+            };
+
+            // Right-click context menu for instant archive / restore on any product row
+            ContextMenuStrip ctxProducts = new ContextMenuStrip();
+            ToolStripMenuItem itemArchive = new ToolStripMenuItem("📦 Archive Product (Soft Delete)");
+            ToolStripMenuItem itemRestore = new ToolStripMenuItem("♻️ Restore to Active Catalog");
+            ToolStripMenuItem itemEdit = new ToolStripMenuItem("✏️ Edit Product in Form");
+
+            itemArchive.Click += (s, e) => { if (_selectedProduct != null) BtnArchiveRestore_Click(s, e); };
+            itemRestore.Click += (s, e) => { if (_selectedProduct != null) BtnArchiveRestore_Click(s, e); };
+            itemEdit.Click += (s, e) => { if (_selectedProduct != null) LoadSelectedRowToForm(); };
+
+            ctxProducts.Opening += (s, e) =>
+            {
+                if (_selectedProduct == null)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+                itemArchive.Visible = _selectedProduct.IsActive;
+                itemRestore.Visible = !_selectedProduct.IsActive;
+            };
+
+            ctxProducts.Items.Add(itemArchive);
+            ctxProducts.Items.Add(itemRestore);
+            ctxProducts.Items.Add(new ToolStripSeparator());
+            ctxProducts.Items.Add(itemEdit);
+            _gridProducts.ContextMenuStrip = ctxProducts;
+
             _gridProducts.Resize += (s, e) => ApplyFilters();
 
             cardGrid.Controls.Add(_gridProducts);
@@ -522,6 +591,21 @@ namespace ERP.winforms.UI.Views
                 {
                     _cboFormCategory.SelectedIndex = 0;
                 }
+
+                if (_btnArchiveRestore != null)
+                {
+                    _btnArchiveRestore.Enabled = true;
+                    if (p.IsActive)
+                    {
+                        _btnArchiveRestore.Text = "Archive Product";
+                        _btnArchiveRestore.CustomTextColor = Color.FromArgb(184, 50, 38);
+                    }
+                    else
+                    {
+                        _btnArchiveRestore.Text = "Restore to Active";
+                        _btnArchiveRestore.CustomTextColor = Color.FromArgb(27, 122, 79);
+                    }
+                }
             }
         }
 
@@ -532,6 +616,13 @@ namespace ERP.winforms.UI.Views
             _lblFormMode.BackColor = Color.FromArgb(254, 245, 215);
             _lblFormMode.ForeColor = Color.FromArgb(130, 95, 10);
             if (_btnSave != null) _btnSave.Text = "+ Save / Add Product";
+
+            if (_btnArchiveRestore != null)
+            {
+                _btnArchiveRestore.Enabled = false;
+                _btnArchiveRestore.Text = "Archive Product";
+                _btnArchiveRestore.CustomTextColor = Color.FromArgb(184, 50, 38);
+            }
 
             _txtFormSku.Clear();
             _txtFormName.Clear();
@@ -692,7 +783,7 @@ namespace ERP.winforms.UI.Views
             }
         }
 
-        private void BtnDelete_Click(object? sender, EventArgs e)
+        private void BtnArchiveRestore_Click(object? sender, EventArgs e)
         {
             if (_selectedProduct == null)
             {
@@ -702,18 +793,48 @@ namespace ERP.winforms.UI.Views
                 }
                 else
                 {
-                    MessageBox.Show("Please select a product to delete.", "Selection Required", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show("Please select a product from the table first.", "Selection Required", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
             }
 
-            var res = MessageBox.Show($"Are you sure you want to permanently delete '{_selectedProduct.ProductName}' (SKU: {_selectedProduct.ProductCode})?", "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-            if (res == DialogResult.Yes)
+            if (_selectedProduct.IsActive)
             {
-                _dataService.DeleteProduct(_selectedProduct.ProductId);
-                ApplyFilters();
-                OnProductsChanged?.Invoke();
-                ClearForm();
+                var res = MessageBox.Show(
+                    $"Are you sure you want to archive '{_selectedProduct.ProductName}' (SKU: {_selectedProduct.ProductCode})?\n\n" +
+                    "• The product will be hidden from POS sales.\n" +
+                    "• Past sales, receipts, and order histories remain fully intact.\n" +
+                    "• You can restore this product at any time from the 'Archived Catalog' view.",
+                    "Archive Product Confirmation",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+
+                if (res == DialogResult.Yes)
+                {
+                    _dataService.ArchiveProduct(_selectedProduct.ProductId);
+                    ApplyFilters();
+                    OnProductsChanged?.Invoke();
+                    ClearForm();
+                    MessageBox.Show($"Product '{_selectedProduct.ProductName}' has been archived successfully.", "Product Archived", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+            else
+            {
+                var res = MessageBox.Show(
+                    $"Restore '{_selectedProduct.ProductName}' (SKU: {_selectedProduct.ProductCode}) back to the active catalog?\n\n" +
+                    "• The product will immediately become available for sale in the POS terminal.",
+                    "Restore Product Confirmation",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+
+                if (res == DialogResult.Yes)
+                {
+                    _dataService.RestoreProduct(_selectedProduct.ProductId);
+                    ApplyFilters();
+                    OnProductsChanged?.Invoke();
+                    ClearForm();
+                    MessageBox.Show($"Product '{_selectedProduct.ProductName}' restored to active catalog!", "Product Restored", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
             }
         }
 
@@ -723,6 +844,16 @@ namespace ERP.winforms.UI.Views
             _gridProducts.Rows.Clear();
 
             var list = _dataService.Products.AsEnumerable();
+
+            string archiveMode = _cboArchiveFilter?.SelectedItem?.ToString() ?? "Active Products";
+            if (archiveMode == "Active Products")
+            {
+                list = list.Where(p => p.IsActive);
+            }
+            else if (archiveMode == "Archived Catalog")
+            {
+                list = list.Where(p => !p.IsActive);
+            }
 
             string query = _txtSearch?.Text.Trim() ?? "";
             if (!string.IsNullOrEmpty(query))
@@ -757,7 +888,9 @@ namespace ERP.winforms.UI.Views
 
             foreach (var p in pageItems)
             {
-                string stockStatus = p.StockQuantity > 2 ? "In Stock" : (p.StockQuantity > 0 ? $"Low Stock ({p.StockQuantity})" : "Out of Stock");
+                string stockStatus = !p.IsActive
+                    ? "Archived"
+                    : (p.StockQuantity > 2 ? "In Stock" : (p.StockQuantity > 0 ? $"Low Stock ({p.StockQuantity})" : "Out of Stock"));
                 decimal cost = p.UnitPrice * 0.75m;
 
                 int rowIdx = _gridProducts.Rows.Add(
@@ -767,7 +900,8 @@ namespace ERP.winforms.UI.Views
                     $"₱{p.UnitPrice:N2}",
                     $"₱{cost:N2}",
                     $"{p.StockQuantity}",
-                    stockStatus
+                    stockStatus,
+                    p.IsActive ? "📦 Archive" : "♻️ Restore"
                 );
 
                 var row = _gridProducts.Rows[rowIdx];
@@ -775,17 +909,32 @@ namespace ERP.winforms.UI.Views
                 row.Cells["ColId"].Style.ForeColor = Color.FromArgb(160, 110, 10);
                 row.Cells["ColId"].Style.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
 
-                if (p.StockQuantity > 2)
+                var actionCell = row.Cells["ColAction"];
+                actionCell.Style.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+
+                if (!p.IsActive)
                 {
-                    row.Cells["ColStatus"].Style.ForeColor = Color.FromArgb(27, 122, 79);
-                }
-                else if (p.StockQuantity > 0)
-                {
-                    row.Cells["ColStatus"].Style.ForeColor = Color.FromArgb(168, 110, 5);
+                    row.DefaultCellStyle.ForeColor = Color.FromArgb(140, 140, 140);
+                    row.Cells["ColStatus"].Style.ForeColor = Color.FromArgb(160, 80, 80);
+                    row.Cells["ColStatus"].Style.Font = new Font("Segoe UI", 8F, FontStyle.Italic);
+                    actionCell.Style.ForeColor = Color.FromArgb(27, 122, 79);
                 }
                 else
                 {
-                    row.Cells["ColStatus"].Style.ForeColor = Color.FromArgb(184, 50, 38);
+                    actionCell.Style.ForeColor = Color.FromArgb(184, 50, 38);
+
+                    if (p.StockQuantity > 2)
+                    {
+                        row.Cells["ColStatus"].Style.ForeColor = Color.FromArgb(27, 122, 79);
+                    }
+                    else if (p.StockQuantity > 0)
+                    {
+                        row.Cells["ColStatus"].Style.ForeColor = Color.FromArgb(168, 110, 5);
+                    }
+                    else
+                    {
+                        row.Cells["ColStatus"].Style.ForeColor = Color.FromArgb(184, 50, 38);
+                    }
                 }
             }
 
