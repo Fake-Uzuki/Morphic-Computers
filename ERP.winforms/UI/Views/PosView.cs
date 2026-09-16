@@ -205,15 +205,54 @@ namespace ERP.winforms.UI.Views
                 Padding = new Padding(6, 0, 0, 0)
             };
 
-            _gridCart.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ITEM DESCRIPTION", FillWeight = 46, Name = "ColDesc" });
-            _gridCart.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PRICE", FillWeight = 20, Name = "ColPrice" });
-            _gridCart.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "QTY", FillWeight = 14, Name = "ColQty" });
-            _gridCart.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TOTAL (PHP)", FillWeight = 20, Name = "ColTotal" });
+            _gridCart.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ITEM DESCRIPTION", FillWeight = 42, Name = "ColDesc" });
+            _gridCart.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PRICE", FillWeight = 18, Name = "ColPrice" });
+            _gridCart.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "QTY", FillWeight = 12, Name = "ColQty" });
+            _gridCart.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TOTAL (PHP)", FillWeight = 18, Name = "ColTotal" });
+            _gridCart.Columns.Add(new DataGridViewButtonColumn { HeaderText = "ACTION", FillWeight = 14, Name = "ColRemove" });
 
-            // 4. Cart Sub-note: Items count (Removed "Add Sale Note")
-            Panel pnlNote = new Panel { Dock = DockStyle.Bottom, Height = 24 };
+            _gridCart.CellContentClick += (s, e) =>
+            {
+                if (e.RowIndex >= 0 && _gridCart.Columns["ColRemove"] != null && e.ColumnIndex == _gridCart.Columns["ColRemove"]!.Index)
+                {
+                    if (e.RowIndex < _cart.Count)
+                    {
+                        _cart.RemoveAt(e.RowIndex);
+                        UpdateCartTotals();
+                    }
+                }
+            };
+
+            // 4. Cart Sub-note: Items count and Clear Cart button
+            Panel pnlNote = new Panel { Dock = DockStyle.Bottom, Height = 26 };
             _lblCartSummary = new Label { Text = "Cart Items: 0 lines (0 units)", Font = new Font("Segoe UI", 7.5F, FontStyle.Regular), ForeColor = AppTheme.TextMuted, Location = new Point(0, 4), AutoSize = true };
+
+            Button btnClearCart = new Button
+            {
+                Text = "🗑️ Clear Cart",
+                Font = new Font("Segoe UI", 7F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(184, 50, 38),
+                BackColor = Color.FromArgb(254, 242, 242),
+                FlatStyle = FlatStyle.Flat,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Location = new Point(cardCart.Width - 110, 2),
+                Size = new Size(95, 22),
+                Cursor = Cursors.Hand
+            };
+            btnClearCart.FlatAppearance.BorderColor = Color.FromArgb(240, 200, 200);
+            btnClearCart.Click += (s, e) =>
+            {
+                if (_cart.Count == 0) return;
+                var res = MessageBox.Show("Remove all items from the current cart?", "Clear Cart", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                if (res == DialogResult.Yes)
+                {
+                    _cart.Clear();
+                    UpdateCartTotals();
+                }
+            };
+
             pnlNote.Controls.Add(_lblCartSummary);
+            pnlNote.Controls.Add(btnClearCart);
 
             // 5. Financial Summary & Totals in PHP (Removed Discount option & Split button)
             Panel pnlTotals = new Panel { Dock = DockStyle.Bottom, Height = 145 };
@@ -317,7 +356,7 @@ namespace ERP.winforms.UI.Views
             _flpProducts.SuspendLayout();
             _flpProducts.Controls.Clear();
 
-            var prods = _dataService.Products.AsEnumerable();
+            var prods = _dataService.Products.Where(p => p.IsActive);
 
             if (_selectedCategory != "All")
             {
@@ -501,7 +540,10 @@ namespace ERP.winforms.UI.Views
             {
                 subtotal += item.TotalPrice;
                 totalUnits += item.Quantity;
-                _gridCart.Rows.Add(item.ProductName, $"₱{item.UnitPrice:N2}", item.Quantity, $"₱{item.TotalPrice:N2}");
+                int rIdx = _gridCart.Rows.Add(item.ProductName, $"₱{item.UnitPrice:N2}", item.Quantity, $"₱{item.TotalPrice:N2}", "❌ Remove");
+                var r = _gridCart.Rows[rIdx];
+                r.Cells["ColRemove"].Style.ForeColor = Color.FromArgb(184, 50, 38);
+                r.Cells["ColRemove"].Style.Font = new Font("Segoe UI", 7.5F, FontStyle.Bold);
             }
 
             decimal tax = subtotal * 0.12m;

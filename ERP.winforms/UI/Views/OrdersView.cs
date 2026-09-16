@@ -230,13 +230,13 @@ namespace ERP.winforms.UI.Views
             SunshineButton btnExport = new SunshineButton { Text = "Export (PDF/Excel)", IsPrimary = false, Location = new Point(280, 0), Size = new Size(125, 32), Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
             btnExport.Click += (s, e) => MessageBox.Show("Sales transactions exported to CSV spreadsheet.", "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-            SunshineButton btnRefund = new SunshineButton { Text = "Refund Transaction", IsPrimary = false, IsDark = true, Location = new Point(412, 0), Size = new Size(125, 32), Font = new Font("Segoe UI", 7.5F, FontStyle.Bold) };
-            btnRefund.Click += (s, e) => MessageBox.Show("Refund authorization requires store manager PIN.", "Refund Verification", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            SunshineButton btnVoid = new SunshineButton { Text = "📦 Archive / Void Order", IsPrimary = false, CustomTextColor = Color.FromArgb(184, 50, 38), Location = new Point(412, 0), Size = new Size(150, 32), Font = new Font("Segoe UI", 7.5F, FontStyle.Bold) };
+            btnVoid.Click += (s, e) => VoidSelectedOrder();
 
             pnlActions.Controls.Add(btnReprint);
             pnlActions.Controls.Add(btnRefresh);
             pnlActions.Controls.Add(btnExport);
-            pnlActions.Controls.Add(btnRefund);
+            pnlActions.Controls.Add(btnVoid);
 
             pnlFilterBar.Controls.Add(_txtSearch);
             pnlFilterBar.Controls.Add(_flpMethods);
@@ -290,24 +290,43 @@ namespace ERP.winforms.UI.Views
                 Padding = new Padding(6, 0, 0, 0)
             };
 
-            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ORDER ID", FillWeight = 11, Name = "ColId" });
-            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CUSTOMER NAME", FillWeight = 18, Name = "ColCust" });
-            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "DATE & TIME", FillWeight = 14, Name = "ColDate" });
-            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ITEMS PURCHASED", FillWeight = 16, Name = "ColItems" });
-            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PAYMENT METHOD", FillWeight = 14, Name = "ColPay" });
-            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CASHIER / REGISTER", FillWeight = 13, Name = "ColCashier" });
-            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TAX (12%)", FillWeight = 9, Name = "ColTax" });
-            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TOTAL (PHP)", FillWeight = 11, Name = "ColTotal" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ORDER ID", FillWeight = 10, Name = "ColId" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CUSTOMER NAME", FillWeight = 16, Name = "ColCust" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "DATE & TIME", FillWeight = 13, Name = "ColDate" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ITEMS PURCHASED", FillWeight = 15, Name = "ColItems" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PAYMENT METHOD", FillWeight = 13, Name = "ColPay" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CASHIER / REGISTER", FillWeight = 12, Name = "ColCashier" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TAX (12%)", FillWeight = 8, Name = "ColTax" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TOTAL (PHP)", FillWeight = 10, Name = "ColTotal" });
             _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STATUS", FillWeight = 9, Name = "ColStatus" });
-            _gridOrders.Columns.Add(new DataGridViewButtonColumn { HeaderText = "ACTIONS", FillWeight = 7, Text = "View", UseColumnTextForButtonValue = true, Name = "ColAction" });
+            _gridOrders.Columns.Add(new DataGridViewButtonColumn { HeaderText = "RECEIPT", FillWeight = 7, Text = "View", UseColumnTextForButtonValue = true, Name = "ColAction" });
+            _gridOrders.Columns.Add(new DataGridViewButtonColumn { HeaderText = "ARCHIVE / VOID", FillWeight = 11, Name = "ColVoid" });
 
             _gridOrders.CellContentClick += (s, e) =>
             {
-                if (e.RowIndex >= 0 && _gridOrders.Columns["ColAction"] != null && e.ColumnIndex == _gridOrders.Columns["ColAction"]!.Index)
+                if (e.RowIndex >= 0)
                 {
-                    ViewSelectedReceipt();
+                    if (_gridOrders.Columns["ColAction"] != null && e.ColumnIndex == _gridOrders.Columns["ColAction"]!.Index)
+                    {
+                        ViewSelectedReceipt();
+                    }
+                    else if (_gridOrders.Columns["ColVoid"] != null && e.ColumnIndex == _gridOrders.Columns["ColVoid"]!.Index)
+                    {
+                        VoidOrRestoreSelectedOrder(e.RowIndex);
+                    }
                 }
             };
+
+            ContextMenuStrip ctxOrders = new ContextMenuStrip();
+            ToolStripMenuItem itemReceipt = new ToolStripMenuItem("📄 View Receipt Details");
+            ToolStripMenuItem itemVoid = new ToolStripMenuItem("📦 Archive / Void Transaction");
+            itemReceipt.Click += (s, e) => ViewSelectedReceipt();
+            itemVoid.Click += (s, e) => VoidSelectedOrder();
+            ctxOrders.Items.Add(itemReceipt);
+            ctxOrders.Items.Add(new ToolStripSeparator());
+            ctxOrders.Items.Add(itemVoid);
+            _gridOrders.ContextMenuStrip = ctxOrders;
+
             _gridOrders.Resize += (s, e) => ApplyFilters();
 
             cardGrid.Controls.Add(_gridOrders);
@@ -456,6 +475,7 @@ namespace ERP.winforms.UI.Views
 
             foreach (var t in pageItems)
             {
+                bool isVoided = t.Status == "Voided";
                 int rowIdx = _gridOrders.Rows.Add(
                     t.OrderId,
                     t.Customer,
@@ -465,7 +485,9 @@ namespace ERP.winforms.UI.Views
                     t.Cashier,
                     $"₱{t.Tax:N2}",
                     $"₱{t.Total:N2}",
-                    t.Status
+                    t.Status,
+                    "View",
+                    isVoided ? "♻️ Restore" : "📦 Archive / Void"
                 );
 
                 var row = _gridOrders.Rows[rowIdx];
@@ -473,8 +495,23 @@ namespace ERP.winforms.UI.Views
                 row.Cells["ColId"].Style.ForeColor = Color.FromArgb(160, 110, 10);
                 row.Cells["ColId"].Style.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
                 row.Cells["ColTotal"].Style.Font = new Font("Segoe UI", 8.5F, FontStyle.Bold);
-                row.Cells["ColStatus"].Style.ForeColor = Color.FromArgb(27, 122, 79);
-                row.Cells["ColStatus"].Style.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+
+                var voidCell = row.Cells["ColVoid"];
+                voidCell.Style.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+
+                if (isVoided)
+                {
+                    row.DefaultCellStyle.ForeColor = Color.FromArgb(150, 150, 150);
+                    row.Cells["ColStatus"].Style.ForeColor = Color.FromArgb(184, 50, 38);
+                    row.Cells["ColStatus"].Style.Font = new Font("Segoe UI", 8F, FontStyle.Italic);
+                    voidCell.Style.ForeColor = Color.FromArgb(27, 122, 79);
+                }
+                else
+                {
+                    row.Cells["ColStatus"].Style.ForeColor = Color.FromArgb(27, 122, 79);
+                    row.Cells["ColStatus"].Style.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+                    voidCell.Style.ForeColor = Color.FromArgb(184, 50, 38);
+                }
             }
 
             UpdatePaginationButtons(results.Count, totalRevenue, pageSize);
@@ -574,6 +611,16 @@ namespace ERP.winforms.UI.Views
 
             var row = _gridOrders.SelectedRows[0];
             string orderId = row.Cells["ColId"].Value?.ToString() ?? "ORD-0001";
+            string cleanId = orderId.TrimStart('#');
+
+            var actualOrder = _dataService.Orders.FirstOrDefault(o => o.Id.TrimStart('#').Equals(cleanId, StringComparison.OrdinalIgnoreCase));
+            if (actualOrder != null)
+            {
+                using var dlg = new ReceiptForm(actualOrder);
+                dlg.ShowDialog(this);
+                return;
+            }
+
             string cust = row.Cells["ColCust"].Value?.ToString()?.Split('\n')[0] ?? "Walk-in Customer";
             string totalStr = row.Cells["ColTotal"].Value?.ToString()?.Replace("₱", "")?.Replace(",", "")?.Trim() ?? "0";
             decimal.TryParse(totalStr, out decimal total);
@@ -592,8 +639,74 @@ namespace ERP.winforms.UI.Views
             };
             mockOrder.Items.Add(new CartItem { ProductId = 1, ProductName = "Computer Hardware Equipment", Quantity = 1, UnitPrice = mockOrder.Subtotal });
 
-            using var dlg = new ReceiptForm(mockOrder);
-            dlg.ShowDialog(this);
+            using var dlgMock = new ReceiptForm(mockOrder);
+            dlgMock.ShowDialog(this);
+        }
+
+        private void VoidOrRestoreSelectedOrder(int rowIndex)
+        {
+            if (rowIndex < 0 || rowIndex >= _gridOrders.Rows.Count) return;
+            var row = _gridOrders.Rows[rowIndex];
+            if (!(row.Tag is SalesRecord record)) return;
+
+            string orderId = record.OrderId;
+            bool isVoided = record.Status == "Voided";
+
+            if (!isVoided)
+            {
+                var confirm = MessageBox.Show(
+                    $"Are you sure you want to void / archive Transaction '{orderId}'?\n\n" +
+                    "• The transaction will be marked as Voided in fiscal reports.\n" +
+                    "• All purchased product stock quantities will be automatically restored to inventory.\n" +
+                    "• The audit record remains fully preserved for accounting compliance.",
+                    "Archive / Void Order Confirmation",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (confirm != DialogResult.Yes) return;
+
+                bool ok = _dataService.VoidOrder(orderId);
+                if (ok)
+                {
+                    record.Status = "Voided";
+                    RefreshData();
+                    MessageBox.Show($"Transaction '{orderId}' has been voided and stock was returned to inventory.",
+                        "Order Voided", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+            else
+            {
+                var confirm = MessageBox.Show(
+                    $"Restore voided Transaction '{orderId}' back to active status?\n\n" +
+                    "• The transaction will be reinstated as an active completed sale.\n" +
+                    "• Product inventory will be re-deducted accordingly.",
+                    "Restore Order Confirmation",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+
+                if (confirm != DialogResult.Yes) return;
+
+                bool ok = _dataService.RestoreOrder(orderId);
+                if (ok)
+                {
+                    record.Status = "Completed";
+                    RefreshData();
+                    MessageBox.Show($"Transaction '{orderId}' restored successfully!",
+                        "Order Restored", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+        }
+
+        private void VoidSelectedOrder()
+        {
+            if (_gridOrders.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Please select a transaction row from the list to archive / void.",
+                    "Selection Required", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            VoidOrRestoreSelectedOrder(_gridOrders.SelectedRows[0].Index);
         }
     }
 }
