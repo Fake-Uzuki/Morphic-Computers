@@ -11,6 +11,7 @@ namespace ERP.domain.entities
         public decimal UnitPrice { get; set; }
         public bool IsActive { get; set; } = true;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime? ArchivedAt { get; set; }
 
         // Backward compatibility helpers for WinForms UI
         [NotMapped]

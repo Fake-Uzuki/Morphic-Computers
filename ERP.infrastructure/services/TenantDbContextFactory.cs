@@ -43,7 +43,8 @@ namespace ERP.infrastructure.services
                 $"Password={password};" +
                 $"Encrypt=True;" +
                 $"TrustServerCertificate=True;" +
-                $"MultipleActiveResultSets=True;";
+                $"MultipleActiveResultSets=True;" +
+                $"Connect Timeout=3;";
 
             var options = new DbContextOptionsBuilder<TenantErpDbContext>()
                 .UseSqlServer(connectionString)

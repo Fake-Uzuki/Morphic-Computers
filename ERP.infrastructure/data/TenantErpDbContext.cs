@@ -101,6 +101,8 @@ namespace ERP.infrastructure.data
                 entity.Property(x => x.Discount).HasPrecision(18, 2);
                 entity.Property(x => x.TotalAmount).HasPrecision(18, 2);
                 entity.Ignore(x => x.Items);
+                entity.Ignore(x => x.Status);
+                entity.Ignore(x => x.ArchivedAt);
             });
 
             builder.Entity<Category>(entity =>

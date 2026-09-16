@@ -18,21 +18,25 @@ namespace ERP.infrastructure.services
         {
             try
             {
-                var tenantDatabase = await _masterDb.CompanyDatabases
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(x =>
-                        x.CompanyId == companyId &&
-                        x.IsActive);
-
-                if (tenantDatabase != null)
+                if (System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
                 {
-                    Console.WriteLine($"[RESOLVER] Found in Master DB: CompanyId={companyId}, Server={tenantDatabase.ServerName}, DB={tenantDatabase.DatabaseName}, CredKey={tenantDatabase.CredentialKey}");
-                    return new TenantDatabaseInfo
+                    using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(2));
+                    var tenantDatabase = await _masterDb.CompanyDatabases
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(x =>
+                            x.CompanyId == companyId &&
+                            x.IsActive, cts.Token);
+
+                    if (tenantDatabase != null)
                     {
-                        ServerName = tenantDatabase.ServerName,
-                        DatabaseName = tenantDatabase.DatabaseName,
-                        CredentialKey = tenantDatabase.CredentialKey
-                    };
+                        Console.WriteLine($"[RESOLVER] Found in Master DB: CompanyId={companyId}, Server={tenantDatabase.ServerName}, DB={tenantDatabase.DatabaseName}, CredKey={tenantDatabase.CredentialKey}");
+                        return new TenantDatabaseInfo
+                        {
+                            ServerName = tenantDatabase.ServerName,
+                            DatabaseName = tenantDatabase.DatabaseName,
+                            CredentialKey = tenantDatabase.CredentialKey
+                        };
+                    }
                 }
             }
             catch (Exception ex)
