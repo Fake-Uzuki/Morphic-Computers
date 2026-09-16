@@ -798,10 +798,14 @@ namespace ERP.winforms.UI.Views
                 }
             }
 
+            string prodName = _selectedProduct.ProductName;
+            string prodSku = _selectedProduct.ProductCode;
+            int prodId = _selectedProduct.ProductId;
+
             if (_selectedProduct.IsActive)
             {
                 var res = MessageBox.Show(
-                    $"Are you sure you want to archive '{_selectedProduct.ProductName}' (SKU: {_selectedProduct.ProductCode})?\n\n" +
+                    $"Are you sure you want to archive '{prodName}' (SKU: {prodSku})?\n\n" +
                     "• The product will be hidden from POS sales.\n" +
                     "• Past sales, receipts, and order histories remain fully intact.\n" +
                     "• You can restore this product at any time from the 'Archived Catalog' view.",
@@ -811,17 +815,17 @@ namespace ERP.winforms.UI.Views
 
                 if (res == DialogResult.Yes)
                 {
-                    _dataService.ArchiveProduct(_selectedProduct.ProductId);
+                    _dataService.ArchiveProduct(prodId);
                     ApplyFilters();
                     OnProductsChanged?.Invoke();
                     ClearForm();
-                    MessageBox.Show($"Product '{_selectedProduct.ProductName}' has been archived successfully.", "Product Archived", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show($"Product '{prodName}' has been archived successfully.", "Product Archived", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             }
             else
             {
                 var res = MessageBox.Show(
-                    $"Restore '{_selectedProduct.ProductName}' (SKU: {_selectedProduct.ProductCode}) back to the active catalog?\n\n" +
+                    $"Restore '{prodName}' (SKU: {prodSku}) back to the active catalog?\n\n" +
                     "• The product will immediately become available for sale in the POS terminal.",
                     "Restore Product Confirmation",
                     MessageBoxButtons.YesNo,
@@ -829,11 +833,11 @@ namespace ERP.winforms.UI.Views
 
                 if (res == DialogResult.Yes)
                 {
-                    _dataService.RestoreProduct(_selectedProduct.ProductId);
+                    _dataService.RestoreProduct(prodId);
                     ApplyFilters();
                     OnProductsChanged?.Invoke();
                     ClearForm();
-                    MessageBox.Show($"Product '{_selectedProduct.ProductName}' restored to active catalog!", "Product Restored", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show($"Product '{prodName}' restored to active catalog!", "Product Restored", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             }
         }
