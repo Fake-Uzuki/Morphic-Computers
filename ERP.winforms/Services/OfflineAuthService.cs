@@ -72,20 +72,138 @@ namespace ERP.winforms.Services
             {
                 try
                 {
-                    if (!File.Exists(_vaultFilePath)) return new List<CachedUserCredential>();
+                    List<CachedUserCredential>? list = null;
+                    if (File.Exists(_vaultFilePath))
+                    {
+                        byte[] encryptedBytes = File.ReadAllBytes(_vaultFilePath);
+                        byte[] decryptedBytes = ProtectedData.Unprotect(encryptedBytes, Entropy, DataProtectionScope.CurrentUser);
+                        string json = Encoding.UTF8.GetString(decryptedBytes);
+                        list = JsonSerializer.Deserialize<List<CachedUserCredential>>(json);
+                    }
 
-                    byte[] encryptedBytes = File.ReadAllBytes(_vaultFilePath);
-                    byte[] decryptedBytes = ProtectedData.Unprotect(encryptedBytes, Entropy, DataProtectionScope.CurrentUser);
-                    string json = Encoding.UTF8.GetString(decryptedBytes);
-                    var list = JsonSerializer.Deserialize<List<CachedUserCredential>>(json);
-                    return list ?? new List<CachedUserCredential>();
+                    list ??= new List<CachedUserCredential>();
+                    bool updated = EnsureDefaultsInList(list);
+                    if (updated)
+                    {
+                        WriteVault(list);
+                    }
+
+                    return list;
                 }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"ReadVault error: {ex.Message}");
-                    return new List<CachedUserCredential>();
+                    return SeedDefaultCredentials();
                 }
             }
+        }
+
+        private static void HashPassword(string password, out string saltBase64, out string hashBase64)
+        {
+            byte[] salt = RandomNumberGenerator.GetBytes(SaltByteSize);
+            byte[] hash = Rfc2898DeriveBytes.Pbkdf2(
+                password,
+                salt,
+                Pbkdf2Iterations,
+                HashAlgorithmName.SHA256,
+                HashByteSize);
+            saltBase64 = Convert.ToBase64String(salt);
+            hashBase64 = Convert.ToBase64String(hash);
+        }
+
+        private static bool EnsureDefaultsInList(List<CachedUserCredential> list)
+        {
+            bool modified = false;
+            var tenants = new[]
+            {
+                (Id: 1, Code: "TENANT_A", Name: "Tenant A", Plan: "Micro"),
+                (Id: 2, Code: "TENANT_B", Name: "Tenant B", Plan: "SmallBusiness"),
+                (Id: 3, Code: "TENANT_C", Name: "Tenant C", Plan: "Enterprise")
+            };
+
+            foreach (var t in tenants)
+            {
+                // Store Administrator - cirunay
+                if (!list.Any(c => c.CompanyId == t.Id && c.Username.Equals("cirunay", StringComparison.OrdinalIgnoreCase)))
+                {
+                    HashPassword("09092121", out string cSalt, out string cHash);
+                    list.Add(new CachedUserCredential
+                    {
+                        CompanyId = t.Id,
+                        CompanyCode = t.Code,
+                        CompanyName = t.Name,
+                        PlanName = t.Plan,
+                        Username = "cirunay",
+                        DisplayName = "Cirunay",
+                        Role = "Store Administrator",
+                        SaltBase64 = cSalt,
+                        HashBase64 = cHash,
+                        LastLoginUtc = DateTime.UtcNow,
+                        IsPOSAllowed = true,
+                        IsInventoryAllowed = true,
+                        IsRepairAllowed = t.Id >= 2,
+                        IsSupplierAllowed = t.Id == 3
+                    });
+                    modified = true;
+                }
+
+                // Cashier - cashier
+                if (!list.Any(c => c.CompanyId == t.Id && c.Username.Equals("cashier", StringComparison.OrdinalIgnoreCase)))
+                {
+                    HashPassword("cashier123", out string kSalt, out string kHash);
+                    list.Add(new CachedUserCredential
+                    {
+                        CompanyId = t.Id,
+                        CompanyCode = t.Code,
+                        CompanyName = t.Name,
+                        PlanName = t.Plan,
+                        Username = "cashier",
+                        DisplayName = "Cashier (Alex M.)",
+                        Role = "Cashier Operations",
+                        SaltBase64 = kSalt,
+                        HashBase64 = kHash,
+                        LastLoginUtc = DateTime.UtcNow,
+                        IsPOSAllowed = true,
+                        IsInventoryAllowed = true,
+                        IsRepairAllowed = false,
+                        IsSupplierAllowed = false
+                    });
+                    modified = true;
+                }
+
+                // Admin - admin
+                if (!list.Any(c => c.CompanyId == t.Id && c.Username.Equals("admin", StringComparison.OrdinalIgnoreCase)))
+                {
+                    HashPassword("admin123", out string aSalt, out string aHash);
+                    list.Add(new CachedUserCredential
+                    {
+                        CompanyId = t.Id,
+                        CompanyCode = t.Code,
+                        CompanyName = t.Name,
+                        PlanName = t.Plan,
+                        Username = "admin",
+                        DisplayName = "Admin",
+                        Role = "Store Administrator",
+                        SaltBase64 = aSalt,
+                        HashBase64 = aHash,
+                        LastLoginUtc = DateTime.UtcNow,
+                        IsPOSAllowed = true,
+                        IsInventoryAllowed = true,
+                        IsRepairAllowed = true,
+                        IsSupplierAllowed = true
+                    });
+                    modified = true;
+                }
+            }
+
+            return modified;
+        }
+
+        private static List<CachedUserCredential> SeedDefaultCredentials()
+        {
+            var list = new List<CachedUserCredential>();
+            EnsureDefaultsInList(list);
+            return list;
         }
 
         private void WriteVault(List<CachedUserCredential> credentials)
@@ -173,11 +291,20 @@ namespace ERP.winforms.Services
 
             var vault = ReadVault();
 
-            // Find matching company & user in local vault
+            // Find matching company & user in local vault (with flexible tenant aliases)
+            int targetCompanyId = 0;
+            if (companyInput.Equals("Tenant A", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("TENANT_A", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("Morphic Computers", StringComparison.OrdinalIgnoreCase))
+                targetCompanyId = 1;
+            else if (companyInput.Equals("Tenant B", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("TENANT_B", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("Apex Cybernetics", StringComparison.OrdinalIgnoreCase))
+                targetCompanyId = 2;
+            else if (companyInput.Equals("Tenant C", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("TENANT_C", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("Vanguard Tech", StringComparison.OrdinalIgnoreCase))
+                targetCompanyId = 3;
+
             var match = vault.FirstOrDefault(c =>
                 c.Username.Equals(username, StringComparison.OrdinalIgnoreCase) &&
                 (c.CompanyName.Equals(companyInput, StringComparison.OrdinalIgnoreCase) ||
-                 c.CompanyCode.Equals(companyInput, StringComparison.OrdinalIgnoreCase)));
+                 c.CompanyCode.Equals(companyInput, StringComparison.OrdinalIgnoreCase) ||
+                 (targetCompanyId > 0 && c.CompanyId == targetCompanyId)));
 
             if (match == null)
             {

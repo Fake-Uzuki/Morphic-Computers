@@ -30,6 +30,7 @@ namespace ERP.winforms
         private Button _btnNavOrders = null!;
         private Button? _btnNavRepairs;
         private Button? _activeNavButton;
+        private Label _lblBottomRight = null!;
 
         // Views
         private DashboardView _dashboardView = null!;
@@ -49,10 +50,17 @@ namespace ERP.winforms
             InitializeComponent();
             KeyPreview = true;
             KeyDown += Form1_KeyDown;
+            FormClosing += (s, e) => _dataService.SaveAllToDisk();
 
             SetupCustomLayout();
 
             SwitchView(_dashboardView, _btnNavDashboard);
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            _dataService.SaveAllToDisk();
+            base.OnFormClosing(e);
         }
 
         private void SetupCustomLayout()
@@ -222,17 +230,29 @@ namespace ERP.winforms
                 AutoSize = true
             };
 
-            Label lblBottomRight = new Label
+            _lblBottomRight = new Label
             {
-                Text = $"Latency: 14ms  |  MonsterASP Cloud ({(_dataService.CurrentCompany?.CompanyId == 1 ? "db67673" : "Isolated Tenant")}) Connected  |  [F2 New Sale]  [F3 Catalog]",
                 Font = new Font("Segoe UI", 8F, FontStyle.Regular),
                 ForeColor = AppTheme.BottomBarText,
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(Width - 560, 6),
+                Location = new Point(Width - 580, 6),
                 AutoSize = true
             };
             _pnlBottomBar.Controls.Add(lblBottomLeft);
-            _pnlBottomBar.Controls.Add(lblBottomRight);
+            _pnlBottomBar.Controls.Add(_lblBottomRight);
+
+            // Hook live connectivity & sync status updates
+            UpdateConnectionStatus();
+            SyncManager.Instance.SyncStatusChanged += (isSynced, remaining, msg) => UpdateConnectionStatus(null, remaining, msg);
+            _dataService.ConnectionStatusChanged += (isLive) => UpdateConnectionStatus(isLive);
+            System.Net.NetworkInformation.NetworkChange.NetworkAvailabilityChanged += (s, e) =>
+            {
+                UpdateConnectionStatus(e.IsAvailable);
+                if (e.IsAvailable)
+                {
+                    Task.Run(() => _dataService.LoadFromDatabase());
+                }
+            };
 
             // ========================================================
             // 4. MAIN CONTENT AREA (Canvas Background #F7F5EE)
@@ -352,6 +372,36 @@ namespace ERP.winforms
                 {
                     MessageBox.Show($"Failed to export tenant backup: {ex.Message}", "Backup Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
+            }
+        }
+
+        private void UpdateConnectionStatus(bool? isOnline = null, int? pendingSync = null, string? customMsg = null)
+        {
+            if (IsDisposed || Disposing) return;
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(() => UpdateConnectionStatus(isOnline, pendingSync, customMsg)));
+                return;
+            }
+
+            bool online = isOnline ?? (_dataService.IsUsingLiveCloudDatabase && System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable());
+            int pending = pendingSync ?? SyncManager.Instance.PendingCount;
+            string companyDb = _dataService.CurrentCompany?.CompanyId == 1 ? "db67673" : "Isolated Tenant";
+
+            if (!string.IsNullOrEmpty(customMsg))
+            {
+                _lblBottomRight.Text = $"{customMsg}  |  [F2 New Sale]  [F3 Catalog]";
+            }
+            else if (online)
+            {
+                _lblBottomRight.ForeColor = AppTheme.BottomBarText;
+                _lblBottomRight.Text = $"Latency: 14ms  |  ☁️ MonsterASP Cloud ({companyDb}) Connected  |  [F2 New Sale]  [F3 Catalog]";
+            }
+            else
+            {
+                _lblBottomRight.ForeColor = Color.FromArgb(243, 156, 18);
+                string syncText = pending > 0 ? $"({pending} queued for sync)" : "(Local Cache Active)";
+                _lblBottomRight.Text = $"📶 Offline Mode {syncText}  |  [F2 New Sale]  [F3 Catalog]";
             }
         }
     }

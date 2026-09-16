@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using ERP.domain.entities;
 using ERP.infrastructure.data;
@@ -26,8 +28,22 @@ namespace ERP.winforms.Services
         public List<Order> Orders { get; private set; } = new();
 
         public Action? CategoriesChanged;
+        public Action? ProductsChanged;
+        public Action<bool>? ConnectionStatusChanged;
 
-        public int ActiveCompanyId { get; set; } = 1;
+        private int _activeCompanyId = 1;
+        public int ActiveCompanyId
+        {
+            get => _activeCompanyId;
+            set
+            {
+                if (_activeCompanyId != value)
+                {
+                    _activeCompanyId = value;
+                    SwitchActiveTenantData();
+                }
+            }
+        }
         public bool IsUsingLiveCloudDatabase { get; private set; }
 
         public Company? ActiveCompany => Companies.FirstOrDefault(c => c.CompanyId == ActiveCompanyId);
@@ -41,6 +57,26 @@ namespace ERP.winforms.Services
                 {
                     ActiveCompanyId = value.CompanyId;
                 }
+            }
+        }
+
+        public void SwitchActiveTenantData()
+        {
+            Categories.Clear();
+            Products.Clear();
+            Orders.Clear();
+
+            LoadCategoriesFromLocalCache();
+            LoadProductsToLocalCache();
+            SeedDefaultProductsIfEmpty();
+            LoadOrdersFromLocalCache();
+
+            CategoriesChanged?.Invoke();
+            ProductsChanged?.Invoke();
+
+            if (NetworkInterface.GetIsNetworkAvailable())
+            {
+                Task.Run(() => LoadFromDatabase());
             }
         }
 
@@ -72,10 +108,14 @@ namespace ERP.winforms.Services
             // Immediate local cache hydration: UI is instantly populated without waiting on network
             LoadCategoriesFromLocalCache();
             LoadProductsToLocalCache();
+            SeedDefaultProductsIfEmpty();
             LoadOrdersFromLocalCache();
 
-            // Background / live cloud refresh
-            LoadFromDatabase();
+            // Background / live cloud refresh (only if network is connected, off UI thread)
+            if (NetworkInterface.GetIsNetworkAvailable())
+            {
+                Task.Run(() => LoadFromDatabase());
+            }
         }
 
         public void LoadFromDatabase()
@@ -83,7 +123,16 @@ namespace ERP.winforms.Services
             // Ensure local cache is in memory immediately
             if (Categories.Count == 0) LoadCategoriesFromLocalCache();
             if (Products.Count == 0) LoadProductsToLocalCache();
+            SeedDefaultProductsIfEmpty();
             if (Orders.Count == 0) LoadOrdersFromLocalCache();
+
+            // Instant short-circuit if machine has no Wi-Fi / network connection
+            if (!NetworkInterface.GetIsNetworkAvailable())
+            {
+                IsUsingLiveCloudDatabase = false;
+                ConnectionStatusChanged?.Invoke(false);
+                return;
+            }
 
             try
             {
@@ -99,8 +148,8 @@ namespace ERP.winforms.Services
                 {
                     Categories = liveCategories;
                     SaveCategoriesToLocalCache();
+                    CategoriesChanged?.Invoke();
                 }
-                CategoriesChanged?.Invoke();
 
                 // 2. Fetch live products for the active tenant
                 var liveProducts = Task.Run(() => _apiClient.GetProductsAsync(ActiveCompanyId)).GetAwaiter().GetResult();
@@ -140,6 +189,8 @@ namespace ERP.winforms.Services
 
                     SaveProductsToLocalCache();
                     IsUsingLiveCloudDatabase = true;
+                    ProductsChanged?.Invoke();
+                    ConnectionStatusChanged?.Invoke(true);
                 }
 
                 // 3. Fetch live orders for the active tenant through ERP.api / MonsterASP DB
@@ -169,8 +220,10 @@ namespace ERP.winforms.Services
             // If empty after online attempt, ensure local cache is loaded
             if (Categories.Count == 0) LoadCategoriesFromLocalCache();
             if (Products.Count == 0) LoadProductsToLocalCache();
+            SeedDefaultProductsIfEmpty();
             if (Orders.Count == 0) LoadOrdersFromLocalCache();
             IsUsingLiveCloudDatabase = false;
+            ConnectionStatusChanged?.Invoke(false);
         }
 
         private string GetLocalOrdersFilePath()
@@ -217,6 +270,70 @@ namespace ERP.winforms.Services
             {
                 System.Diagnostics.Debug.WriteLine($"LoadOrdersFromLocalCache error: {ex.Message}");
             }
+
+            if (Orders.Count == 0)
+            {
+                SeedDefaultOrdersIfEmpty();
+            }
+        }
+
+        private void SeedDefaultOrdersIfEmpty()
+        {
+            if (Orders.Count > 0) return;
+
+            Orders = new List<Order>
+            {
+                new Order
+                {
+                    Id = "ORD-20260915-001",
+                    CompanyId = ActiveCompanyId,
+                    CustomerName = "Juan Dela Cruz",
+                    CreatedAt = DateTime.Now.AddDays(-2),
+                    PaymentMethod = "Cash",
+                    Subtotal = 34776.79m,
+                    Tax = 4173.21m,
+                    TotalAmount = 38950.00m,
+                    Status = "Completed",
+                    Items = new List<CartItem>
+                    {
+                        new CartItem { ProductId = 1, ProductName = "ASUS Dual GeForce RTX 4070 OC 12GB", Quantity = 1, UnitPrice = 34776.79m }
+                    }
+                },
+                new Order
+                {
+                    Id = "ORD-20260916-002",
+                    CompanyId = ActiveCompanyId,
+                    CustomerName = "Maria Santos",
+                    CreatedAt = DateTime.Now.AddDays(-1),
+                    PaymentMethod = "Card / Terminal",
+                    Subtotal = 4866.07m,
+                    Tax = 583.93m,
+                    TotalAmount = 5450.00m,
+                    Status = "Completed",
+                    Items = new List<CartItem>
+                    {
+                        new CartItem { ProductId = 3, ProductName = "Kingston FURY Beast 32GB (2x16GB) DDR5-6000", Quantity = 1, UnitPrice = 4866.07m }
+                    }
+                },
+                new Order
+                {
+                    Id = "ORD-20260917-003",
+                    CompanyId = ActiveCompanyId,
+                    CustomerName = "TechCorp Solutions PH",
+                    CreatedAt = DateTime.Now.AddHours(-3),
+                    PaymentMethod = "Bank Transfer",
+                    Subtotal = 23660.71m,
+                    Tax = 2839.29m,
+                    TotalAmount = 26500.00m,
+                    Status = "Completed",
+                    Items = new List<CartItem>
+                    {
+                        new CartItem { ProductId = 2, ProductName = "AMD Ryzen 7 7800X3D 8-Core Processor", Quantity = 1, UnitPrice = 23660.71m }
+                    }
+                }
+            };
+
+            SaveOrdersToLocalCache();
         }
 
         private string GetLocalCategoriesFilePath()
@@ -304,13 +421,42 @@ namespace ERP.winforms.Services
             {
                 System.Diagnostics.Debug.WriteLine($"LoadProductsToLocalCache error: {ex.Message}");
             }
+
+            SeedDefaultProductsIfEmpty();
+        }
+
+        private void SeedDefaultProductsIfEmpty()
+        {
+            if (Products.Count > 0) return;
+
+            Products = new List<Product>
+            {
+                new Product { ProductId = 1, CompanyId = ActiveCompanyId, ProductCode = "GPU001", ProductName = "NVIDIA GeForce RTX 4060 8GB", UnitPrice = 329.99m, StockQuantity = 8, CategoryName = "Graphics Cards (GPU)", Description = "Ada Lovelace architecture with DLSS 3 support.", IsActive = true },
+                new Product { ProductId = 2, CompanyId = ActiveCompanyId, ProductCode = "CPU001", ProductName = "Intel Core i5-13400 Processor", UnitPrice = 5600.00m, StockQuantity = 10, CategoryName = "Processors (CPU)", Description = "10-Core (6P+4E) Raptor Lake desktop processor.", IsActive = true },
+                new Product { ProductId = 3, CompanyId = ActiveCompanyId, ProductCode = "RAM001", ProductName = "Corsair Vengeance 16GB DDR4 RAM", UnitPrice = 8000.00m, StockQuantity = 11, CategoryName = "Memory (RAM)", Description = "High performance DDR4 3200MHz memory module.", IsActive = true },
+                new Product { ProductId = 4, CompanyId = ActiveCompanyId, ProductCode = "SSD001", ProductName = "Samsung 980 Pro 1TB NVMe SSD", UnitPrice = 10000.00m, StockQuantity = 9, CategoryName = "Storage (SSD/HDD)", Description = "PCIe Gen 4.0 NVMe M.2 solid state drive.", IsActive = true },
+                new Product { ProductId = 5, CompanyId = ActiveCompanyId, ProductCode = "PSU001", ProductName = "Corsair 650W Power Supply", UnitPrice = 6000.00m, StockQuantity = 10, CategoryName = "Peripherals", Description = "80 PLUS Bronze certified continuous power supply.", IsActive = true },
+                new Product { ProductId = 7, CompanyId = ActiveCompanyId, ProductCode = "KEY001", ProductName = "Mechanical Gaming Keyboard RGB", UnitPrice = 89.99m, StockQuantity = 7, CategoryName = "Peripherals", Description = "Customizable mechanical RGB gaming keyboard.", IsActive = true },
+                new Product { ProductId = 8, CompanyId = ActiveCompanyId, ProductCode = "TEST-SSMS-001", ProductName = "SSMS Live GPU - Cloud Verified", UnitPrice = 750.00m, StockQuantity = 9, CategoryName = "Graphics Cards (GPU)", Description = "Cloud synchronized graphics hardware.", IsActive = true },
+                new Product { ProductId = 11, CompanyId = ActiveCompanyId, ProductCode = "TEST-SSMS-004", ProductName = "SSMS Live Verification GPU", UnitPrice = 580.00m, StockQuantity = 1180, CategoryName = "Graphics Cards (GPU)", Description = "Enterprise verified graphics card.", IsActive = true },
+                new Product { ProductId = 14, CompanyId = ActiveCompanyId, ProductCode = "GPU002", ProductName = "NVDIA GeForce RTX 4050 6GB", UnitPrice = 2400.00m, StockQuantity = 9, CategoryName = "Graphics Cards (GPU)", Description = "Dedicated gaming and creator graphics processor.", IsActive = true },
+                new Product { ProductId = 15, CompanyId = ActiveCompanyId, ProductCode = "MB001", ProductName = "MSI B550M PRO-VDH WIFI", UnitPrice = 5500.00m, StockQuantity = 16, CategoryName = "Motherboards", Description = "AMD AM4 micro-ATX motherboard with Wi-Fi.", IsActive = true },
+                new Product { ProductId = 16, CompanyId = ActiveCompanyId, ProductCode = "CPU002", ProductName = "AMD Ryzen 5 5600", UnitPrice = 5700.00m, StockQuantity = 8, CategoryName = "Processors (CPU)", Description = "6-Core 12-Thread unlocked desktop processor.", IsActive = true },
+                new Product { ProductId = 17, CompanyId = ActiveCompanyId, ProductCode = "RAM002", ProductName = "Kingston Fury Beast 8GB DDR4", UnitPrice = 1800.00m, StockQuantity = 20, CategoryName = "Memory (RAM)", Description = "Reliable 3200MHz DDR4 gaming memory stick.", IsActive = true },
+                new Product { ProductId = 18, CompanyId = ActiveCompanyId, ProductCode = "PSU003", ProductName = "ASUS Prime 750W Bronze", UnitPrice = 3300.00m, StockQuantity = 10, CategoryName = "Graphics Cards (GPU)", Description = "750W 80 PLUS Bronze power unit.", IsActive = true },
+                new Product { ProductId = 19, CompanyId = ActiveCompanyId, ProductCode = "PSU002", ProductName = "MSI MAG A650BN 650W Bronze", UnitPrice = 2700.00m, StockQuantity = 12, CategoryName = "Graphics Cards (GPU)", Description = "650W Bronze ATX high efficiency power supply.", IsActive = true },
+                new Product { ProductId = 20, CompanyId = ActiveCompanyId, ProductCode = "KEY002", ProductName = "AULA F75 Mechanical Keyboard", UnitPrice = 2015.00m, StockQuantity = 10, CategoryName = "Peripherals", Description = "Gasket mount 75% mechanical wireless keyboard.", IsActive = true },
+                new Product { ProductId = 21, CompanyId = ActiveCompanyId, ProductCode = "GPU004", ProductName = "NVDIA GeForce RTX 3080 8GB", UnitPrice = 3000.00m, StockQuantity = 10, CategoryName = "Graphics Cards (GPU)", Description = "High-end Ampere architecture graphics card.", IsActive = true }
+            };
+
+            SaveProductsToLocalCache();
         }
 
         private static string GetTenantConnectionString(int companyId)
         {
             return companyId == 2
-                ? "Server=db66562.public.databaseasp.net;Database=db66562;User Id=db66562;Password=Ex6_n9#YZb3%;Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=True;Connect Timeout=15;"
-                : "Server=db67673.public.databaseasp.net;Database=db67673;User Id=db67673;Password=Wt7-8=mFA3#i;Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=True;Connect Timeout=15;";
+                ? "Server=db66562.public.databaseasp.net;Database=db66562;User Id=db66562;Password=Ex6_n9#YZb3%;Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=True;Connect Timeout=2;"
+                : "Server=db67673.public.databaseasp.net;Database=db67673;User Id=db67673;Password=Wt7-8=mFA3#i;Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=True;Connect Timeout=2;";
         }
 
         private async Task<List<Category>?> TryDirectFetchCategoriesAsync(int companyId)
@@ -408,20 +554,27 @@ namespace ERP.winforms.Services
             SaveCategoriesToLocalCache();
             CategoriesChanged?.Invoke();
 
-            try
+            if (NetworkInterface.GetIsNetworkAvailable())
             {
-                Task.Run(async () =>
+                try
                 {
-                    var res = await _apiClient.AddCategoryAsync(ActiveCompanyId, category);
-                    if (res == null)
+                    Task.Run(async () =>
                     {
-                        SyncManager.Instance.EnqueueCategory(category, false, ActiveCompanyId);
-                    }
-                }).ConfigureAwait(false);
+                        var res = await _apiClient.AddCategoryAsync(ActiveCompanyId, category);
+                        if (res == null)
+                        {
+                            SyncManager.Instance.EnqueueCategory(category, false, ActiveCompanyId);
+                        }
+                    }).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"AddCategory API error: {ex.Message}");
+                    SyncManager.Instance.EnqueueCategory(category, false, ActiveCompanyId);
+                }
             }
-            catch (Exception ex)
+            else
             {
-                System.Diagnostics.Debug.WriteLine($"AddCategory API error: {ex.Message}");
                 SyncManager.Instance.EnqueueCategory(category, false, ActiveCompanyId);
             }
 
@@ -458,20 +611,27 @@ namespace ERP.winforms.Services
             CategoriesChanged?.Invoke();
 
             // Dispatch to ERP.api asynchronously or enqueue offline
-            try
+            if (NetworkInterface.GetIsNetworkAvailable())
             {
-                Task.Run(async () =>
+                try
                 {
-                    var res = await _apiClient.UpdateCategoryAsync(ActiveCompanyId, categoryId, cat);
-                    if (res == null)
+                    Task.Run(async () =>
                     {
-                        SyncManager.Instance.EnqueueCategory(cat, true, ActiveCompanyId);
-                    }
-                }).ConfigureAwait(false);
+                        var res = await _apiClient.UpdateCategoryAsync(ActiveCompanyId, categoryId, cat);
+                        if (res == null)
+                        {
+                            SyncManager.Instance.EnqueueCategory(cat, true, ActiveCompanyId);
+                        }
+                    }).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdateCategory API error: {ex.Message}");
+                    SyncManager.Instance.EnqueueCategory(cat, true, ActiveCompanyId);
+                }
             }
-            catch (Exception ex)
+            else
             {
-                System.Diagnostics.Debug.WriteLine($"UpdateCategory API error: {ex.Message}");
                 SyncManager.Instance.EnqueueCategory(cat, true, ActiveCompanyId);
             }
 
@@ -499,20 +659,27 @@ namespace ERP.winforms.Services
             CategoriesChanged?.Invoke();
 
             // Dispatch to ERP.api asynchronously or enqueue offline
-            try
+            if (NetworkInterface.GetIsNetworkAvailable())
             {
-                Task.Run(async () =>
+                try
                 {
-                    bool ok = await _apiClient.DeleteCategoryAsync(ActiveCompanyId, categoryId, fallback);
-                    if (!ok)
+                    Task.Run(async () =>
                     {
-                        SyncManager.Instance.EnqueueDeleteCategory(categoryId, fallback, ActiveCompanyId);
-                    }
-                }).ConfigureAwait(false);
+                        bool ok = await _apiClient.DeleteCategoryAsync(ActiveCompanyId, categoryId, fallback);
+                        if (!ok)
+                        {
+                            SyncManager.Instance.EnqueueDeleteCategory(categoryId, fallback, ActiveCompanyId);
+                        }
+                    }).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"DeleteCategory API error: {ex.Message}");
+                    SyncManager.Instance.EnqueueDeleteCategory(categoryId, fallback, ActiveCompanyId);
+                }
             }
-            catch (Exception ex)
+            else
             {
-                System.Diagnostics.Debug.WriteLine($"DeleteCategory API error: {ex.Message}");
                 SyncManager.Instance.EnqueueDeleteCategory(categoryId, fallback, ActiveCompanyId);
             }
 
@@ -535,8 +702,13 @@ namespace ERP.winforms.Services
                     return UpdateProduct(product);
                 }
 
-                // Send to ERP.api safely off UI thread
-                var created = Task.Run(() => _apiClient.AddProductAsync(ActiveCompanyId, product)).GetAwaiter().GetResult();
+                // Send to ERP.api safely off UI thread only if network is available
+                Product? created = null;
+                if (NetworkInterface.GetIsNetworkAvailable())
+                {
+                    created = Task.Run(() => _apiClient.AddProductAsync(ActiveCompanyId, product)).GetAwaiter().GetResult();
+                }
+
                 if (created != null)
                 {
                     product.ProductId = created.ProductId;
@@ -553,6 +725,8 @@ namespace ERP.winforms.Services
                 }
 
                 Products.Add(product);
+                SaveProductsToLocalCache();
+                ProductsChanged?.Invoke();
                 return true;
             }
             catch (Exception ex)
@@ -566,6 +740,9 @@ namespace ERP.winforms.Services
                     product.ProductId = nextId;
                     Products.Add(product);
                 }
+
+                SaveProductsToLocalCache();
+                ProductsChanged?.Invoke();
                 return true;
             }
         }
@@ -584,11 +761,16 @@ namespace ERP.winforms.Services
                 existing.StockQuantity = product.StockQuantity;
                 existing.CategoryName = product.CategoryName;
                 existing.Description = product.Description;
+                existing.IsActive = product.IsActive;
             }
 
             try
             {
-                bool synced = Task.Run(() => _apiClient.UpdateProductAsync(ActiveCompanyId, product)).GetAwaiter().GetResult();
+                bool synced = false;
+                if (NetworkInterface.GetIsNetworkAvailable())
+                {
+                    synced = Task.Run(() => _apiClient.UpdateProductAsync(ActiveCompanyId, product)).GetAwaiter().GetResult();
+                }
                 if (!synced)
                 {
                     SyncManager.Instance.EnqueueProduct(product, true, ActiveCompanyId);
@@ -606,25 +788,93 @@ namespace ERP.winforms.Services
                 .Select(g => g.First())
                 .ToList();
 
+            // Immediately persist changes to local storage
+            SaveProductsToLocalCache();
+            ProductsChanged?.Invoke();
+
             return true;
         }
 
-        public bool DeleteProduct(int productId)
+        public bool ArchiveProduct(int productId)
         {
             var p = Products.FirstOrDefault(x => x.ProductId == productId);
-            if (p != null) Products.Remove(p);
+            if (p == null) return false;
 
-            try
+            p.IsActive = false;
+            p.ArchivedAt = DateTime.UtcNow;
+
+            SaveProductsToLocalCache();
+            ProductsChanged?.Invoke();
+
+            if (NetworkInterface.GetIsNetworkAvailable())
             {
-                Task.Run(() => _apiClient.DeleteProductAsync(ActiveCompanyId, productId)).GetAwaiter().GetResult();
+                try
+                {
+                    Task.Run(async () =>
+                    {
+                        bool ok = await _apiClient.ArchiveProductAsync(ActiveCompanyId, productId);
+                        if (!ok)
+                        {
+                            SyncManager.Instance.EnqueueArchiveProduct(productId, ActiveCompanyId);
+                        }
+                    }).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"ArchiveProduct API error: {ex.Message}");
+                    SyncManager.Instance.EnqueueArchiveProduct(productId, ActiveCompanyId);
+                }
             }
-            catch (Exception ex)
+            else
             {
-                System.Diagnostics.Debug.WriteLine($"DeleteProduct API error: {ex.Message}");
+                SyncManager.Instance.EnqueueArchiveProduct(productId, ActiveCompanyId);
             }
 
             return true;
         }
+
+        public bool RestoreProduct(int productId)
+        {
+            var p = Products.FirstOrDefault(x => x.ProductId == productId);
+            if (p == null) return false;
+
+            p.IsActive = true;
+            p.ArchivedAt = null;
+
+            SaveProductsToLocalCache();
+            ProductsChanged?.Invoke();
+
+            if (NetworkInterface.GetIsNetworkAvailable())
+            {
+                try
+                {
+                    Task.Run(async () =>
+                    {
+                        bool ok = await _apiClient.RestoreProductAsync(ActiveCompanyId, productId);
+                        if (!ok)
+                        {
+                            SyncManager.Instance.EnqueueRestoreProduct(productId, ActiveCompanyId);
+                        }
+                    }).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"RestoreProduct API error: {ex.Message}");
+                    SyncManager.Instance.EnqueueRestoreProduct(productId, ActiveCompanyId);
+                }
+            }
+            else
+            {
+                SyncManager.Instance.EnqueueRestoreProduct(productId, ActiveCompanyId);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Enterprise Soft Delete: Archives product instead of permanently deleting to protect order audit history.
+        /// </summary>
+        public bool DeleteProduct(int productId) => ArchiveProduct(productId);
 
         public void ProcessOrder(Order order)
         {
@@ -644,13 +894,19 @@ namespace ERP.winforms.Services
                 }
             }
 
-            // Save immediately to local persistent cache so transactions are never lost
+            // Save immediately to local persistent cache so transactions and stock levels are never lost
             SaveOrdersToLocalCache();
+            SaveProductsToLocalCache();
+            ProductsChanged?.Invoke();
 
             // Sync with ERP.api / MonsterASP DB safely off UI thread
             try
             {
-                bool synced = Task.Run(() => _apiClient.ProcessOrderAsync(ActiveCompanyId, order)).GetAwaiter().GetResult();
+                bool synced = false;
+                if (NetworkInterface.GetIsNetworkAvailable())
+                {
+                    synced = Task.Run(() => _apiClient.ProcessOrderAsync(ActiveCompanyId, order)).GetAwaiter().GetResult();
+                }
                 if (!synced)
                 {
                     SyncManager.Instance.EnqueueOrder(order, ActiveCompanyId);
@@ -660,6 +916,75 @@ namespace ERP.winforms.Services
             {
                 System.Diagnostics.Debug.WriteLine($"ProcessOrder API error: {ex.Message}");
                 SyncManager.Instance.EnqueueOrder(order, ActiveCompanyId);
+            }
+        }
+
+        public bool VoidOrder(string orderId)
+        {
+            string cleanId = orderId.TrimStart('#');
+            var order = Orders.FirstOrDefault(o => o.Id.TrimStart('#').Equals(cleanId, StringComparison.OrdinalIgnoreCase));
+            if (order == null) return false;
+
+            order.Status = "Voided";
+            order.ArchivedAt = DateTime.UtcNow;
+
+            // Restock items in inventory
+            foreach (var item in order.Items)
+            {
+                var prod = Products.FirstOrDefault(p => p.ProductId == item.ProductId);
+                if (prod != null)
+                {
+                    prod.StockQuantity += item.Quantity;
+                }
+            }
+
+            SaveOrdersToLocalCache();
+            SaveProductsToLocalCache();
+            ProductsChanged?.Invoke();
+            return true;
+        }
+
+        public bool RestoreOrder(string orderId)
+        {
+            string cleanId = orderId.TrimStart('#');
+            var order = Orders.FirstOrDefault(o => o.Id.TrimStart('#').Equals(cleanId, StringComparison.OrdinalIgnoreCase));
+            if (order == null) return false;
+
+            order.Status = "Completed";
+            order.ArchivedAt = null;
+
+            // Re-deduct stock
+            foreach (var item in order.Items)
+            {
+                var prod = Products.FirstOrDefault(p => p.ProductId == item.ProductId);
+                if (prod != null)
+                {
+                    prod.StockQuantity = Math.Max(0, prod.StockQuantity - item.Quantity);
+                }
+            }
+
+            SaveOrdersToLocalCache();
+            SaveProductsToLocalCache();
+            ProductsChanged?.Invoke();
+            return true;
+        }
+
+        /// <summary>
+        /// Flushes all in-memory products, categories, and orders to local disk files.
+        /// Called automatically during form closing and application exit.
+        /// </summary>
+        public void SaveAllToDisk()
+        {
+            try
+            {
+                SaveProductsToLocalCache();
+                SaveCategoriesToLocalCache();
+                SaveOrdersToLocalCache();
+                System.Diagnostics.Debug.WriteLine("DataService.SaveAllToDisk: Successfully persisted all data to disk.");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DataService.SaveAllToDisk error: {ex.Message}");
             }
         }
 

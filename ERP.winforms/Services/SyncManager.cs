@@ -13,6 +13,8 @@ namespace ERP.winforms.Services
     {
         CreateProduct,
         UpdateProduct,
+        ArchiveProduct,
+        RestoreProduct,
         CreateOrder,
         CreateCategory,
         UpdateCategory,
@@ -26,6 +28,7 @@ namespace ERP.winforms.Services
         public DateTime QueuedAt { get; set; } = DateTime.UtcNow;
         public int CompanyId { get; set; } = 1;
         public Product? ProductPayload { get; set; }
+        public int TargetProductId { get; set; }
         public Order? OrderPayload { get; set; }
         public Category? CategoryPayload { get; set; }
         public int TargetCategoryId { get; set; }
@@ -133,6 +136,46 @@ namespace ERP.winforms.Services
             SyncStatusChanged?.Invoke(false, PendingCount, $"Offline change queued ({product.ProductName}). Will sync when online.");
         }
 
+        public void EnqueueArchiveProduct(int productId, int companyId = 1)
+        {
+            lock (_lock)
+            {
+                _queue.RemoveAll(q => q.TargetProductId == productId &&
+                    (q.Action == SyncActionType.ArchiveProduct || q.Action == SyncActionType.RestoreProduct));
+
+                _queue.Add(new SyncQueueItem
+                {
+                    Action = SyncActionType.ArchiveProduct,
+                    CompanyId = companyId,
+                    TargetProductId = productId
+                });
+
+                SaveQueueToDisk();
+            }
+
+            SyncStatusChanged?.Invoke(false, PendingCount, "Product archive queued. Will sync when online.");
+        }
+
+        public void EnqueueRestoreProduct(int productId, int companyId = 1)
+        {
+            lock (_lock)
+            {
+                _queue.RemoveAll(q => q.TargetProductId == productId &&
+                    (q.Action == SyncActionType.ArchiveProduct || q.Action == SyncActionType.RestoreProduct));
+
+                _queue.Add(new SyncQueueItem
+                {
+                    Action = SyncActionType.RestoreProduct,
+                    CompanyId = companyId,
+                    TargetProductId = productId
+                });
+
+                SaveQueueToDisk();
+            }
+
+            SyncStatusChanged?.Invoke(false, PendingCount, "Product restore queued. Will sync when online.");
+        }
+
         public void EnqueueOrder(Order order, int companyId = 1)
         {
             lock (_lock)
@@ -229,6 +272,14 @@ namespace ERP.winforms.Services
 
                         case SyncActionType.UpdateProduct when item.ProductPayload != null:
                             success = await apiClient.UpdateProductAsync(item.CompanyId, item.ProductPayload);
+                            break;
+
+                        case SyncActionType.ArchiveProduct:
+                            success = await apiClient.ArchiveProductAsync(item.CompanyId, item.TargetProductId);
+                            break;
+
+                        case SyncActionType.RestoreProduct:
+                            success = await apiClient.RestoreProductAsync(item.CompanyId, item.TargetProductId);
                             break;
 
                         case SyncActionType.CreateOrder when item.OrderPayload != null:

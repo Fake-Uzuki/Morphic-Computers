@@ -11,6 +11,11 @@ namespace ERP.winforms
         {
             ApplicationConfiguration.Initialize();
 
+            Application.ApplicationExit += (s, e) =>
+            {
+                Services.DataService.Instance.SaveAllToDisk();
+            };
+
             // UC-01: Micro Company User Authentication Form
             using var loginForm = new LoginForm();
             if (loginForm.ShowDialog() == DialogResult.OK)

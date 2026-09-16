@@ -198,6 +198,40 @@ namespace ERP.winforms.Services
         }
 
         /// <summary>
+        /// Archives a product (soft delete) via ERP.api.
+        /// </summary>
+        public async Task<bool> ArchiveProductAsync(int companyId, int productId)
+        {
+            try
+            {
+                var response = await _http.PutAsync($"/api/tenant/{companyId}/products/{productId}/archive", null).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient ArchiveProduct error: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Restores an archived product via ERP.api.
+        /// </summary>
+        public async Task<bool> RestoreProductAsync(int companyId, int productId)
+        {
+            try
+            {
+                var response = await _http.PutAsync($"/api/tenant/{companyId}/products/{productId}/restore", null).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient RestoreProduct error: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Retrieves all product categories for a specific tenant from ERP.api.
         /// </summary>
         public async Task<List<Category>?> GetCategoriesAsync(int companyId)
