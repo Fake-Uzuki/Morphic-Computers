@@ -665,5 +665,75 @@ namespace ERP.winforms.Services
                 return false;
             }
         }
+
+        // ==========================================
+        // STORE PAYROLL (Tenant B)
+        // ==========================================
+        public async Task<List<PayrollRecord>> GetPayrollAsync(int companyId)
+        {
+            try
+            {
+                var response = await _http.GetAsync($"/api/tenant/{companyId}/payroll").ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    var records = await response.Content.ReadFromJsonAsync<List<PayrollRecord>>(_jsonOptions).ConfigureAwait(false);
+                    return records ?? new List<PayrollRecord>();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient GetPayroll error: {ex.Message}");
+            }
+            return new List<PayrollRecord>();
+        }
+
+        public async Task<bool> CreatePayrollRecordAsync(int companyId, PayrollRecord record)
+        {
+            try
+            {
+                var response = await _http.PostAsJsonAsync($"/api/tenant/{companyId}/payroll", record).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient CreatePayrollRecord error: {ex.Message}");
+                return false;
+            }
+        }
+
+        // ==========================================
+        // TERMS, POLICIES & AGREEMENTS (Tenant B)
+        // ==========================================
+        public async Task<List<StorePolicy>> GetPoliciesAsync(int companyId)
+        {
+            try
+            {
+                var response = await _http.GetAsync($"/api/tenant/{companyId}/policies").ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    var policies = await response.Content.ReadFromJsonAsync<List<StorePolicy>>(_jsonOptions).ConfigureAwait(false);
+                    return policies ?? new List<StorePolicy>();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient GetPolicies error: {ex.Message}");
+            }
+            return new List<StorePolicy>();
+        }
+
+        public async Task<bool> UpdatePolicyAsync(int companyId, string policyType, string content, string updatedBy)
+        {
+            try
+            {
+                var response = await _http.PutAsJsonAsync($"/api/tenant/{companyId}/policies/{policyType}", new { contentText = content, updatedBy }).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient UpdatePolicy error: {ex.Message}");
+                return false;
+            }
+        }
     }
 }

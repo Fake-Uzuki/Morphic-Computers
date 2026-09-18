@@ -33,6 +33,8 @@ namespace ERP.winforms
         private Button? _btnNavStaff;
         private Button? _btnNavApprovals;
         private Button? _btnNavCustomers;
+        private Button? _btnNavPayroll;
+        private Button? _btnNavPolicies;
         private Button? _activeNavButton;
         private Label _lblBottomRight = null!;
 
@@ -46,6 +48,8 @@ namespace ERP.winforms
         private StaffView _staffView = null!;
         private ApprovalsView _approvalsView = null!;
         private CustomersView _customersView = null!;
+        private PayrollView _payrollView = null!;
+        private PoliciesView _policiesView = null!;
 
         public Form1(string userName = "Cirunay", string userRole = "Store Administrator", Company? company = null)
         {
@@ -268,6 +272,24 @@ namespace ERP.winforms
                 tabX += 122;
             }
 
+            // 6. Store Payroll (Manager, Admin per architecture diagram)
+            if (isSmallBusinessOrHigher && (isAdmin || isManager))
+            {
+                _btnNavPayroll = CreateEnterpriseTab("Store Payroll", tabX, 130);
+                _btnNavPayroll.Click += (s, e) => SwitchView(_payrollView, _btnNavPayroll);
+                _pnlNavTabs.Controls.Add(_btnNavPayroll);
+                tabX += 132;
+            }
+
+            // 7. Terms & Policies (Admin per architecture diagram)
+            if (isSmallBusinessOrHigher && isAdmin)
+            {
+                _btnNavPolicies = CreateEnterpriseTab("Policies & Terms", tabX, 140);
+                _btnNavPolicies.Click += (s, e) => SwitchView(_policiesView, _btnNavPolicies);
+                _pnlNavTabs.Controls.Add(_btnNavPolicies);
+                tabX += 142;
+            }
+
             // ========================================================
             // 3. BOTTOM SYSTEM STATUS BAR (Height: 28px, Dark Charcoal)
             // ========================================================
@@ -330,6 +352,8 @@ namespace ERP.winforms
             _staffView = new StaffView();
             _approvalsView = new ApprovalsView(_currentUser, _currentRole);
             _customersView = new CustomersView();
+            _payrollView = new PayrollView();
+            _policiesView = new PoliciesView();
 
             // Wire inter-view navigation events
             _dashboardView.OnNavigateToPOSRequest = () => SwitchView(_posView, _btnNavPOS);

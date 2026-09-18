@@ -31,6 +31,8 @@ namespace ERP.winforms.Services
         public List<StaffMember> StaffMembers { get; private set; } = new();
         public List<ApprovalRequest> ApprovalRequests { get; private set; } = new();
         public List<Customer> Customers { get; private set; } = new();
+        public List<PayrollRecord> PayrollRecords { get; private set; } = new();
+        public List<StorePolicy> StorePolicies { get; private set; } = new();
 
         public Action? CategoriesChanged;
         public Action? ProductsChanged;
@@ -39,6 +41,8 @@ namespace ERP.winforms.Services
         public Action? StaffMembersChanged;
         public Action? ApprovalRequestsChanged;
         public Action? CustomersChanged;
+        public Action? PayrollRecordsChanged;
+        public Action? StorePoliciesChanged;
         public Action<bool>? ConnectionStatusChanged;
 
         private int _activeCompanyId = 1;
@@ -80,6 +84,8 @@ namespace ERP.winforms.Services
             StaffMembers.Clear();
             ApprovalRequests.Clear();
             Customers.Clear();
+            PayrollRecords.Clear();
+            StorePolicies.Clear();
 
             LoadCategoriesFromLocalCache();
             LoadProductsToLocalCache();
@@ -90,6 +96,8 @@ namespace ERP.winforms.Services
             LoadStaffFromLocalCache();
             LoadApprovalsFromLocalCache();
             LoadCustomersFromLocalCache();
+            LoadPayrollFromLocalCache();
+            LoadPoliciesFromLocalCache();
 
             CategoriesChanged?.Invoke();
             ProductsChanged?.Invoke();
@@ -98,6 +106,8 @@ namespace ERP.winforms.Services
             StaffMembersChanged?.Invoke();
             ApprovalRequestsChanged?.Invoke();
             CustomersChanged?.Invoke();
+            PayrollRecordsChanged?.Invoke();
+            StorePoliciesChanged?.Invoke();
 
             if (NetworkInterface.GetIsNetworkAvailable())
             {
@@ -140,6 +150,8 @@ namespace ERP.winforms.Services
             LoadStaffFromLocalCache();
             LoadApprovalsFromLocalCache();
             LoadCustomersFromLocalCache();
+            LoadPayrollFromLocalCache();
+            LoadPoliciesFromLocalCache();
 
             // Background / live cloud refresh (only if network is connected, off UI thread)
             if (NetworkInterface.GetIsNetworkAvailable())
@@ -1015,6 +1027,8 @@ namespace ERP.winforms.Services
                 SaveStaffToLocalCache();
                 SaveApprovalsToLocalCache();
                 SaveCustomersToLocalCache();
+                SavePayrollToLocalCache();
+                SavePoliciesToLocalCache();
                 System.Diagnostics.Debug.WriteLine("DataService.SaveAllToDisk: Successfully persisted all data to disk.");
             }
             catch (Exception ex)
@@ -1973,5 +1987,360 @@ namespace ERP.winforms.Services
         public int GetTotalOrders() => Orders.Count;
         public int GetTotalProductsCount() => Products.Count;
         public int GetLowStockCount() => Products.Count(p => p.IsLowStock);
+
+        // =========================================================================
+        // TENANT B: STORE PAYROLL CALCULATOR CACHING & CRUD
+        // =========================================================================
+        private string GetLocalPayrollFilePath()
+        {
+            string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LocalData");
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            return Path.Combine(dir, $"tenant_{ActiveCompanyId}_payroll.json");
+        }
+
+        public void SavePayrollToLocalCache()
+        {
+            try
+            {
+                string path = GetLocalPayrollFilePath();
+                string json = JsonSerializer.Serialize(PayrollRecords, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(path, json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"SavePayrollToLocalCache error: {ex.Message}");
+            }
+        }
+
+        public void LoadPayrollFromLocalCache()
+        {
+            try
+            {
+                string path = GetLocalPayrollFilePath();
+                if (File.Exists(path))
+                {
+                    string json = File.ReadAllText(path);
+                    var cached = JsonSerializer.Deserialize<List<PayrollRecord>>(json);
+                    if (cached != null && cached.Count > 0)
+                    {
+                        PayrollRecords = cached.OrderByDescending(p => p.ProcessedAt).ToList();
+                        return;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"LoadPayrollFromLocalCache error: {ex.Message}");
+            }
+
+            SeedDefaultPayrollIfEmpty();
+        }
+
+        private void SeedDefaultPayrollIfEmpty()
+        {
+            if (PayrollRecords.Count > 0) return;
+
+            var periodStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+            var periodEnd = periodStart.AddDays(14);
+
+            PayrollRecords = new List<PayrollRecord>
+            {
+                new PayrollRecord
+                {
+                    PayrollId = 1,
+                    CompanyId = ActiveCompanyId,
+                    StaffId = 1,
+                    StaffName = "Marcus Vance",
+                    Role = "Store Manager",
+                    PeriodStart = periodStart,
+                    PeriodEnd = periodEnd,
+                    BaseSalary = 22500.00m,
+                    OvertimePay = 0.00m,
+                    CommissionAmount = 4500.00m,
+                    Deductions = 2100.00m,
+                    Status = "Paid",
+                    PaymentMethod = "Bank Transfer (BDO)",
+                    ProcessedAt = DateTime.UtcNow.AddDays(-3),
+                    ProcessedBy = "Admin (Cirunay)"
+                },
+                new PayrollRecord
+                {
+                    PayrollId = 2,
+                    CompanyId = ActiveCompanyId,
+                    StaffId = 2,
+                    StaffName = "Alex Rodriguez",
+                    Role = "Lead Bench Technician",
+                    PeriodStart = periodStart,
+                    PeriodEnd = periodEnd,
+                    BaseSalary = 16000.00m,
+                    OvertimePay = 2400.00m,
+                    CommissionAmount = 3500.00m,
+                    Deductions = 1450.00m,
+                    Status = "Paid",
+                    PaymentMethod = "Bank Transfer (BPI)",
+                    ProcessedAt = DateTime.UtcNow.AddDays(-3),
+                    ProcessedBy = "Marcus Vance"
+                },
+                new PayrollRecord
+                {
+                    PayrollId = 3,
+                    CompanyId = ActiveCompanyId,
+                    StaffId = 3,
+                    StaffName = "Justin Morales",
+                    Role = "Junior Hardware Specialist",
+                    PeriodStart = periodStart,
+                    PeriodEnd = periodEnd,
+                    BaseSalary = 11000.00m,
+                    OvertimePay = 1350.00m,
+                    CommissionAmount = 1800.00m,
+                    Deductions = 950.00m,
+                    Status = "Paid",
+                    PaymentMethod = "Bank Transfer (BPI)",
+                    ProcessedAt = DateTime.UtcNow.AddDays(-3),
+                    ProcessedBy = "Marcus Vance"
+                },
+                new PayrollRecord
+                {
+                    PayrollId = 4,
+                    CompanyId = ActiveCompanyId,
+                    StaffId = 4,
+                    StaffName = "Sarah Jenkins",
+                    Role = "Sales & Counter Specialist",
+                    PeriodStart = periodStart,
+                    PeriodEnd = periodEnd,
+                    BaseSalary = 10000.00m,
+                    OvertimePay = 800.00m,
+                    CommissionAmount = 5200.00m,
+                    Deductions = 900.00m,
+                    Status = "Paid",
+                    PaymentMethod = "Cash Counter",
+                    ProcessedAt = DateTime.UtcNow.AddDays(-3),
+                    ProcessedBy = "Marcus Vance"
+                },
+                new PayrollRecord
+                {
+                    PayrollId = 5,
+                    CompanyId = ActiveCompanyId,
+                    StaffId = 5,
+                    StaffName = "David Lim",
+                    Role = "Inventory Associate",
+                    PeriodStart = periodStart,
+                    PeriodEnd = periodEnd,
+                    BaseSalary = 9500.00m,
+                    OvertimePay = 950.00m,
+                    CommissionAmount = 750.00m,
+                    Deductions = 850.00m,
+                    Status = "Paid",
+                    PaymentMethod = "Bank Transfer (Metrobank)",
+                    ProcessedAt = DateTime.UtcNow.AddDays(-3),
+                    ProcessedBy = "Marcus Vance"
+                }
+            };
+
+            SavePayrollToLocalCache();
+        }
+
+        public void AddPayrollRecord(PayrollRecord record)
+        {
+            if (record == null) return;
+            record.PayrollId = (PayrollRecords.Count > 0 ? PayrollRecords.Max(p => p.PayrollId) : 0) + 1;
+            record.CompanyId = ActiveCompanyId;
+            record.ProcessedAt = DateTime.UtcNow;
+
+            PayrollRecords.Insert(0, record);
+            SavePayrollToLocalCache();
+            PayrollRecordsChanged?.Invoke();
+
+            if (NetworkInterface.GetIsNetworkAvailable())
+            {
+                Task.Run(() => _apiClient.CreatePayrollRecordAsync(ActiveCompanyId, record));
+            }
+        }
+
+        public void DeletePayrollRecord(int payrollId)
+        {
+            var record = PayrollRecords.FirstOrDefault(p => p.PayrollId == payrollId);
+            if (record != null)
+            {
+                PayrollRecords.Remove(record);
+                SavePayrollToLocalCache();
+                PayrollRecordsChanged?.Invoke();
+            }
+        }
+
+        // =========================================================================
+        // TENANT B: TERMS, POLICIES & AGREEMENTS CACHING & CRUD
+        // =========================================================================
+        private string GetLocalPoliciesFilePath()
+        {
+            string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LocalData");
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            return Path.Combine(dir, $"tenant_{ActiveCompanyId}_policies.json");
+        }
+
+        public void SavePoliciesToLocalCache()
+        {
+            try
+            {
+                string path = GetLocalPoliciesFilePath();
+                string json = JsonSerializer.Serialize(StorePolicies, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(path, json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"SavePoliciesToLocalCache error: {ex.Message}");
+            }
+        }
+
+        public void LoadPoliciesFromLocalCache()
+        {
+            try
+            {
+                string path = GetLocalPoliciesFilePath();
+                if (File.Exists(path))
+                {
+                    string json = File.ReadAllText(path);
+                    var cached = JsonSerializer.Deserialize<List<StorePolicy>>(json);
+                    if (cached != null && cached.Count > 0)
+                    {
+                        StorePolicies = cached;
+                        return;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"LoadPoliciesFromLocalCache error: {ex.Message}");
+            }
+
+            SeedDefaultPoliciesIfEmpty();
+        }
+
+        private void SeedDefaultPoliciesIfEmpty()
+        {
+            if (StorePolicies.Count > 0) return;
+
+            StorePolicies = new List<StorePolicy>
+            {
+                new StorePolicy
+                {
+                    PolicyId = 1,
+                    CompanyId = ActiveCompanyId,
+                    PolicyType = "RepairLiabilityWaiver",
+                    Title = "Service & Repair Diagnostic Waiver",
+                    ContentText = @"Morphic Computers & IT8 TechStore Service & Repair Bench Terms:
+
+1. DATA LIABILITY & BACKUP MANDATE:
+The customer acknowledges and accepts sole responsibility for backing up all personal documents, files, operating systems, and proprietary software prior to submitting equipment for diagnostic or hardware repair. IT8 TechStore / Morphic Computers and its bench technicians assume no liability whatsoever for partial or total data loss, corrupt storage sectors, or drive formatting.
+
+2. UNCLAIMED HARDWARE DISPOSAL:
+Any repaired, diagnosed, or abandoned device left unclaimed past ninety (90) calendar days from the official completion notification date will be considered legally abandoned. IT8 TechStore reserves the right to dispose of, scrap, or liquidate the unit to recover unpaid bench labor and storage expenses.
+
+3. PRE-EXISTING DAMAGE & DIAGNOSTIC SCOPE:
+Bench technicians conduct an intake exterior inspection. Prior physical drops, liquid exposure, burnt traces, or unauthorized third-party repairs void standard warranty eligibility.
+
+4. MINIMUM DIAGNOSTIC CHARGE:
+A minimum bench assessment fee of PHP 500.00 applies to all hardware diagnostic requests if the customer subsequently declines the quoted repair service estimate.",
+                    LastUpdatedBy = "Admin (Cirunay)",
+                    UpdatedAt = DateTime.UtcNow.AddDays(-5)
+                },
+                new StorePolicy
+                {
+                    PolicyId = 2,
+                    CompanyId = ActiveCompanyId,
+                    PolicyType = "30DayWarrantyTerms",
+                    Title = "30-Day Hardware Replacement & Warranty Policy",
+                    ContentText = @"Store Hardware Warranty & Manufacturer Terms:
+
+1. 30-DAY DIRECT STORE REPLACEMENT:
+All brand-new desktop components, GPUs, CPUs, motherboards, RAM kits, power supplies, and solid-state drives purchased from Morphic Computers include a 30-day direct replacement warranty against factory defects from the date of sales invoice.
+
+2. MANUFACTURER PASSTHROUGH WARRANTY:
+After the initial 30-day store warranty window, equipment remains covered under the respective authorized manufacturer distributor warranty (1 to 3 years depending on vendor). IT8 TechStore assists in forwarding RMA units to local service centers.
+
+3. WARRANTY EXCLUSIONS & VOID CONDITIONS:
+Warranty does not cover:
+- Physical damage, fractured PCB, bent socket pins, or cracked heatsinks.
+- Electrical surge burn, lightning strikes, or improper power supply usage.
+- Firmware corruption resulting from unauthorized BIOS / vBIOS flashing.
+- Removal or tampering of serial number barcodes and tamper seals.
+
+4. MANDATORY INVOICE & COMPLETE PACKAGING:
+Original official receipt / invoice and original packaging (including boxes, manuals, and accessories) are strictly required for warranty verification.",
+                    LastUpdatedBy = "Admin (Cirunay)",
+                    UpdatedAt = DateTime.UtcNow.AddDays(-10)
+                },
+                new StorePolicy
+                {
+                    PolicyId = 3,
+                    CompanyId = ActiveCompanyId,
+                    PolicyType = "ReturnAndRefundPolicy",
+                    Title = "Customer Returns, Exchanges & Refund Terms",
+                    ContentText = @"Consumer Return & Refund Guidelines:
+
+1. DEFECTIVE PRODUCTS:
+Merchandise verified defective upon unboxing within seven (7) calendar days of purchase qualifies for immediate 1-to-1 replacement with identical stock or full refund.
+
+2. CHANGE-OF-MIND RETURNS:
+In accordance with Republic Act No. 7394 (Consumer Act of the Philippines), change-of-mind requests are subject to store approval. If approved, items must be unopened in mint condition and are subject to a 10% restocking and handling charge.
+
+3. DIGITAL KEYS & SOFTWARE:
+Opened software packaging, digital license keys, Windows OS OEM activations, and Microsoft Office vouchers are non-returnable and non-refundable once scratched, revealed, or registered.
+
+4. REFUND SETTLEMENT:
+Approved refunds are processed through the original method of payment (Cash at counter, or 3-7 banking days for credit card / GCash merchant reversals).",
+                    LastUpdatedBy = "Admin (Cirunay)",
+                    UpdatedAt = DateTime.UtcNow.AddDays(-12)
+                },
+                new StorePolicy
+                {
+                    PolicyId = 4,
+                    CompanyId = ActiveCompanyId,
+                    PolicyType = "DataPrivacyNotice",
+                    Title = "Data Privacy & Confidentiality Notice",
+                    ContentText = @"Data Privacy Notice (Republic Act No. 10173):
+
+1. COLLECTION OF PERSONAL DATA:
+Morphic Computers / IT8 TechStore collects customer contact details (Full Name, Phone Number, Email, and Delivery Address) exclusively for transaction processing, warranty verification, repair tracking stubs, and official receipt issuance.
+
+2. SECURITY & RETENTION:
+Personal data is securely encrypted in our enterprise multi-tenant database. Access is strictly restricted to authorized staff, managers, and administrators.
+
+3. THIRD-PARTY DISCLOSURE:
+We do not sell, rent, or trade customer contact details to third-party advertisers. Data is shared with courier services solely for delivery fulfillment.
+
+4. INQUIRIES & DELETION REQUESTS:
+Customers may request a copy or deletion of their contact profile at any time by contacting our store management desk.",
+                    LastUpdatedBy = "Admin (Cirunay)",
+                    UpdatedAt = DateTime.UtcNow.AddDays(-15)
+                }
+            };
+
+            SavePoliciesToLocalCache();
+        }
+
+        public StorePolicy? GetPolicy(string policyType)
+        {
+            return StorePolicies.FirstOrDefault(p => string.Equals(p.PolicyType, policyType, StringComparison.OrdinalIgnoreCase));
+        }
+
+        public void UpdateStorePolicy(string policyType, string content, string updatedBy)
+        {
+            var policy = StorePolicies.FirstOrDefault(p => string.Equals(p.PolicyType, policyType, StringComparison.OrdinalIgnoreCase));
+            if (policy != null)
+            {
+                policy.ContentText = content;
+                policy.LastUpdatedBy = updatedBy;
+                policy.UpdatedAt = DateTime.UtcNow;
+
+                SavePoliciesToLocalCache();
+                StorePoliciesChanged?.Invoke();
+
+                if (NetworkInterface.GetIsNetworkAvailable())
+                {
+                    Task.Run(() => _apiClient.UpdatePolicyAsync(ActiveCompanyId, policyType, content, updatedBy));
+                }
+            }
+        }
     }
 }

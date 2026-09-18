@@ -14,6 +14,8 @@ namespace ERP.infrastructure.data
         public DbSet<RepairTicket> RepairTickets => Set<RepairTicket>();
         public DbSet<StaffMember> StaffMembers => Set<StaffMember>();
         public DbSet<ApprovalRequest> ApprovalRequests => Set<ApprovalRequest>();
+        public DbSet<PayrollRecord> PayrollRecords => Set<PayrollRecord>();
+        public DbSet<StorePolicy> StorePolicies => Set<StorePolicy>();
 
         public TenantErpDbContext(DbContextOptions<TenantErpDbContext> options)
             : base(options)
@@ -162,6 +164,30 @@ namespace ERP.infrastructure.data
                 entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
                 entity.Property(x => x.ReviewedBy).HasMaxLength(100).IsRequired(false);
                 entity.Property(x => x.ReviewNotes).HasMaxLength(1000).IsRequired(false);
+            });
+
+            builder.Entity<PayrollRecord>(entity =>
+            {
+                entity.HasKey(x => x.PayrollId);
+                entity.Property(x => x.StaffName).HasMaxLength(200).IsRequired();
+                entity.Property(x => x.Role).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.BaseSalary).HasPrecision(18, 2);
+                entity.Property(x => x.OvertimePay).HasPrecision(18, 2);
+                entity.Property(x => x.CommissionAmount).HasPrecision(18, 2);
+                entity.Property(x => x.Deductions).HasPrecision(18, 2);
+                entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.PaymentMethod).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.ProcessedBy).HasMaxLength(100).IsRequired();
+                entity.Ignore(x => x.NetPay);
+            });
+
+            builder.Entity<StorePolicy>(entity =>
+            {
+                entity.HasKey(x => x.PolicyId);
+                entity.Property(x => x.PolicyType).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.Title).HasMaxLength(200).IsRequired();
+                entity.Property(x => x.ContentText).HasMaxLength(4000).IsRequired();
+                entity.Property(x => x.LastUpdatedBy).HasMaxLength(100).IsRequired();
             });
         }
     }
