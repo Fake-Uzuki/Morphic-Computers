@@ -12,5 +12,11 @@ namespace ERP.domain.entities
         public string? Address { get; set; }
         public bool IsActive { get; set; } = true;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+        public int TotalOrders { get; set; }
+
+        [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+        public decimal TotalSpent { get; set; }
     }
 }

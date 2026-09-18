@@ -12,6 +12,8 @@ namespace ERP.infrastructure.data
         public DbSet<Order> Orders => Set<Order>();
         public DbSet<Category> Categories => Set<Category>();
         public DbSet<RepairTicket> RepairTickets => Set<RepairTicket>();
+        public DbSet<StaffMember> StaffMembers => Set<StaffMember>();
+        public DbSet<ApprovalRequest> ApprovalRequests => Set<ApprovalRequest>();
 
         public TenantErpDbContext(DbContextOptions<TenantErpDbContext> options)
             : base(options)
@@ -134,6 +136,32 @@ namespace ERP.infrastructure.data
                 entity.Property(x => x.WarrantyTerms).HasMaxLength(500).IsRequired(false);
                 entity.Ignore(x => x.TotalAmount);
                 entity.Ignore(x => x.BalanceDue);
+            });
+
+            builder.Entity<StaffMember>(entity =>
+            {
+                entity.HasKey(x => x.StaffId);
+                entity.Property(x => x.StaffCode).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.FullName).HasMaxLength(200).IsRequired();
+                entity.Property(x => x.Username).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.Role).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.PositionTitle).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.HourlyRate).HasPrecision(18, 2);
+                entity.Property(x => x.MonthlySalary).HasPrecision(18, 2);
+            });
+
+            builder.Entity<ApprovalRequest>(entity =>
+            {
+                entity.HasKey(x => x.RequestId);
+                entity.Property(x => x.RequestNumber).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.RequestType).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.Title).HasMaxLength(200).IsRequired();
+                entity.Property(x => x.ReasonDescription).HasMaxLength(1000).IsRequired();
+                entity.Property(x => x.RequestedBy).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.RequestedAmount).HasPrecision(18, 2);
+                entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.ReviewedBy).HasMaxLength(100).IsRequired(false);
+                entity.Property(x => x.ReviewNotes).HasMaxLength(1000).IsRequired(false);
             });
         }
     }

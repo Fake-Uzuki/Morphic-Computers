@@ -28,11 +28,17 @@ namespace ERP.winforms.Services
         public List<Order> Orders { get; private set; } = new();
         public List<RepairTicket> RepairTickets { get; private set; } = new();
         public List<Supplier> Suppliers { get; private set; } = new();
+        public List<StaffMember> StaffMembers { get; private set; } = new();
+        public List<ApprovalRequest> ApprovalRequests { get; private set; } = new();
+        public List<Customer> Customers { get; private set; } = new();
 
         public Action? CategoriesChanged;
         public Action? ProductsChanged;
         public Action? RepairTicketsChanged;
         public Action? SuppliersChanged;
+        public Action? StaffMembersChanged;
+        public Action? ApprovalRequestsChanged;
+        public Action? CustomersChanged;
         public Action<bool>? ConnectionStatusChanged;
 
         private int _activeCompanyId = 1;
@@ -71,6 +77,9 @@ namespace ERP.winforms.Services
             Orders.Clear();
             RepairTickets.Clear();
             Suppliers.Clear();
+            StaffMembers.Clear();
+            ApprovalRequests.Clear();
+            Customers.Clear();
 
             LoadCategoriesFromLocalCache();
             LoadProductsToLocalCache();
@@ -78,11 +87,17 @@ namespace ERP.winforms.Services
             LoadOrdersFromLocalCache();
             LoadRepairsFromLocalCache();
             LoadSuppliersFromLocalCache();
+            LoadStaffFromLocalCache();
+            LoadApprovalsFromLocalCache();
+            LoadCustomersFromLocalCache();
 
             CategoriesChanged?.Invoke();
             ProductsChanged?.Invoke();
             RepairTicketsChanged?.Invoke();
             SuppliersChanged?.Invoke();
+            StaffMembersChanged?.Invoke();
+            ApprovalRequestsChanged?.Invoke();
+            CustomersChanged?.Invoke();
 
             if (NetworkInterface.GetIsNetworkAvailable())
             {
@@ -122,6 +137,9 @@ namespace ERP.winforms.Services
             LoadOrdersFromLocalCache();
             LoadRepairsFromLocalCache();
             LoadSuppliersFromLocalCache();
+            LoadStaffFromLocalCache();
+            LoadApprovalsFromLocalCache();
+            LoadCustomersFromLocalCache();
 
             // Background / live cloud refresh (only if network is connected, off UI thread)
             if (NetworkInterface.GetIsNetworkAvailable())
@@ -994,6 +1012,9 @@ namespace ERP.winforms.Services
                 SaveOrdersToLocalCache();
                 SaveRepairsToLocalCache();
                 SaveSuppliersToLocalCache();
+                SaveStaffToLocalCache();
+                SaveApprovalsToLocalCache();
+                SaveCustomersToLocalCache();
                 System.Diagnostics.Debug.WriteLine("DataService.SaveAllToDisk: Successfully persisted all data to disk.");
             }
             catch (Exception ex)
@@ -1406,6 +1427,544 @@ namespace ERP.winforms.Services
                 if (NetworkInterface.GetIsNetworkAvailable())
                 {
                     Task.Run(() => _apiClient.DeleteSupplierAsync(ActiveCompanyId, supplierId));
+                }
+            }
+        }
+
+        // =========================================================================
+        // TENANT B: STAFF MANAGEMENT CACHING & CRUD
+        // =========================================================================
+        private string GetLocalStaffFilePath()
+        {
+            string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LocalData");
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            return Path.Combine(dir, $"tenant_{ActiveCompanyId}_staff.json");
+        }
+
+        public void SaveStaffToLocalCache()
+        {
+            try
+            {
+                string path = GetLocalStaffFilePath();
+                string json = JsonSerializer.Serialize(StaffMembers, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(path, json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"SaveStaffToLocalCache error: {ex.Message}");
+            }
+        }
+
+        public void LoadStaffFromLocalCache()
+        {
+            try
+            {
+                string path = GetLocalStaffFilePath();
+                if (File.Exists(path))
+                {
+                    string json = File.ReadAllText(path);
+                    var cached = JsonSerializer.Deserialize<List<StaffMember>>(json);
+                    if (cached != null && cached.Count > 0)
+                    {
+                        StaffMembers = cached.Where(s => s.IsActive).ToList();
+                        return;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"LoadStaffFromLocalCache error: {ex.Message}");
+            }
+
+            SeedDefaultStaffIfEmpty();
+        }
+
+        private void SeedDefaultStaffIfEmpty()
+        {
+            if (StaffMembers.Count > 0) return;
+
+            StaffMembers = new List<StaffMember>
+            {
+                new StaffMember
+                {
+                    StaffId = 1,
+                    CompanyId = ActiveCompanyId,
+                    StaffCode = "EMP-1001",
+                    FullName = "Cirunay",
+                    Username = "cirunay",
+                    Role = "Store Administrator",
+                    PositionTitle = "Owner & General Manager",
+                    Email = "cirunay@morphic.ph",
+                    PhoneNumber = "0917-000-1122",
+                    HourlyRate = 250.00m,
+                    MonthlySalary = 45000.00m,
+                    IsActive = true,
+                    HiredDate = DateTime.UtcNow.AddMonths(-18)
+                },
+                new StaffMember
+                {
+                    StaffId = 2,
+                    CompanyId = ActiveCompanyId,
+                    StaffCode = "EMP-1002",
+                    FullName = "Marcus Vance",
+                    Username = "manager",
+                    Role = "Store Manager",
+                    PositionTitle = "Store & Inventory Manager",
+                    Email = "marcus@morphic.ph",
+                    PhoneNumber = "0918-111-2233",
+                    HourlyRate = 200.00m,
+                    MonthlySalary = 35000.00m,
+                    IsActive = true,
+                    HiredDate = DateTime.UtcNow.AddMonths(-12)
+                },
+                new StaffMember
+                {
+                    StaffId = 3,
+                    CompanyId = ActiveCompanyId,
+                    StaffCode = "EMP-1003",
+                    FullName = "Alex Rodriguez",
+                    Username = "tech",
+                    Role = "Hardware Technician",
+                    PositionTitle = "Senior Bench Technician",
+                    Email = "alex.tech@morphic.ph",
+                    PhoneNumber = "0920-222-3344",
+                    HourlyRate = 160.00m,
+                    MonthlySalary = 28000.00m,
+                    IsActive = true,
+                    HiredDate = DateTime.UtcNow.AddMonths(-8)
+                },
+                new StaffMember
+                {
+                    StaffId = 4,
+                    CompanyId = ActiveCompanyId,
+                    StaffCode = "EMP-1004",
+                    FullName = "Justin Morales",
+                    Username = "justin",
+                    Role = "Hardware Technician",
+                    PositionTitle = "Assembly & Diagnostics Tech",
+                    Email = "justin.m@morphic.ph",
+                    PhoneNumber = "0922-333-4455",
+                    HourlyRate = 145.00m,
+                    MonthlySalary = 25000.00m,
+                    IsActive = true,
+                    HiredDate = DateTime.UtcNow.AddMonths(-5)
+                },
+                new StaffMember
+                {
+                    StaffId = 5,
+                    CompanyId = ActiveCompanyId,
+                    StaffCode = "EMP-1005",
+                    FullName = "Camille Dizon",
+                    Username = "cashier",
+                    Role = "Cashier Operations",
+                    PositionTitle = "Lead POS Cashier",
+                    Email = "camille@morphic.ph",
+                    PhoneNumber = "0927-444-5566",
+                    HourlyRate = 130.00m,
+                    MonthlySalary = 22000.00m,
+                    IsActive = true,
+                    HiredDate = DateTime.UtcNow.AddMonths(-4)
+                }
+            };
+
+            SaveStaffToLocalCache();
+        }
+
+        public void AddStaffMember(StaffMember staff)
+        {
+            if (staff == null) return;
+            staff.StaffId = (StaffMembers.Count > 0 ? StaffMembers.Max(s => s.StaffId) : 0) + 1;
+            staff.CompanyId = ActiveCompanyId;
+            if (string.IsNullOrWhiteSpace(staff.StaffCode))
+            {
+                staff.StaffCode = $"EMP-{new Random().Next(1000, 9999)}";
+            }
+            staff.HiredDate = DateTime.UtcNow;
+            staff.IsActive = true;
+
+            StaffMembers.Add(staff);
+            SaveStaffToLocalCache();
+            StaffMembersChanged?.Invoke();
+
+            if (NetworkInterface.GetIsNetworkAvailable())
+            {
+                Task.Run(() => _apiClient.CreateStaffAsync(ActiveCompanyId, staff));
+            }
+        }
+
+        public void UpdateStaffMember(StaffMember staff)
+        {
+            if (staff == null) return;
+            var existing = StaffMembers.FirstOrDefault(s => s.StaffId == staff.StaffId);
+            if (existing != null)
+            {
+                existing.FullName = staff.FullName;
+                existing.Role = staff.Role;
+                existing.PositionTitle = staff.PositionTitle;
+                existing.Email = staff.Email;
+                existing.PhoneNumber = staff.PhoneNumber;
+                existing.HourlyRate = staff.HourlyRate;
+                existing.MonthlySalary = staff.MonthlySalary;
+
+                SaveStaffToLocalCache();
+                StaffMembersChanged?.Invoke();
+
+                if (NetworkInterface.GetIsNetworkAvailable())
+                {
+                    Task.Run(() => _apiClient.UpdateStaffAsync(ActiveCompanyId, staff.StaffId, existing));
+                }
+            }
+        }
+
+        public void DeactivateStaffMember(int staffId)
+        {
+            var existing = StaffMembers.FirstOrDefault(s => s.StaffId == staffId);
+            if (existing != null)
+            {
+                existing.IsActive = false;
+                StaffMembers.Remove(existing);
+                SaveStaffToLocalCache();
+                StaffMembersChanged?.Invoke();
+
+                if (NetworkInterface.GetIsNetworkAvailable())
+                {
+                    Task.Run(() => _apiClient.DeactivateStaffAsync(ActiveCompanyId, staffId));
+                }
+            }
+        }
+
+        // =========================================================================
+        // TENANT B: WORKFLOW & APPROVAL CACHING & CRUD
+        // =========================================================================
+        private string GetLocalApprovalsFilePath()
+        {
+            string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LocalData");
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            return Path.Combine(dir, $"tenant_{ActiveCompanyId}_approvals.json");
+        }
+
+        public void SaveApprovalsToLocalCache()
+        {
+            try
+            {
+                string path = GetLocalApprovalsFilePath();
+                string json = JsonSerializer.Serialize(ApprovalRequests, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(path, json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"SaveApprovalsToLocalCache error: {ex.Message}");
+            }
+        }
+
+        public void LoadApprovalsFromLocalCache()
+        {
+            try
+            {
+                string path = GetLocalApprovalsFilePath();
+                if (File.Exists(path))
+                {
+                    string json = File.ReadAllText(path);
+                    var cached = JsonSerializer.Deserialize<List<ApprovalRequest>>(json);
+                    if (cached != null && cached.Count > 0)
+                    {
+                        ApprovalRequests = cached;
+                        return;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"LoadApprovalsFromLocalCache error: {ex.Message}");
+            }
+
+            SeedDefaultApprovalsIfEmpty();
+        }
+
+        private void SeedDefaultApprovalsIfEmpty()
+        {
+            if (ApprovalRequests.Count > 0) return;
+
+            ApprovalRequests = new List<ApprovalRequest>
+            {
+                new ApprovalRequest
+                {
+                    RequestId = 1,
+                    CompanyId = ActiveCompanyId,
+                    RequestNumber = "REQ-20260919-01",
+                    RequestType = "VoidTransaction",
+                    Title = "Void POS Order #ORD-1082 (Customer Double Swipe)",
+                    ReasonDescription = "Customer card reader timed out during payment; second attempt succeeded but duplicate sales order recorded.",
+                    RequestedBy = "Camille Dizon",
+                    RequestedAmount = 18500.00m,
+                    Status = "Pending",
+                    CreatedAt = DateTime.UtcNow.AddHours(-2)
+                },
+                new ApprovalRequest
+                {
+                    RequestId = 2,
+                    CompanyId = ActiveCompanyId,
+                    RequestNumber = "REQ-20260919-02",
+                    RequestType = "CustomDiscount",
+                    Title = "Corporate Bulk Discount 15% - University Lab",
+                    ReasonDescription = "Bulk procurement of 5x RTX 4070 GPUs for engineering computer lab.",
+                    RequestedBy = "Alex Rodriguez",
+                    RequestedAmount = 24750.00m,
+                    Status = "Pending",
+                    CreatedAt = DateTime.UtcNow.AddHours(-5)
+                },
+                new ApprovalRequest
+                {
+                    RequestId = 3,
+                    CompanyId = ActiveCompanyId,
+                    RequestNumber = "REQ-20260919-03",
+                    RequestType = "InventoryWriteOff",
+                    Title = "Damaged Packaging - Corsair RM850e PSU",
+                    ReasonDescription = "Heavy monsoon delivery damaged external carton; unit fully functional but cannot be sold as new MSRP.",
+                    RequestedBy = "Justin Morales",
+                    RequestedAmount = 6200.00m,
+                    Status = "Approved",
+                    ReviewedBy = "Marcus Vance",
+                    ReviewNotes = "Approved. Re-label as 25% off open-box clearance stock.",
+                    CreatedAt = DateTime.UtcNow.AddDays(-1),
+                    ResolvedAt = DateTime.UtcNow.AddHours(-8)
+                },
+                new ApprovalRequest
+                {
+                    RequestId = 4,
+                    CompanyId = ActiveCompanyId,
+                    RequestNumber = "REQ-20260919-04",
+                    RequestType = "WarrantyOverride",
+                    Title = "Late Warranty RMA - ASUS B650 Motherboard",
+                    ReasonDescription = "Customer 3 days past 30-day store warranty; verified customer was hospitalized during warranty window.",
+                    RequestedBy = "Alex Rodriguez",
+                    RequestedAmount = 1200.00m,
+                    Status = "Approved",
+                    ReviewedBy = "Cirunay",
+                    ReviewNotes = "Approved as goodwill customer retention exception.",
+                    CreatedAt = DateTime.UtcNow.AddDays(-2),
+                    ResolvedAt = DateTime.UtcNow.AddDays(-1)
+                }
+            };
+
+            SaveApprovalsToLocalCache();
+        }
+
+        public void AddApprovalRequest(ApprovalRequest request)
+        {
+            if (request == null) return;
+            request.RequestId = (ApprovalRequests.Count > 0 ? ApprovalRequests.Max(r => r.RequestId) : 0) + 1;
+            request.CompanyId = ActiveCompanyId;
+            if (string.IsNullOrWhiteSpace(request.RequestNumber))
+            {
+                request.RequestNumber = $"REQ-{DateTime.UtcNow:yyyyMMdd}-{new Random().Next(100, 999)}";
+            }
+            request.CreatedAt = DateTime.UtcNow;
+            request.Status = "Pending";
+
+            ApprovalRequests.Insert(0, request);
+            SaveApprovalsToLocalCache();
+            ApprovalRequestsChanged?.Invoke();
+
+            if (NetworkInterface.GetIsNetworkAvailable())
+            {
+                Task.Run(() => _apiClient.CreateApprovalRequestAsync(ActiveCompanyId, request));
+            }
+        }
+
+        public void ResolveApprovalRequest(int requestId, string status, string reviewer, string? notes)
+        {
+            var request = ApprovalRequests.FirstOrDefault(r => r.RequestId == requestId);
+            if (request == null) return;
+
+            request.Status = status;
+            request.ReviewedBy = reviewer;
+            request.ReviewNotes = notes;
+            request.ResolvedAt = DateTime.UtcNow;
+
+            SaveApprovalsToLocalCache();
+            ApprovalRequestsChanged?.Invoke();
+
+            if (NetworkInterface.GetIsNetworkAvailable())
+            {
+                Task.Run(() => _apiClient.ResolveApprovalRequestAsync(ActiveCompanyId, requestId, status, reviewer, notes));
+            }
+        }
+
+        // =========================================================================
+        // TENANT B: CUSTOMER MANAGEMENT CACHING & CRUD
+        // =========================================================================
+        private string GetLocalCustomersFilePath()
+        {
+            string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LocalData");
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            return Path.Combine(dir, $"tenant_{ActiveCompanyId}_customers.json");
+        }
+
+        public void SaveCustomersToLocalCache()
+        {
+            try
+            {
+                string path = GetLocalCustomersFilePath();
+                string json = JsonSerializer.Serialize(Customers, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(path, json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"SaveCustomersToLocalCache error: {ex.Message}");
+            }
+        }
+
+        public void LoadCustomersFromLocalCache()
+        {
+            try
+            {
+                string path = GetLocalCustomersFilePath();
+                if (File.Exists(path))
+                {
+                    string json = File.ReadAllText(path);
+                    var cached = JsonSerializer.Deserialize<List<Customer>>(json);
+                    if (cached != null && cached.Count > 0)
+                    {
+                        Customers = cached.Where(c => c.IsActive).ToList();
+                        return;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"LoadCustomersFromLocalCache error: {ex.Message}");
+            }
+
+            SeedDefaultCustomersIfEmpty();
+        }
+
+        private void SeedDefaultCustomersIfEmpty()
+        {
+            if (Customers.Count > 0) return;
+
+            Customers = new List<Customer>
+            {
+                new Customer
+                {
+                    CustomerId = 1,
+                    CustomerCode = "CUST-1001",
+                    CustomerName = "Marco Valderrama",
+                    ContactNumber = "0917-555-8912",
+                    EmailAddress = "marco.v@gmail.com",
+                    Address = "Kapitolyo, Pasig City",
+                    IsActive = true,
+                    TotalOrders = 3,
+                    TotalSpent = 142500.00m
+                },
+                new Customer
+                {
+                    CustomerId = 2,
+                    CustomerCode = "CUST-1002",
+                    CustomerName = "Sarah Jenkins",
+                    ContactNumber = "0928-771-3344",
+                    EmailAddress = "sarah.j@techhub.ph",
+                    Address = "Ortigas Center, Pasig City",
+                    IsActive = true,
+                    TotalOrders = 2,
+                    TotalSpent = 78900.00m
+                },
+                new Customer
+                {
+                    CustomerId = 3,
+                    CustomerCode = "CUST-1003",
+                    CustomerName = "David Lim",
+                    ContactNumber = "0918-333-7890",
+                    EmailAddress = "david.lim@outlook.com",
+                    Address = "Greenhills, San Juan",
+                    IsActive = true,
+                    TotalOrders = 5,
+                    TotalSpent = 310200.00m
+                },
+                new Customer
+                {
+                    CustomerId = 4,
+                    CustomerCode = "CUST-1004",
+                    CustomerName = "Patricia Santos",
+                    ContactNumber = "0905-224-8899",
+                    EmailAddress = "patricia.s@bpo-center.com",
+                    Address = "Eastwood City, Quezon City",
+                    IsActive = true,
+                    TotalOrders = 1,
+                    TotalSpent = 34500.00m
+                },
+                new Customer
+                {
+                    CustomerId = 5,
+                    CustomerCode = "CUST-1005",
+                    CustomerName = "Ateneo Robotics Lab",
+                    ContactNumber = "0919-888-4422",
+                    EmailAddress = "robotics@ateneo.edu",
+                    Address = "Loyola Heights, Quezon City",
+                    IsActive = true,
+                    TotalOrders = 4,
+                    TotalSpent = 265000.00m
+                }
+            };
+
+            SaveCustomersToLocalCache();
+        }
+
+        public void AddCustomer(Customer customer)
+        {
+            if (customer == null) return;
+            customer.CustomerId = (Customers.Count > 0 ? Customers.Max(c => c.CustomerId) : 0) + 1;
+            if (string.IsNullOrWhiteSpace(customer.CustomerCode))
+            {
+                customer.CustomerCode = $"CUST-{new Random().Next(1000, 9999)}";
+            }
+            customer.CreatedAt = DateTime.UtcNow;
+            customer.IsActive = true;
+
+            Customers.Add(customer);
+            SaveCustomersToLocalCache();
+            CustomersChanged?.Invoke();
+
+            if (NetworkInterface.GetIsNetworkAvailable())
+            {
+                Task.Run(() => _apiClient.CreateCustomerAsync(ActiveCompanyId, customer));
+            }
+        }
+
+        public void UpdateCustomer(Customer customer)
+        {
+            if (customer == null) return;
+            var existing = Customers.FirstOrDefault(c => c.CustomerId == customer.CustomerId);
+            if (existing != null)
+            {
+                existing.CustomerName = customer.CustomerName;
+                existing.ContactNumber = customer.ContactNumber;
+                existing.EmailAddress = customer.EmailAddress;
+                existing.Address = customer.Address;
+
+                SaveCustomersToLocalCache();
+                CustomersChanged?.Invoke();
+
+                if (NetworkInterface.GetIsNetworkAvailable())
+                {
+                    Task.Run(() => _apiClient.UpdateCustomerAsync(ActiveCompanyId, customer.CustomerId, existing));
+                }
+            }
+        }
+
+        public void DeleteCustomer(int customerId)
+        {
+            var existing = Customers.FirstOrDefault(c => c.CustomerId == customerId);
+            if (existing != null)
+            {
+                existing.IsActive = false;
+                Customers.Remove(existing);
+                SaveCustomersToLocalCache();
+                CustomersChanged?.Invoke();
+
+                if (NetworkInterface.GetIsNetworkAvailable())
+                {
+                    Task.Run(() => _apiClient.DeleteCustomerAsync(ActiveCompanyId, customerId));
                 }
             }
         }

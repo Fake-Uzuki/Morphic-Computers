@@ -194,6 +194,54 @@ namespace ERP.winforms.Services
                     });
                     modified = true;
                 }
+
+                // Manager - manager
+                if (!list.Any(c => c.CompanyId == t.Id && c.Username.Equals("manager", StringComparison.OrdinalIgnoreCase)))
+                {
+                    HashPassword("manager123", out string mSalt, out string mHash);
+                    list.Add(new CachedUserCredential
+                    {
+                        CompanyId = t.Id,
+                        CompanyCode = t.Code,
+                        CompanyName = t.Name,
+                        PlanName = t.Plan,
+                        Username = "manager",
+                        DisplayName = "Store Manager (Marcus V.)",
+                        Role = "Store Manager",
+                        SaltBase64 = mSalt,
+                        HashBase64 = mHash,
+                        LastLoginUtc = DateTime.UtcNow,
+                        IsPOSAllowed = true,
+                        IsInventoryAllowed = true,
+                        IsRepairAllowed = true,
+                        IsSupplierAllowed = false
+                    });
+                    modified = true;
+                }
+
+                // Technician - tech
+                if (!list.Any(c => c.CompanyId == t.Id && c.Username.Equals("tech", StringComparison.OrdinalIgnoreCase)))
+                {
+                    HashPassword("tech123", out string techSalt, out string techHash);
+                    list.Add(new CachedUserCredential
+                    {
+                        CompanyId = t.Id,
+                        CompanyCode = t.Code,
+                        CompanyName = t.Name,
+                        PlanName = t.Plan,
+                        Username = "tech",
+                        DisplayName = "Technician (Alex R.)",
+                        Role = "Hardware Technician",
+                        SaltBase64 = techSalt,
+                        HashBase64 = techHash,
+                        LastLoginUtc = DateTime.UtcNow,
+                        IsPOSAllowed = true,
+                        IsInventoryAllowed = true,
+                        IsRepairAllowed = true,
+                        IsSupplierAllowed = false
+                    });
+                    modified = true;
+                }
             }
 
             return modified;

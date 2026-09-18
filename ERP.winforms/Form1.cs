@@ -30,6 +30,9 @@ namespace ERP.winforms
         private Button _btnNavOrders = null!;
         private Button? _btnNavRepairs;
         private Button? _btnNavSuppliers;
+        private Button? _btnNavStaff;
+        private Button? _btnNavApprovals;
+        private Button? _btnNavCustomers;
         private Button? _activeNavButton;
         private Label _lblBottomRight = null!;
 
@@ -40,6 +43,9 @@ namespace ERP.winforms
         private OrdersView _ordersView = null!;
         private RepairsView _repairsView = null!;
         private SuppliersView _suppliersView = null!;
+        private StaffView _staffView = null!;
+        private ApprovalsView _approvalsView = null!;
+        private CustomersView _customersView = null!;
 
         public Form1(string userName = "Cirunay", string userRole = "Store Administrator", Company? company = null)
         {
@@ -222,6 +228,10 @@ namespace ERP.winforms
             // 2. Supplier Management (Admin per architecture diagram)
             bool isAdmin = _currentRole.Contains("Admin", StringComparison.OrdinalIgnoreCase) || 
                            _currentRole.Contains("Owner", StringComparison.OrdinalIgnoreCase);
+            bool isManager = _currentRole.Contains("Manager", StringComparison.OrdinalIgnoreCase);
+            bool isStaff = _currentRole.Contains("Staff", StringComparison.OrdinalIgnoreCase) ||
+                           _currentRole.Contains("Tech", StringComparison.OrdinalIgnoreCase) ||
+                           _currentRole.Contains("Cashier", StringComparison.OrdinalIgnoreCase);
 
             if (isSmallBusinessOrHigher && isAdmin)
             {
@@ -229,6 +239,33 @@ namespace ERP.winforms
                 _btnNavSuppliers.Click += (s, e) => SwitchView(_suppliersView, _btnNavSuppliers);
                 _pnlNavTabs.Controls.Add(_btnNavSuppliers);
                 tabX += 132;
+            }
+
+            // 3. Staff Management (Admin, Manager per architecture diagram)
+            if (isSmallBusinessOrHigher && (isAdmin || isManager))
+            {
+                _btnNavStaff = CreateEnterpriseTab("Staff & Team", tabX, 130);
+                _btnNavStaff.Click += (s, e) => SwitchView(_staffView, _btnNavStaff);
+                _pnlNavTabs.Controls.Add(_btnNavStaff);
+                tabX += 132;
+            }
+
+            // 4. Workflow & Approval (Admin, Manager, Staff per architecture diagram)
+            if (isSmallBusinessOrHigher)
+            {
+                _btnNavApprovals = CreateEnterpriseTab("Approvals", tabX, 120);
+                _btnNavApprovals.Click += (s, e) => SwitchView(_approvalsView, _btnNavApprovals);
+                _pnlNavTabs.Controls.Add(_btnNavApprovals);
+                tabX += 122;
+            }
+
+            // 5. Customer Management (Manager, Staff, Admin per architecture diagram)
+            if (isSmallBusinessOrHigher)
+            {
+                _btnNavCustomers = CreateEnterpriseTab("Customers", tabX, 120);
+                _btnNavCustomers.Click += (s, e) => SwitchView(_customersView, _btnNavCustomers);
+                _pnlNavTabs.Controls.Add(_btnNavCustomers);
+                tabX += 122;
             }
 
             // ========================================================
@@ -290,6 +327,9 @@ namespace ERP.winforms
             _ordersView = new OrdersView();
             _repairsView = new RepairsView();
             _suppliersView = new SuppliersView();
+            _staffView = new StaffView();
+            _approvalsView = new ApprovalsView(_currentUser, _currentRole);
+            _customersView = new CustomersView();
 
             // Wire inter-view navigation events
             _dashboardView.OnNavigateToPOSRequest = () => SwitchView(_posView, _btnNavPOS);
@@ -360,6 +400,9 @@ namespace ERP.winforms
             if (view is OrdersView ov) ov.RefreshData();
             if (view is RepairsView rv) rv.RefreshData();
             if (view is SuppliersView sv) sv.RefreshData();
+            if (view is StaffView stv) stv.RefreshData();
+            if (view is ApprovalsView av) av.RefreshData();
+            if (view is CustomersView cv) cv.RefreshData();
         }
 
         private void Form1_KeyDown(object? sender, KeyEventArgs e)

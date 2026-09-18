@@ -489,5 +489,181 @@ namespace ERP.winforms.Services
                 return false;
             }
         }
+
+        // ==========================================
+        // STAFF MANAGEMENT (Tenant B)
+        // ==========================================
+        public async Task<List<StaffMember>> GetStaffAsync(int companyId)
+        {
+            try
+            {
+                var response = await _http.GetAsync($"/api/tenant/{companyId}/staff").ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    var staff = await response.Content.ReadFromJsonAsync<List<StaffMember>>(_jsonOptions).ConfigureAwait(false);
+                    return staff ?? new List<StaffMember>();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient GetStaff error: {ex.Message}");
+            }
+            return new List<StaffMember>();
+        }
+
+        public async Task<bool> CreateStaffAsync(int companyId, StaffMember staff)
+        {
+            try
+            {
+                var response = await _http.PostAsJsonAsync($"/api/tenant/{companyId}/staff", staff).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient CreateStaff error: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<bool> UpdateStaffAsync(int companyId, int id, StaffMember staff)
+        {
+            try
+            {
+                var response = await _http.PutAsJsonAsync($"/api/tenant/{companyId}/staff/{id}", staff).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient UpdateStaff error: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<bool> DeactivateStaffAsync(int companyId, int id)
+        {
+            try
+            {
+                var response = await _http.DeleteAsync($"/api/tenant/{companyId}/staff/{id}").ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient DeactivateStaff error: {ex.Message}");
+                return false;
+            }
+        }
+
+        // ==========================================
+        // WORKFLOW & APPROVAL SYSTEM (Tenant B)
+        // ==========================================
+        public async Task<List<ApprovalRequest>> GetApprovalRequestsAsync(int companyId, string? status = null)
+        {
+            try
+            {
+                string url = $"/api/tenant/{companyId}/approvals" + (!string.IsNullOrEmpty(status) ? $"?status={status}" : "");
+                var response = await _http.GetAsync(url).ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    var requests = await response.Content.ReadFromJsonAsync<List<ApprovalRequest>>(_jsonOptions).ConfigureAwait(false);
+                    return requests ?? new List<ApprovalRequest>();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient GetApprovalRequests error: {ex.Message}");
+            }
+            return new List<ApprovalRequest>();
+        }
+
+        public async Task<bool> CreateApprovalRequestAsync(int companyId, ApprovalRequest request)
+        {
+            try
+            {
+                var response = await _http.PostAsJsonAsync($"/api/tenant/{companyId}/approvals", request).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient CreateApprovalRequest error: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<bool> ResolveApprovalRequestAsync(int companyId, int id, string status, string reviewer, string? notes)
+        {
+            try
+            {
+                var response = await _http.PutAsJsonAsync($"/api/tenant/{companyId}/approvals/{id}/resolve", new { status, reviewedBy = reviewer, reviewNotes = notes }).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient ResolveApprovalRequest error: {ex.Message}");
+                return false;
+            }
+        }
+
+        // ==========================================
+        // CUSTOMER MANAGEMENT (Tenant B)
+        // ==========================================
+        public async Task<List<Customer>> GetCustomersAsync(int companyId)
+        {
+            try
+            {
+                var response = await _http.GetAsync($"/api/tenant/{companyId}/customers").ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    var customers = await response.Content.ReadFromJsonAsync<List<Customer>>(_jsonOptions).ConfigureAwait(false);
+                    return customers ?? new List<Customer>();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient GetCustomers error: {ex.Message}");
+            }
+            return new List<Customer>();
+        }
+
+        public async Task<bool> CreateCustomerAsync(int companyId, Customer customer)
+        {
+            try
+            {
+                var response = await _http.PostAsJsonAsync($"/api/tenant/{companyId}/customers", customer).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient CreateCustomer error: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<bool> UpdateCustomerAsync(int companyId, int id, Customer customer)
+        {
+            try
+            {
+                var response = await _http.PutAsJsonAsync($"/api/tenant/{companyId}/customers/{id}", customer).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient UpdateCustomer error: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<bool> DeleteCustomerAsync(int companyId, int id)
+        {
+            try
+            {
+                var response = await _http.DeleteAsync($"/api/tenant/{companyId}/customers/{id}").ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient DeleteCustomer error: {ex.Message}");
+                return false;
+            }
+        }
     }
 }
