@@ -29,6 +29,7 @@ namespace ERP.winforms
         private Button _btnNavPOS = null!;
         private Button _btnNavOrders = null!;
         private Button? _btnNavRepairs;
+        private Button? _btnNavSuppliers;
         private Button? _activeNavButton;
         private Label _lblBottomRight = null!;
 
@@ -37,6 +38,8 @@ namespace ERP.winforms
         private ProductsView _productsView = null!;
         private PosView _posView = null!;
         private OrdersView _ordersView = null!;
+        private RepairsView _repairsView = null!;
+        private SuppliersView _suppliersView = null!;
 
         public Form1(string userName = "Cirunay", string userRole = "Store Administrator", Company? company = null)
         {
@@ -191,16 +194,6 @@ namespace ERP.winforms
             _btnNavOrders = CreateEnterpriseTab("Sales Reports", tabX, 140);
             tabX += 142;
 
-            // ONLY show Repair Services if current plan allows it (NOT on Micro plan!)
-            var company = _dataService.ActiveCompany;
-            if (company != null && company.IsRepairAllowed)
-            {
-                _btnNavRepairs = CreateEnterpriseTab("Repair Services", tabX, 145);
-                _btnNavRepairs.Click += (s, e) => MessageBox.Show("Repair Services bench active.", "Repairs", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                _pnlNavTabs.Controls.Add(_btnNavRepairs);
-                tabX += 147;
-            }
-
             _btnNavDashboard.Click += (s, e) => SwitchView(_dashboardView, _btnNavDashboard);
             _btnNavProducts.Click += (s, e) => SwitchView(_productsView, _btnNavProducts);
             _btnNavPOS.Click += (s, e) => SwitchView(_posView, _btnNavPOS);
@@ -210,6 +203,33 @@ namespace ERP.winforms
             _pnlNavTabs.Controls.Add(_btnNavProducts);
             _pnlNavTabs.Controls.Add(_btnNavPOS);
             _pnlNavTabs.Controls.Add(_btnNavOrders);
+
+            // ========================================================
+            // TENANT B (SMALL BUSINESS) MODULES DYNAMIC INTEGRATION
+            // ========================================================
+            var company = _dataService.ActiveCompany;
+            bool isSmallBusinessOrHigher = company != null && (company.IsRepairAllowed || !string.Equals(company.PlanName, "Micro", StringComparison.OrdinalIgnoreCase));
+
+            // 1. Service & Repair Management (Admin, Manager, Staff)
+            if (isSmallBusinessOrHigher)
+            {
+                _btnNavRepairs = CreateEnterpriseTab("Repair Services", tabX, 145);
+                _btnNavRepairs.Click += (s, e) => SwitchView(_repairsView, _btnNavRepairs);
+                _pnlNavTabs.Controls.Add(_btnNavRepairs);
+                tabX += 147;
+            }
+
+            // 2. Supplier Management (Admin per architecture diagram)
+            bool isAdmin = _currentRole.Contains("Admin", StringComparison.OrdinalIgnoreCase) || 
+                           _currentRole.Contains("Owner", StringComparison.OrdinalIgnoreCase);
+
+            if (isSmallBusinessOrHigher && isAdmin)
+            {
+                _btnNavSuppliers = CreateEnterpriseTab("Suppliers", tabX, 130);
+                _btnNavSuppliers.Click += (s, e) => SwitchView(_suppliersView, _btnNavSuppliers);
+                _pnlNavTabs.Controls.Add(_btnNavSuppliers);
+                tabX += 132;
+            }
 
             // ========================================================
             // 3. BOTTOM SYSTEM STATUS BAR (Height: 28px, Dark Charcoal)
@@ -268,6 +288,8 @@ namespace ERP.winforms
             _productsView = new ProductsView();
             _posView = new PosView();
             _ordersView = new OrdersView();
+            _repairsView = new RepairsView();
+            _suppliersView = new SuppliersView();
 
             // Wire inter-view navigation events
             _dashboardView.OnNavigateToPOSRequest = () => SwitchView(_posView, _btnNavPOS);
@@ -336,6 +358,8 @@ namespace ERP.winforms
             if (view is ProductsView pv) pv.ApplyFilters();
             if (view is PosView pos) pos.RefreshCatalog();
             if (view is OrdersView ov) ov.RefreshData();
+            if (view is RepairsView rv) rv.RefreshData();
+            if (view is SuppliersView sv) sv.RefreshData();
         }
 
         private void Form1_KeyDown(object? sender, KeyEventArgs e)

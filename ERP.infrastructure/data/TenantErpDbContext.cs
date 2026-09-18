@@ -11,6 +11,7 @@ namespace ERP.infrastructure.data
         public DbSet<Inventory> Inventories => Set<Inventory>();
         public DbSet<Order> Orders => Set<Order>();
         public DbSet<Category> Categories => Set<Category>();
+        public DbSet<RepairTicket> RepairTickets => Set<RepairTicket>();
 
         public TenantErpDbContext(DbContextOptions<TenantErpDbContext> options)
             : base(options)
@@ -111,6 +112,28 @@ namespace ERP.infrastructure.data
                 entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
                 entity.Property(x => x.Icon).HasMaxLength(50).IsRequired(false);
                 entity.Property(x => x.Description).HasMaxLength(500).IsRequired(false);
+            });
+
+            builder.Entity<RepairTicket>(entity =>
+            {
+                entity.HasKey(x => x.RepairTicketId);
+                entity.Property(x => x.TicketNumber).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.CustomerName).HasMaxLength(200).IsRequired();
+                entity.Property(x => x.CustomerPhone).HasMaxLength(50).IsRequired(false);
+                entity.Property(x => x.CustomerEmail).HasMaxLength(100).IsRequired(false);
+                entity.Property(x => x.DeviceType).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.DeviceBrandModel).HasMaxLength(200).IsRequired();
+                entity.Property(x => x.SerialNumber).HasMaxLength(100).IsRequired(false);
+                entity.Property(x => x.ReportedIssue).HasMaxLength(1000).IsRequired();
+                entity.Property(x => x.DiagnosticNotes).HasMaxLength(2000).IsRequired(false);
+                entity.Property(x => x.AssignedTechnician).HasMaxLength(100).IsRequired(false);
+                entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.LaborFee).HasPrecision(18, 2);
+                entity.Property(x => x.PartsCost).HasPrecision(18, 2);
+                entity.Property(x => x.DepositAmount).HasPrecision(18, 2);
+                entity.Property(x => x.WarrantyTerms).HasMaxLength(500).IsRequired(false);
+                entity.Ignore(x => x.TotalAmount);
+                entity.Ignore(x => x.BalanceDue);
             });
         }
     }

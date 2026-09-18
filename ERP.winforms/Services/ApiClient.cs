@@ -363,5 +363,131 @@ namespace ERP.winforms.Services
                 return false;
             }
         }
+
+        // ==========================================
+        // SERVICE & REPAIR MANAGEMENT (Tenant B)
+        // ==========================================
+        public async Task<List<RepairTicket>> GetRepairsAsync(int companyId)
+        {
+            try
+            {
+                var response = await _http.GetAsync($"/api/tenant/{companyId}/repairs").ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    var repairs = await response.Content.ReadFromJsonAsync<List<RepairTicket>>(_jsonOptions).ConfigureAwait(false);
+                    return repairs ?? new List<RepairTicket>();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient GetRepairs error: {ex.Message}");
+            }
+            return new List<RepairTicket>();
+        }
+
+        public async Task<bool> CreateRepairTicketAsync(int companyId, RepairTicket ticket)
+        {
+            try
+            {
+                var response = await _http.PostAsJsonAsync($"/api/tenant/{companyId}/repairs", ticket).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient CreateRepairTicket error: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<bool> UpdateRepairStatusAsync(int companyId, int id, string status, string? notes = null, string? technician = null)
+        {
+            try
+            {
+                var response = await _http.PutAsJsonAsync($"/api/tenant/{companyId}/repairs/{id}/status", new { status, diagnosticNotes = notes, assignedTechnician = technician }).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient UpdateRepairStatus error: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<bool> UpdateRepairBillingAsync(int companyId, int id, decimal laborFee, decimal partsCost, decimal depositAmount)
+        {
+            try
+            {
+                var response = await _http.PutAsJsonAsync($"/api/tenant/{companyId}/repairs/{id}/billing", new { laborFee, partsCost, depositAmount }).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient UpdateRepairBilling error: {ex.Message}");
+                return false;
+            }
+        }
+
+        // ==========================================
+        // SUPPLIER MANAGEMENT (Tenant B)
+        // ==========================================
+        public async Task<List<Supplier>> GetSuppliersAsync(int companyId)
+        {
+            try
+            {
+                var response = await _http.GetAsync($"/api/tenant/{companyId}/suppliers").ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    var suppliers = await response.Content.ReadFromJsonAsync<List<Supplier>>(_jsonOptions).ConfigureAwait(false);
+                    return suppliers ?? new List<Supplier>();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient GetSuppliers error: {ex.Message}");
+            }
+            return new List<Supplier>();
+        }
+
+        public async Task<bool> CreateSupplierAsync(int companyId, Supplier supplier)
+        {
+            try
+            {
+                var response = await _http.PostAsJsonAsync($"/api/tenant/{companyId}/suppliers", supplier).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient CreateSupplier error: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<bool> UpdateSupplierAsync(int companyId, int id, Supplier supplier)
+        {
+            try
+            {
+                var response = await _http.PutAsJsonAsync($"/api/tenant/{companyId}/suppliers/{id}", supplier).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient UpdateSupplier error: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<bool> DeleteSupplierAsync(int companyId, int id)
+        {
+            try
+            {
+                var response = await _http.DeleteAsync($"/api/tenant/{companyId}/suppliers/{id}").ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient DeleteSupplier error: {ex.Message}");
+                return false;
+            }
+        }
     }
 }

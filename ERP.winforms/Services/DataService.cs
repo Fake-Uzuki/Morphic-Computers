@@ -26,9 +26,13 @@ namespace ERP.winforms.Services
         public List<Product> Products { get; private set; } = new();
         public List<Category> Categories { get; private set; } = new();
         public List<Order> Orders { get; private set; } = new();
+        public List<RepairTicket> RepairTickets { get; private set; } = new();
+        public List<Supplier> Suppliers { get; private set; } = new();
 
         public Action? CategoriesChanged;
         public Action? ProductsChanged;
+        public Action? RepairTicketsChanged;
+        public Action? SuppliersChanged;
         public Action<bool>? ConnectionStatusChanged;
 
         private int _activeCompanyId = 1;
@@ -65,14 +69,20 @@ namespace ERP.winforms.Services
             Categories.Clear();
             Products.Clear();
             Orders.Clear();
+            RepairTickets.Clear();
+            Suppliers.Clear();
 
             LoadCategoriesFromLocalCache();
             LoadProductsToLocalCache();
             SeedDefaultProductsIfEmpty();
             LoadOrdersFromLocalCache();
+            LoadRepairsFromLocalCache();
+            LoadSuppliersFromLocalCache();
 
             CategoriesChanged?.Invoke();
             ProductsChanged?.Invoke();
+            RepairTicketsChanged?.Invoke();
+            SuppliersChanged?.Invoke();
 
             if (NetworkInterface.GetIsNetworkAvailable())
             {
@@ -110,6 +120,8 @@ namespace ERP.winforms.Services
             LoadProductsToLocalCache();
             SeedDefaultProductsIfEmpty();
             LoadOrdersFromLocalCache();
+            LoadRepairsFromLocalCache();
+            LoadSuppliersFromLocalCache();
 
             // Background / live cloud refresh (only if network is connected, off UI thread)
             if (NetworkInterface.GetIsNetworkAvailable())
@@ -980,6 +992,8 @@ namespace ERP.winforms.Services
                 SaveProductsToLocalCache();
                 SaveCategoriesToLocalCache();
                 SaveOrdersToLocalCache();
+                SaveRepairsToLocalCache();
+                SaveSuppliersToLocalCache();
                 System.Diagnostics.Debug.WriteLine("DataService.SaveAllToDisk: Successfully persisted all data to disk.");
             }
             catch (Exception ex)
@@ -1025,6 +1039,375 @@ namespace ERP.winforms.Services
             string json = JsonSerializer.Serialize(backupData, jsonOptions);
             File.WriteAllText(destinationPath, json);
             return destinationPath;
+        }
+
+        // =========================================================================
+        // TENANT B: SERVICE & REPAIR MANAGEMENT CACHING & CRUD
+        // =========================================================================
+        private string GetLocalRepairsFilePath()
+        {
+            string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LocalData");
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            return Path.Combine(dir, $"tenant_{ActiveCompanyId}_repairs.json");
+        }
+
+        public void SaveRepairsToLocalCache()
+        {
+            try
+            {
+                string path = GetLocalRepairsFilePath();
+                string json = JsonSerializer.Serialize(RepairTickets, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(path, json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"SaveRepairsToLocalCache error: {ex.Message}");
+            }
+        }
+
+        public void LoadRepairsFromLocalCache()
+        {
+            try
+            {
+                string path = GetLocalRepairsFilePath();
+                if (File.Exists(path))
+                {
+                    string json = File.ReadAllText(path);
+                    var cached = JsonSerializer.Deserialize<List<RepairTicket>>(json);
+                    if (cached != null && cached.Count > 0)
+                    {
+                        RepairTickets = cached;
+                        return;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"LoadRepairsFromLocalCache error: {ex.Message}");
+            }
+
+            SeedDefaultRepairsIfEmpty();
+        }
+
+        private void SeedDefaultRepairsIfEmpty()
+        {
+            if (RepairTickets.Count > 0) return;
+
+            // Seed realistic diagnostic repair bench jobs for Tenant B (Small Business)
+            RepairTickets = new List<RepairTicket>
+            {
+                new RepairTicket
+                {
+                    RepairTicketId = 1,
+                    TicketNumber = "REP-20260918-101",
+                    CompanyId = ActiveCompanyId,
+                    CustomerName = "Marco Valderrama",
+                    CustomerPhone = "0917-555-8912",
+                    CustomerEmail = "marco.v@gmail.com",
+                    DeviceType = "Desktop PC",
+                    DeviceBrandModel = "Custom Rig (Ryzen 7 5800X / RTX 3070)",
+                    SerialNumber = "SN-CR-9921",
+                    ReportedIssue = "No display on boot; fans spin for 3 seconds then stop.",
+                    DiagnosticNotes = "Tested with bench PSU - OK. GPU seating checked - suspect PCIe slot riser or memory training failure.",
+                    AssignedTechnician = "Lead Tech Alex",
+                    Status = "Diagnosing",
+                    LaborFee = 1500.00m,
+                    PartsCost = 0.00m,
+                    DepositAmount = 500.00m,
+                    CreatedAt = DateTime.UtcNow.AddHours(-14),
+                    EstimatedCompletionDate = DateTime.UtcNow.AddDays(2)
+                },
+                new RepairTicket
+                {
+                    RepairTicketId = 2,
+                    TicketNumber = "REP-20260918-102",
+                    CompanyId = ActiveCompanyId,
+                    CustomerName = "Sarah Jenkins",
+                    CustomerPhone = "0928-771-3344",
+                    CustomerEmail = "sarah.j@techhub.ph",
+                    DeviceType = "Laptop",
+                    DeviceBrandModel = "Lenovo Legion 5 15ACH6",
+                    SerialNumber = "PF2A190X",
+                    ReportedIssue = "165Hz IPS screen flickers black when hinge is tilted past 90 degrees.",
+                    DiagnosticNotes = "EDP ribbon cable pinched in left hinge. Replacement cable and panel tested working.",
+                    AssignedTechnician = "Tech Justin",
+                    Status = "ReadyForPickup",
+                    LaborFee = 1200.00m,
+                    PartsCost = 4500.00m,
+                    DepositAmount = 2000.00m,
+                    CreatedAt = DateTime.UtcNow.AddDays(-2),
+                    CompletedAt = DateTime.UtcNow.AddHours(-3)
+                },
+                new RepairTicket
+                {
+                    RepairTicketId = 3,
+                    TicketNumber = "REP-20260918-103",
+                    CompanyId = ActiveCompanyId,
+                    CustomerName = "David Lim",
+                    CustomerPhone = "0918-333-7890",
+                    CustomerEmail = "david.lim@outlook.com",
+                    DeviceType = "Graphics Card (GPU)",
+                    DeviceBrandModel = "ASUS ROG Strix RTX 3080 OC 10GB",
+                    SerialNumber = "K12M-STRIX3080",
+                    ReportedIssue = "Overheating, thermal throttling at 95°C under gaming load. Middle fan noisy.",
+                    DiagnosticNotes = "Requires full thermal pad & paste replacement + replacement 95mm fan blade.",
+                    AssignedTechnician = "Lead Tech Alex",
+                    Status = "InRepair",
+                    LaborFee = 2000.00m,
+                    PartsCost = 1850.00m,
+                    DepositAmount = 1000.00m,
+                    CreatedAt = DateTime.UtcNow.AddDays(-1),
+                    EstimatedCompletionDate = DateTime.UtcNow.AddDays(1)
+                },
+                new RepairTicket
+                {
+                    RepairTicketId = 4,
+                    TicketNumber = "REP-20260918-104",
+                    CompanyId = ActiveCompanyId,
+                    CustomerName = "Patricia Santos",
+                    CustomerPhone = "0905-224-8899",
+                    CustomerEmail = "patricia.s@bpo-center.com",
+                    DeviceType = "Laptop",
+                    DeviceBrandModel = "Dell Latitude 5420",
+                    SerialNumber = "8G3HKL2",
+                    ReportedIssue = "Battery swelling trackpad; won't hold charge without AC power.",
+                    DiagnosticNotes = "Swollen 4-cell 63Wh battery removed safely. Awaiting delivery of OEM replacement battery.",
+                    AssignedTechnician = "Tech Justin",
+                    Status = "AwaitingParts",
+                    LaborFee = 800.00m,
+                    PartsCost = 3200.00m,
+                    DepositAmount = 1500.00m,
+                    CreatedAt = DateTime.UtcNow.AddHours(-6),
+                    EstimatedCompletionDate = DateTime.UtcNow.AddDays(3)
+                }
+            };
+
+            SaveRepairsToLocalCache();
+        }
+
+        public void AddRepairTicket(RepairTicket ticket)
+        {
+            if (ticket == null) return;
+            ticket.RepairTicketId = (RepairTickets.Count > 0 ? RepairTickets.Max(t => t.RepairTicketId) : 0) + 1;
+            ticket.CompanyId = ActiveCompanyId;
+            if (string.IsNullOrWhiteSpace(ticket.TicketNumber))
+            {
+                ticket.TicketNumber = $"REP-{DateTime.UtcNow:yyyyMMdd}-{new Random().Next(100, 999)}";
+            }
+            ticket.CreatedAt = DateTime.UtcNow;
+            ticket.IsActive = true;
+
+            RepairTickets.Insert(0, ticket);
+            SaveRepairsToLocalCache();
+            RepairTicketsChanged?.Invoke();
+
+            if (NetworkInterface.GetIsNetworkAvailable())
+            {
+                Task.Run(() => _apiClient.CreateRepairTicketAsync(ActiveCompanyId, ticket));
+            }
+        }
+
+        public void UpdateRepairStatus(int ticketId, string status, string? notes = null, string? technician = null)
+        {
+            var ticket = RepairTickets.FirstOrDefault(t => t.RepairTicketId == ticketId);
+            if (ticket == null) return;
+
+            ticket.Status = status;
+            if (!string.IsNullOrEmpty(notes)) ticket.DiagnosticNotes = notes;
+            if (!string.IsNullOrEmpty(technician)) ticket.AssignedTechnician = technician;
+            if (status == "Completed" || status == "ReadyForPickup")
+            {
+                ticket.CompletedAt = DateTime.UtcNow;
+            }
+
+            SaveRepairsToLocalCache();
+            RepairTicketsChanged?.Invoke();
+
+            if (NetworkInterface.GetIsNetworkAvailable())
+            {
+                Task.Run(() => _apiClient.UpdateRepairStatusAsync(ActiveCompanyId, ticketId, status, notes, technician));
+            }
+        }
+
+        public void UpdateRepairBilling(int ticketId, decimal labor, decimal parts, decimal deposit)
+        {
+            var ticket = RepairTickets.FirstOrDefault(t => t.RepairTicketId == ticketId);
+            if (ticket == null) return;
+
+            ticket.LaborFee = labor;
+            ticket.PartsCost = parts;
+            ticket.DepositAmount = deposit;
+
+            SaveRepairsToLocalCache();
+            RepairTicketsChanged?.Invoke();
+
+            if (NetworkInterface.GetIsNetworkAvailable())
+            {
+                Task.Run(() => _apiClient.UpdateRepairBillingAsync(ActiveCompanyId, ticketId, labor, parts, deposit));
+            }
+        }
+
+        // =========================================================================
+        // TENANT B: SUPPLIER MANAGEMENT CACHING & CRUD
+        // =========================================================================
+        private string GetLocalSuppliersFilePath()
+        {
+            string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LocalData");
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            return Path.Combine(dir, $"tenant_{ActiveCompanyId}_suppliers.json");
+        }
+
+        public void SaveSuppliersToLocalCache()
+        {
+            try
+            {
+                string path = GetLocalSuppliersFilePath();
+                string json = JsonSerializer.Serialize(Suppliers, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(path, json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"SaveSuppliersToLocalCache error: {ex.Message}");
+            }
+        }
+
+        public void LoadSuppliersFromLocalCache()
+        {
+            try
+            {
+                string path = GetLocalSuppliersFilePath();
+                if (File.Exists(path))
+                {
+                    string json = File.ReadAllText(path);
+                    var cached = JsonSerializer.Deserialize<List<Supplier>>(json);
+                    if (cached != null && cached.Count > 0)
+                    {
+                        Suppliers = cached.Where(s => s.IsActive).ToList();
+                        return;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"LoadSuppliersFromLocalCache error: {ex.Message}");
+            }
+
+            SeedDefaultSuppliersIfEmpty();
+        }
+
+        private void SeedDefaultSuppliersIfEmpty()
+        {
+            if (Suppliers.Count > 0) return;
+
+            Suppliers = new List<Supplier>
+            {
+                new Supplier
+                {
+                    SupplierId = 1,
+                    SupplierCode = "SUP-101",
+                    SupplierName = "ASUS Direct Components Distribution",
+                    ContactPerson = "Michael Tan (Senior Key Account Mgr)",
+                    ContactNumber = "0917-882-9011",
+                    EmailAddress = "orders@asusdistro.ph",
+                    Address = "Building 4, Megacenter Hub, Mandaluyong City",
+                    IsActive = true
+                },
+                new Supplier
+                {
+                    SupplierId = 2,
+                    SupplierCode = "SUP-102",
+                    SupplierName = "Corsair & Kingston Parts Direct PH",
+                    ContactPerson = "Elena Gomez (Channel Logistics)",
+                    ContactNumber = "0920-554-1234",
+                    EmailAddress = "elena@corsairdirect.ph",
+                    Address = "Ortigas Business Center, Pasig City",
+                    IsActive = true
+                },
+                new Supplier
+                {
+                    SupplierId = 3,
+                    SupplierCode = "SUP-103",
+                    SupplierName = "CyberPower Tech & Repair Supply Co.",
+                    ContactPerson = "Arthur Reyes (Wholesale Parts Head)",
+                    ContactNumber = "0918-331-4567",
+                    EmailAddress = "sales@cyberpowerparts.ph",
+                    Address = "Gilmore IT Center, New Manila, Quezon City",
+                    IsActive = true
+                },
+                new Supplier
+                {
+                    SupplierId = 4,
+                    SupplierCode = "SUP-104",
+                    SupplierName = "Cooler Master & Lian Li Distro",
+                    ContactPerson = "Grace Villar",
+                    ContactNumber = "0919-444-2211",
+                    EmailAddress = "grace@coolermasterdistro.ph",
+                    Address = "BGC Corporate Center, Taguig City",
+                    IsActive = true
+                }
+            };
+
+            SaveSuppliersToLocalCache();
+        }
+
+        public void AddSupplier(Supplier supplier)
+        {
+            if (supplier == null) return;
+            supplier.SupplierId = (Suppliers.Count > 0 ? Suppliers.Max(s => s.SupplierId) : 0) + 1;
+            if (string.IsNullOrWhiteSpace(supplier.SupplierCode))
+            {
+                supplier.SupplierCode = $"SUP-{new Random().Next(100, 999)}";
+            }
+            supplier.CreatedAt = DateTime.UtcNow;
+            supplier.IsActive = true;
+
+            Suppliers.Add(supplier);
+            SaveSuppliersToLocalCache();
+            SuppliersChanged?.Invoke();
+
+            if (NetworkInterface.GetIsNetworkAvailable())
+            {
+                Task.Run(() => _apiClient.CreateSupplierAsync(ActiveCompanyId, supplier));
+            }
+        }
+
+        public void UpdateSupplier(Supplier supplier)
+        {
+            if (supplier == null) return;
+            var existing = Suppliers.FirstOrDefault(s => s.SupplierId == supplier.SupplierId);
+            if (existing != null)
+            {
+                existing.SupplierName = supplier.SupplierName;
+                existing.ContactPerson = supplier.ContactPerson;
+                existing.ContactNumber = supplier.ContactNumber;
+                existing.EmailAddress = supplier.EmailAddress;
+                existing.Address = supplier.Address;
+
+                SaveSuppliersToLocalCache();
+                SuppliersChanged?.Invoke();
+
+                if (NetworkInterface.GetIsNetworkAvailable())
+                {
+                    Task.Run(() => _apiClient.UpdateSupplierAsync(ActiveCompanyId, supplier.SupplierId, existing));
+                }
+            }
+        }
+
+        public void DeleteSupplier(int supplierId)
+        {
+            var existing = Suppliers.FirstOrDefault(s => s.SupplierId == supplierId);
+            if (existing != null)
+            {
+                existing.IsActive = false;
+                Suppliers.Remove(existing);
+                SaveSuppliersToLocalCache();
+                SuppliersChanged?.Invoke();
+
+                if (NetworkInterface.GetIsNetworkAvailable())
+                {
+                    Task.Run(() => _apiClient.DeleteSupplierAsync(ActiveCompanyId, supplierId));
+                }
+            }
         }
 
         public decimal GetTotalRevenue() => Orders.Sum(o => o.TotalAmount);
