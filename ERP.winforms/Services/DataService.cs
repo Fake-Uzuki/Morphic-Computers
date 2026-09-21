@@ -1449,7 +1449,7 @@ namespace ERP.winforms.Services
                     var cached = JsonSerializer.Deserialize<List<Supplier>>(json);
                     if (cached != null && cached.Count > 0)
                     {
-                        Suppliers = cached.Where(s => s.IsActive).ToList();
+                        Suppliers = cached;
                         return;
                     }
                 }
@@ -1560,22 +1560,26 @@ namespace ERP.winforms.Services
             }
         }
 
-        public void DeleteSupplier(int supplierId)
+        public void ToggleSupplierArchive(int supplierId)
         {
             var existing = Suppliers.FirstOrDefault(s => s.SupplierId == supplierId);
             if (existing != null)
             {
-                existing.IsActive = false;
-                Suppliers.Remove(existing);
+                existing.IsActive = !existing.IsActive;
                 SaveSuppliersToLocalCache();
                 SuppliersChanged?.Invoke();
 
                 if (NetworkInterface.GetIsNetworkAvailable())
                 {
-                    Task.Run(() => _apiClient.DeleteSupplierAsync(ActiveCompanyId, supplierId));
+                    if (!existing.IsActive)
+                        Task.Run(() => _apiClient.DeleteSupplierAsync(ActiveCompanyId, supplierId));
+                    else
+                        Task.Run(() => _apiClient.UpdateSupplierAsync(ActiveCompanyId, supplierId, existing));
                 }
             }
         }
+
+        public void DeleteSupplier(int supplierId) => ToggleSupplierArchive(supplierId);
 
         // =========================================================================
         // TENANT B: STAFF MANAGEMENT CACHING & CRUD
@@ -1612,7 +1616,7 @@ namespace ERP.winforms.Services
                     var cached = JsonSerializer.Deserialize<List<StaffMember>>(json);
                     if (cached != null && cached.Count > 0)
                     {
-                        StaffMembers = cached.Where(s => s.IsActive).ToList();
+                        StaffMembers = cached;
                         return;
                     }
                 }
@@ -1762,22 +1766,26 @@ namespace ERP.winforms.Services
             }
         }
 
-        public void DeactivateStaffMember(int staffId)
+        public void ToggleStaffArchive(int staffId)
         {
             var existing = StaffMembers.FirstOrDefault(s => s.StaffId == staffId);
             if (existing != null)
             {
-                existing.IsActive = false;
-                StaffMembers.Remove(existing);
+                existing.IsActive = !existing.IsActive;
                 SaveStaffToLocalCache();
                 StaffMembersChanged?.Invoke();
 
                 if (NetworkInterface.GetIsNetworkAvailable())
                 {
-                    Task.Run(() => _apiClient.DeactivateStaffAsync(ActiveCompanyId, staffId));
+                    if (!existing.IsActive)
+                        Task.Run(() => _apiClient.DeactivateStaffAsync(ActiveCompanyId, staffId));
+                    else
+                        Task.Run(() => _apiClient.UpdateStaffAsync(ActiveCompanyId, staffId, existing));
                 }
             }
         }
+
+        public void DeactivateStaffMember(int staffId) => ToggleStaffArchive(staffId);
 
         // =========================================================================
         // TENANT B: WORKFLOW & APPROVAL CACHING & CRUD
@@ -1972,7 +1980,7 @@ namespace ERP.winforms.Services
                     var cached = JsonSerializer.Deserialize<List<Customer>>(json);
                     if (cached != null && cached.Count > 0)
                     {
-                        Customers = cached.Where(c => c.IsActive).ToList();
+                        Customers = cached;
                         return;
                     }
                 }
@@ -2098,22 +2106,26 @@ namespace ERP.winforms.Services
             }
         }
 
-        public void DeleteCustomer(int customerId)
+        public void ToggleCustomerArchive(int customerId)
         {
             var existing = Customers.FirstOrDefault(c => c.CustomerId == customerId);
             if (existing != null)
             {
-                existing.IsActive = false;
-                Customers.Remove(existing);
+                existing.IsActive = !existing.IsActive;
                 SaveCustomersToLocalCache();
                 CustomersChanged?.Invoke();
 
                 if (NetworkInterface.GetIsNetworkAvailable())
                 {
-                    Task.Run(() => _apiClient.DeleteCustomerAsync(ActiveCompanyId, customerId));
+                    if (!existing.IsActive)
+                        Task.Run(() => _apiClient.DeleteCustomerAsync(ActiveCompanyId, customerId));
+                    else
+                        Task.Run(() => _apiClient.UpdateCustomerAsync(ActiveCompanyId, customerId, existing));
                 }
             }
         }
+
+        public void DeleteCustomer(int customerId) => ToggleCustomerArchive(customerId);
 
         public decimal GetTotalRevenue() => Orders.Sum(o => o.TotalAmount);
         public int GetTotalOrders() => Orders.Count;

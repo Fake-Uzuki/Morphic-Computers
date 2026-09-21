@@ -17,12 +17,14 @@ namespace ERP.winforms.UI.Views
 
         private DataGridView _gridSuppliers = null!;
         private TextBox _txtSearch = null!;
+        private FlowLayoutPanel _flpStatus = null!;
+        private string _selectedStatus = "Active";
 
         public SuppliersView()
         {
             Dock = DockStyle.Fill;
             BackColor = AppTheme.AppBackground;
-            AutoScroll = true;
+            AutoScroll = false;
 
             InitializeLayout();
             _dataService.SuppliersChanged += () =>
@@ -38,10 +40,8 @@ namespace ERP.winforms.UI.Views
         {
             Controls.Clear();
 
-
-
             // ========================================================
-            // 2. TOOLBAR (Search & Actions)
+            // TOOLBAR (Search, Status Filter, Actions)
             // ========================================================
             Panel pnlToolbar = new Panel
             {
@@ -54,7 +54,7 @@ namespace ERP.winforms.UI.Views
             Panel pnlSearch = new Panel
             {
                 Location = new Point(20, 9),
-                Size = new Size(300, 34),
+                Size = new Size(260, 34),
                 BackColor = Color.White
             };
             pnlSearch.Paint += (s, e) =>
@@ -66,13 +66,49 @@ namespace ERP.winforms.UI.Views
             _txtSearch = new TextBox
             {
                 Location = new Point(8, 7),
-                Width = 284,
+                Width = 244,
                 BorderStyle = BorderStyle.None,
                 Font = AppTheme.BodyFont,
                 PlaceholderText = "Search supplier, contact, address..."
             };
             _txtSearch.TextChanged += (s, e) => ApplyFilters();
             pnlSearch.Controls.Add(_txtSearch);
+
+            // Status filter pills
+            _flpStatus = new FlowLayoutPanel
+            {
+                Location = new Point(290, 11),
+                Size = new Size(300, 32),
+                WrapContents = false,
+                BackColor = Color.Transparent
+            };
+            string[] statuses = { "Active", "Archived", "All" };
+            foreach (var st in statuses)
+            {
+                Button btnS = new Button
+                {
+                    Text = st,
+                    Size = new Size(78, 28),
+                    FlatStyle = FlatStyle.Flat,
+                    Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
+                    BackColor = st == _selectedStatus ? AppTheme.Primary : Color.White,
+                    ForeColor = AppTheme.TextDark,
+                    Margin = new Padding(0, 0, 4, 0),
+                    Cursor = Cursors.Hand
+                };
+                btnS.FlatAppearance.BorderColor = Color.FromArgb(215, 210, 198);
+                string filterVal = st;
+                btnS.Click += (s, e) =>
+                {
+                    _selectedStatus = filterVal;
+                    foreach (Control c in _flpStatus.Controls)
+                    {
+                        if (c is Button b) b.BackColor = (b.Text == _selectedStatus) ? AppTheme.Primary : Color.White;
+                    }
+                    ApplyFilters();
+                };
+                _flpStatus.Controls.Add(btnS);
+            }
 
             SunshineButton btnAddSupplier = new SunshineButton
             {
@@ -93,10 +129,11 @@ namespace ERP.winforms.UI.Views
             };
 
             pnlToolbar.Controls.Add(pnlSearch);
+            pnlToolbar.Controls.Add(_flpStatus);
             pnlToolbar.Controls.Add(btnAddSupplier);
 
             // ========================================================
-            // 3. MAIN TABLE CONTAINER
+            // MAIN TABLE CONTAINER
             // ========================================================
             Panel pnlMainContainer = new Panel
             {
@@ -149,24 +186,24 @@ namespace ERP.winforms.UI.Views
                 Padding = new Padding(6, 0, 0, 0)
             };
 
-            _gridSuppliers.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CODE", FillWeight = 10, Name = "ColCode" });
-            _gridSuppliers.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "SUPPLIER / DISTRIBUTOR NAME", FillWeight = 24, Name = "ColName" });
-            _gridSuppliers.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CONTACT PERSON", FillWeight = 18, Name = "ColContact" });
-            _gridSuppliers.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PHONE", FillWeight = 14, Name = "ColPhone" });
-            _gridSuppliers.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "EMAIL", FillWeight = 16, Name = "ColEmail" });
-            _gridSuppliers.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "OFFICE / WAREHOUSE", FillWeight = 20, Name = "ColAddress" });
-            _gridSuppliers.Columns.Add(new DataGridViewButtonColumn { HeaderText = "EDIT", FillWeight = 8, Text = "Edit", UseColumnTextForButtonValue = true, Name = "ColEdit" });
-            _gridSuppliers.Columns.Add(new DataGridViewButtonColumn { HeaderText = "DELETE", FillWeight = 8, Text = "Delete", UseColumnTextForButtonValue = true, Name = "ColDelete" });
+            _gridSuppliers.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CODE", FillWeight = 10, MinimumWidth = 75, Name = "ColCode" });
+            _gridSuppliers.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "SUPPLIER / DISTRIBUTOR NAME", FillWeight = 24, MinimumWidth = 140, Name = "ColName" });
+            _gridSuppliers.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CONTACT PERSON", FillWeight = 16, MinimumWidth = 110, Name = "ColContact" });
+            _gridSuppliers.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PHONE", FillWeight = 13, MinimumWidth = 90, Name = "ColPhone" });
+            _gridSuppliers.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "EMAIL", FillWeight = 15, MinimumWidth = 100, Name = "ColEmail" });
+            _gridSuppliers.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "OFFICE / WAREHOUSE", FillWeight = 18, MinimumWidth = 120, Name = "ColAddress" });
+            _gridSuppliers.Columns.Add(new DataGridViewButtonColumn { HeaderText = "EDIT", FillWeight = 7, MinimumWidth = 60, Text = "Edit", UseColumnTextForButtonValue = true, Name = "ColEdit" });
+            _gridSuppliers.Columns.Add(new DataGridViewButtonColumn { HeaderText = "ARCHIVE / STATUS", FillWeight = 11, MinimumWidth = 85, Name = "ColArchive" });
 
             _gridSuppliers.CellContentClick += (s, e) =>
             {
                 if (e.RowIndex >= 0)
                 {
                     int supplierId = Convert.ToInt32(_gridSuppliers.Rows[e.RowIndex].Tag);
-                    var sup = _dataService.Suppliers.FirstOrDefault(s => s.SupplierId == supplierId);
+                    var sup = _dataService.Suppliers.FirstOrDefault(sp => sp.SupplierId == supplierId);
                     if (sup == null) return;
 
-                    if (e.ColumnIndex == _gridSuppliers.Columns["ColEdit"]!.Index)
+                    if (_gridSuppliers.Columns["ColEdit"] != null && e.ColumnIndex == _gridSuppliers.Columns["ColEdit"]!.Index)
                     {
                         using var editDlg = new SupplierEditDialog(sup);
                         if (editDlg.ShowDialog() == DialogResult.OK)
@@ -174,17 +211,19 @@ namespace ERP.winforms.UI.Views
                             RefreshData();
                         }
                     }
-                    else if (e.ColumnIndex == _gridSuppliers.Columns["ColDelete"]!.Index)
+                    else if (_gridSuppliers.Columns["ColArchive"] != null && e.ColumnIndex == _gridSuppliers.Columns["ColArchive"]!.Index)
                     {
+                        string action = sup.IsActive ? "archive / disable" : "restore";
                         var res = MessageBox.Show(
-                            $"Are you sure you want to remove supplier '{sup.SupplierName}'?",
-                            "Confirm Deletion",
+                            $"Are you sure you want to {action} supplier '{sup.SupplierName}'?\n\n" +
+                            (sup.IsActive ? "• The supplier will be marked as archived/inactive." : "• The supplier will be reinstated as active."),
+                            $"Confirm {(sup.IsActive ? "Archive" : "Restore")}",
                             MessageBoxButtons.YesNo,
                             MessageBoxIcon.Question);
 
                         if (res == DialogResult.Yes)
                         {
-                            _dataService.DeleteSupplier(supplierId);
+                            _dataService.ToggleSupplierArchive(supplierId);
                             RefreshData();
                         }
                     }
@@ -193,6 +232,7 @@ namespace ERP.winforms.UI.Views
 
             cardGrid.Controls.Add(_gridSuppliers);
             pnlMainContainer.Controls.Add(cardGrid);
+            cardGrid.BringToFront();
 
             Controls.Add(pnlMainContainer);
             Controls.Add(pnlToolbar);
@@ -205,8 +245,18 @@ namespace ERP.winforms.UI.Views
 
         private void ApplyFilters()
         {
+            if (_gridSuppliers == null) return;
             string query = _txtSearch.Text.Trim().ToLowerInvariant();
             var filtered = _dataService.Suppliers.AsEnumerable();
+
+            if (_selectedStatus == "Active")
+            {
+                filtered = filtered.Where(s => s.IsActive);
+            }
+            else if (_selectedStatus == "Archived")
+            {
+                filtered = filtered.Where(s => !s.IsActive);
+            }
 
             if (!string.IsNullOrEmpty(query))
             {
@@ -221,15 +271,29 @@ namespace ERP.winforms.UI.Views
             _gridSuppliers.Rows.Clear();
             foreach (var s in filtered)
             {
+                string displayName = s.IsActive ? s.SupplierName : $"[ARCHIVED] {s.SupplierName}";
                 int rowIdx = _gridSuppliers.Rows.Add(
                     s.SupplierCode,
-                    s.SupplierName,
+                    displayName,
                     s.ContactPerson ?? "N/A",
                     s.ContactNumber ?? "N/A",
                     s.EmailAddress ?? "N/A",
-                    s.Address ?? "N/A"
+                    s.Address ?? "N/A",
+                    "Edit",
+                    s.IsActive ? "📦 Archive" : "♻️ Restore"
                 );
-                _gridSuppliers.Rows[rowIdx].Tag = s.SupplierId;
+                var row = _gridSuppliers.Rows[rowIdx];
+                row.Tag = s.SupplierId;
+
+                if (!s.IsActive)
+                {
+                    row.DefaultCellStyle.ForeColor = Color.FromArgb(145, 140, 130);
+                    row.Cells["ColName"].Style.Font = new Font("Segoe UI", 8.5F, FontStyle.Italic);
+                    if (_gridSuppliers.Columns["ColArchive"] != null)
+                    {
+                        row.Cells["ColArchive"].Style.ForeColor = Color.FromArgb(27, 122, 79);
+                    }
+                }
             }
         }
     }

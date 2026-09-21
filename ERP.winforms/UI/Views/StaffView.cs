@@ -25,7 +25,7 @@ namespace ERP.winforms.UI.Views
         {
             Dock = DockStyle.Fill;
             BackColor = AppTheme.AppBackground;
-            AutoScroll = true;
+            AutoScroll = false;
 
             InitializeLayout();
             _dataService.StaffMembersChanged += () =>
@@ -91,6 +91,7 @@ namespace ERP.winforms.UI.Views
             AddFilterPill("Manager", "Managers");
             AddFilterPill("Cashier", "Cashiers");
             AddFilterPill("Administrator", "Admins");
+            AddFilterPill("Archived", "📦 Archived");
 
             SunshineButton btnAddStaff = new SunshineButton
             {
@@ -168,25 +169,25 @@ namespace ERP.winforms.UI.Views
                 Padding = new Padding(6, 0, 0, 0)
             };
 
-            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STAFF ID", FillWeight = 11, Name = "ColCode" });
-            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "FULL NAME", FillWeight = 18, Name = "ColName" });
-            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "USERNAME", FillWeight = 12, Name = "ColUser" });
-            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ROLE", FillWeight = 16, Name = "ColRole" });
-            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "POSITION TITLE", FillWeight = 18, Name = "ColPos" });
-            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CONTACT NUMBER", FillWeight = 14, Name = "ColPhone" });
-            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "SALARY / RATE", FillWeight = 13, Name = "ColRate" });
-            _gridStaff.Columns.Add(new DataGridViewButtonColumn { HeaderText = "EDIT", FillWeight = 7, Text = "Edit", UseColumnTextForButtonValue = true, Name = "ColEdit" });
-            _gridStaff.Columns.Add(new DataGridViewButtonColumn { HeaderText = "REMOVE", FillWeight = 9, Text = "Remove", UseColumnTextForButtonValue = true, Name = "ColDelete" });
+            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STAFF ID", FillWeight = 11, MinimumWidth = 75, Name = "ColCode" });
+            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "FULL NAME", FillWeight = 18, MinimumWidth = 120, Name = "ColName" });
+            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "USERNAME", FillWeight = 12, MinimumWidth = 85, Name = "ColUser" });
+            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ROLE", FillWeight = 16, MinimumWidth = 110, Name = "ColRole" });
+            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "POSITION TITLE", FillWeight = 18, MinimumWidth = 120, Name = "ColPos" });
+            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CONTACT NUMBER", FillWeight = 14, MinimumWidth = 95, Name = "ColPhone" });
+            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "SALARY / RATE", FillWeight = 13, MinimumWidth = 110, Name = "ColRate" });
+            _gridStaff.Columns.Add(new DataGridViewButtonColumn { HeaderText = "EDIT", FillWeight = 7, MinimumWidth = 60, Text = "Edit", UseColumnTextForButtonValue = true, Name = "ColEdit" });
+            _gridStaff.Columns.Add(new DataGridViewButtonColumn { HeaderText = "ARCHIVE / STATUS", FillWeight = 11, MinimumWidth = 85, Name = "ColArchive" });
 
             _gridStaff.CellContentClick += (s, e) =>
             {
                 if (e.RowIndex >= 0)
                 {
                     int staffId = Convert.ToInt32(_gridStaff.Rows[e.RowIndex].Tag);
-                    var staff = _dataService.StaffMembers.FirstOrDefault(s => s.StaffId == staffId);
+                    var staff = _dataService.StaffMembers.FirstOrDefault(st => st.StaffId == staffId);
                     if (staff == null) return;
 
-                    if (e.ColumnIndex == _gridStaff.Columns["ColEdit"]!.Index)
+                    if (_gridStaff.Columns["ColEdit"] != null && e.ColumnIndex == _gridStaff.Columns["ColEdit"]!.Index)
                     {
                         using var editDlg = new StaffEditDialog(staff);
                         if (editDlg.ShowDialog() == DialogResult.OK)
@@ -194,17 +195,19 @@ namespace ERP.winforms.UI.Views
                             RefreshData();
                         }
                     }
-                    else if (e.ColumnIndex == _gridStaff.Columns["ColDelete"]!.Index)
+                    else if (_gridStaff.Columns["ColArchive"] != null && e.ColumnIndex == _gridStaff.Columns["ColArchive"]!.Index)
                     {
+                        string action = staff.IsActive ? "archive / disable" : "restore";
                         var res = MessageBox.Show(
-                            $"Are you sure you want to deactivate staff profile for '{staff.FullName}'?",
-                            "Confirm Deactivation",
+                            $"Are you sure you want to {action} staff profile for '{staff.FullName}'?\n\n" +
+                            (staff.IsActive ? "• The staff account will be marked as archived/inactive." : "• The staff account will be reinstated as active."),
+                            $"Confirm {(staff.IsActive ? "Archive" : "Restore")}",
                             MessageBoxButtons.YesNo,
                             MessageBoxIcon.Question);
 
                         if (res == DialogResult.Yes)
                         {
-                            _dataService.DeactivateStaffMember(staffId);
+                            _dataService.ToggleStaffArchive(staffId);
                             RefreshData();
                         }
                     }
@@ -213,6 +216,7 @@ namespace ERP.winforms.UI.Views
 
             cardGrid.Controls.Add(_gridStaff);
             pnlMainContainer.Controls.Add(cardGrid);
+            cardGrid.BringToFront();
 
             Controls.Add(pnlMainContainer);
             Controls.Add(pnlToolbar);
@@ -264,7 +268,11 @@ namespace ERP.winforms.UI.Views
             string query = _txtSearch.Text.Trim().ToLowerInvariant();
             var filtered = _dataService.StaffMembers.AsEnumerable();
 
-            if (_currentRoleFilter != "All")
+            if (_currentRoleFilter == "Archived")
+            {
+                filtered = filtered.Where(s => !s.IsActive);
+            }
+            else if (_currentRoleFilter != "All")
             {
                 filtered = filtered.Where(s => s.Role.ToLowerInvariant().Contains(_currentRoleFilter.ToLowerInvariant()));
             }
@@ -282,16 +290,30 @@ namespace ERP.winforms.UI.Views
             _gridStaff.Rows.Clear();
             foreach (var s in filtered)
             {
+                string displayName = s.IsActive ? s.FullName : $"[ARCHIVED] {s.FullName}";
                 int rowIdx = _gridStaff.Rows.Add(
                     s.StaffCode,
-                    s.FullName,
+                    displayName,
                     s.Username,
                     s.Role,
                     s.PositionTitle,
                     s.PhoneNumber ?? "N/A",
-                    $"₱{s.MonthlySalary:N0}/mo (₱{s.HourlyRate:N0}/hr)"
+                    $"₱{s.MonthlySalary:N0}/mo (₱{s.HourlyRate:N0}/hr)",
+                    "Edit",
+                    s.IsActive ? "📦 Archive" : "♻️ Restore"
                 );
-                _gridStaff.Rows[rowIdx].Tag = s.StaffId;
+                var row = _gridStaff.Rows[rowIdx];
+                row.Tag = s.StaffId;
+
+                if (!s.IsActive)
+                {
+                    row.DefaultCellStyle.ForeColor = Color.FromArgb(145, 140, 130);
+                    row.Cells["ColName"].Style.Font = new Font("Segoe UI", 8.5F, FontStyle.Italic);
+                    if (_gridStaff.Columns["ColArchive"] != null)
+                    {
+                        row.Cells["ColArchive"].Style.ForeColor = Color.FromArgb(27, 122, 79);
+                    }
+                }
             }
         }
     }
