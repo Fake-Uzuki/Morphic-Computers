@@ -97,8 +97,8 @@ namespace ERP.winforms.UI.Views
                 Text = $"LAST REGISTRY RECONCILIATION   Today, {DateTime.Now:HH:mm:ss} EST",
                 Font = new Font("Segoe UI", 7.5F, FontStyle.Regular),
                 ForeColor = AppTheme.TextMuted,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(pnlMain.Width - 320, 8),
+                Dock = DockStyle.Right,
+                TextAlign = ContentAlignment.MiddleRight,
                 AutoSize = true
             };
 

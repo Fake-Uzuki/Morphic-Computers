@@ -54,7 +54,7 @@ namespace ERP.winforms.UI.Views
         {
             Dock = DockStyle.Fill;
             BackColor = AppTheme.AppBackground;
-            AutoScroll = true;
+            AutoScroll = false;
 
             InitializeSampleTransactions();
             InitializeLayout();
@@ -94,40 +94,29 @@ namespace ERP.winforms.UI.Views
             };
 
             // ========================================================
-            // 1. TOP HEADER (Title + Subtitle - NO AL#04 Active!)
+            // 1. TOP HEADER (Title + Subtitle + Right Date Filters)
             // ========================================================
-            Panel pnlTitle = new Panel { Dock = DockStyle.Top, Height = 52 };
-
-            Label lblHeading = new Label
-            {
-                Text = "Sales Transactions Reports",
-                Font = new Font("Segoe UI", 13F, FontStyle.Bold),
-                ForeColor = AppTheme.TextDark,
-                Location = new Point(0, 2),
-                AutoSize = true
-            };
-
-            Label lblSubtitle = new Label
-            {
-                Text = "Real-time transaction log, till audits, and fiscal settlement reports for Micro Company retail operations.",
-                Font = new Font("Segoe UI", 8F, FontStyle.Regular),
-                ForeColor = AppTheme.TextMuted,
-                Location = new Point(0, 26),
-                AutoSize = true
-            };
+            Panel pnlTitle = new Panel { Dock = DockStyle.Top, Height = 52, BackColor = Color.Transparent };
 
             // Date Filters on Right
-            _pnlDateFilters = new Panel { Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(pnlMain.Width - 380, 4), Size = new Size(375, 32) };
+            _pnlDateFilters = new Panel
+            {
+                Dock = DockStyle.Right,
+                Width = 320,
+                Height = 32,
+                BackColor = Color.Transparent
+            };
             string[] dates = { "Today", "This Week", "This Month", "All Time" };
             int dx = 0;
             foreach (var d in dates)
             {
+                int btnW = (d == "This Week" || d == "This Month") ? 78 : 68;
                 Button btnD = new Button
                 {
                     Text = d,
-                    AutoSize = true,
+                    Width = btnW,
                     Height = 28,
-                    Location = new Point(dx, 0),
+                    Location = new Point(dx, 6),
                     FlatStyle = FlatStyle.Flat,
                     Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
                     BackColor = d == _selectedDateFilter ? AppTheme.Primary : Color.White,
@@ -147,11 +136,38 @@ namespace ERP.winforms.UI.Views
                     ApplyFilters();
                 };
                 _pnlDateFilters.Controls.Add(btnD);
-                dx += btnD.PreferredSize.Width + 6;
+                dx += btnW + 4;
             }
+            _pnlDateFilters.Width = dx;
 
-            pnlTitle.Controls.Add(lblHeading);
-            pnlTitle.Controls.Add(lblSubtitle);
+            Panel pnlTitleText = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.Transparent
+            };
+
+            Label lblHeading = new Label
+            {
+                Text = "Sales Transactions Reports",
+                Font = new Font("Segoe UI", 13F, FontStyle.Bold),
+                ForeColor = AppTheme.TextDark,
+                Location = new Point(0, 2),
+                AutoSize = true
+            };
+
+            Label lblSubtitle = new Label
+            {
+                Text = "Real-time transaction log, till audits, and fiscal settlement reports for Micro Company retail operations.",
+                Font = new Font("Segoe UI", 8F, FontStyle.Regular),
+                ForeColor = AppTheme.TextMuted,
+                Location = new Point(0, 26),
+                AutoSize = true
+            };
+
+            pnlTitleText.Controls.Add(lblHeading);
+            pnlTitleText.Controls.Add(lblSubtitle);
+
+            pnlTitle.Controls.Add(pnlTitleText);
             pnlTitle.Controls.Add(_pnlDateFilters);
 
             // ========================================================
@@ -163,7 +179,8 @@ namespace ERP.winforms.UI.Views
                 Height = 88,
                 ColumnCount = 4,
                 RowCount = 1,
-                Margin = new Padding(0, 0, 0, 10)
+                Margin = new Padding(0, 0, 0, 10),
+                BackColor = Color.Transparent
             };
             for (int i = 0; i < 4; i++) tlpMetrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
 
@@ -175,20 +192,87 @@ namespace ERP.winforms.UI.Views
             // ========================================================
             // 3. FILTER & ACTION BAR
             // ========================================================
-            Panel pnlFilterBar = new Panel { Dock = DockStyle.Top, Height = 48, Margin = new Padding(0, 10, 0, 8) };
+            Panel pnlFilterBar = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 44,
+                Margin = new Padding(0, 8, 0, 8),
+                BackColor = Color.Transparent
+            };
+
+            // Action Buttons on Right
+            Panel pnlActions = new Panel
+            {
+                Dock = DockStyle.Right,
+                Width = 445,
+                Height = 36,
+                BackColor = Color.Transparent
+            };
+
+            SunshineButton btnReprint = new SunshineButton
+            {
+                Text = "📄 View Receipt",
+                IsPrimary = true,
+                Location = new Point(0, 3),
+                Size = new Size(115, 30),
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold)
+            };
+            btnReprint.Click += (s, e) => ViewSelectedReceipt();
+
+            SunshineButton btnRefresh = new SunshineButton
+            {
+                Text = "⟳ Refresh",
+                IsPrimary = false,
+                Location = new Point(121, 3),
+                Size = new Size(85, 30),
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold)
+            };
+            btnRefresh.Click += (s, e) => RefreshData();
+
+            SunshineButton btnExport = new SunshineButton
+            {
+                Text = "⬇ Export",
+                IsPrimary = false,
+                Location = new Point(212, 3),
+                Size = new Size(85, 30),
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold)
+            };
+            btnExport.Click += (s, e) => MessageBox.Show("Sales transactions exported to CSV spreadsheet.", "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+            SunshineButton btnVoid = new SunshineButton
+            {
+                Text = "📦 Void Order",
+                IsPrimary = false,
+                CustomTextColor = Color.FromArgb(184, 50, 38),
+                Location = new Point(303, 3),
+                Size = new Size(125, 30),
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold)
+            };
+            btnVoid.Click += (s, e) => VoidSelectedOrder();
+
+            pnlActions.Controls.Add(btnReprint);
+            pnlActions.Controls.Add(btnRefresh);
+            pnlActions.Controls.Add(btnExport);
+            pnlActions.Controls.Add(btnVoid);
 
             _txtSearch = new TextBox
             {
-                PlaceholderText = "Search by Order ID, Customer Name, or Receipt #...",
+                PlaceholderText = "Search by Order ID, Customer, or Receipt #...",
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
-                Location = new Point(0, 10),
-                Width = 290
+                Location = new Point(0, 5),
+                Width = 240
             };
             _txtSearch.TextChanged += (s, e) => { _currentPage = 1; ApplyFilters(); };
 
             // Method pills
-            _flpMethods = new FlowLayoutPanel { Location = new Point(300, 8), Size = new Size(360, 34), WrapContents = false };
-            string[] methods = { "All Methods", "Cash", "Card / Terminal", "Bank Transfer" };
+            _flpMethods = new FlowLayoutPanel
+            {
+                Location = new Point(246, 3),
+                Size = new Size(330, 34),
+                WrapContents = false,
+                BackColor = Color.Transparent
+            };
+            string[] methods = { "All Methods", "Cash", "Card", "Transfer" };
             foreach (var m in methods)
             {
                 Button btnM = new Button
@@ -217,26 +301,6 @@ namespace ERP.winforms.UI.Views
                 };
                 _flpMethods.Controls.Add(btnM);
             }
-
-            // Action Buttons on Right
-            Panel pnlActions = new Panel { Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(pnlMain.Width - 535, 6), Size = new Size(530, 34) };
-
-            SunshineButton btnReprint = new SunshineButton { Text = "View / Reprint Receipt", IsPrimary = true, Location = new Point(0, 0), Size = new Size(165, 32), Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
-            btnReprint.Click += (s, e) => ViewSelectedReceipt();
-
-            SunshineButton btnRefresh = new SunshineButton { Text = "Refresh Data", IsPrimary = false, Location = new Point(172, 0), Size = new Size(100, 32), Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
-            btnRefresh.Click += (s, e) => RefreshData();
-
-            SunshineButton btnExport = new SunshineButton { Text = "Export (PDF/Excel)", IsPrimary = false, Location = new Point(280, 0), Size = new Size(125, 32), Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
-            btnExport.Click += (s, e) => MessageBox.Show("Sales transactions exported to CSV spreadsheet.", "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-            SunshineButton btnVoid = new SunshineButton { Text = "📦 Archive / Void Order", IsPrimary = false, CustomTextColor = Color.FromArgb(184, 50, 38), Location = new Point(412, 0), Size = new Size(150, 32), Font = new Font("Segoe UI", 7.5F, FontStyle.Bold) };
-            btnVoid.Click += (s, e) => VoidSelectedOrder();
-
-            pnlActions.Controls.Add(btnReprint);
-            pnlActions.Controls.Add(btnRefresh);
-            pnlActions.Controls.Add(btnExport);
-            pnlActions.Controls.Add(btnVoid);
 
             pnlFilterBar.Controls.Add(_txtSearch);
             pnlFilterBar.Controls.Add(_flpMethods);
@@ -268,7 +332,7 @@ namespace ERP.winforms.UI.Views
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 MultiSelect = false,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                RowTemplate = { Height = 46 }
+                RowTemplate = { Height = 44 }
             };
 
             _gridOrders.EnableHeadersVisualStyles = false;
@@ -290,17 +354,33 @@ namespace ERP.winforms.UI.Views
                 Padding = new Padding(6, 0, 0, 0)
             };
 
-            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ORDER ID", FillWeight = 10, Name = "ColId" });
-            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CUSTOMER NAME", FillWeight = 16, Name = "ColCust" });
-            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "DATE & TIME", FillWeight = 13, Name = "ColDate" });
-            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ITEMS PURCHASED", FillWeight = 15, Name = "ColItems" });
-            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PAYMENT METHOD", FillWeight = 13, Name = "ColPay" });
-            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CASHIER / REGISTER", FillWeight = 12, Name = "ColCashier" });
-            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TAX (12%)", FillWeight = 8, Name = "ColTax" });
-            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TOTAL (PHP)", FillWeight = 10, Name = "ColTotal" });
-            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STATUS", FillWeight = 9, Name = "ColStatus" });
-            _gridOrders.Columns.Add(new DataGridViewButtonColumn { HeaderText = "RECEIPT", FillWeight = 7, Text = "View", UseColumnTextForButtonValue = true, Name = "ColAction" });
-            _gridOrders.Columns.Add(new DataGridViewButtonColumn { HeaderText = "ARCHIVE / VOID", FillWeight = 11, Name = "ColVoid" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ORDER ID", FillWeight = 8, MinimumWidth = 75, Name = "ColId" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CUSTOMER NAME", FillWeight = 15, MinimumWidth = 110, Name = "ColCust" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "DATE & TIME", FillWeight = 11, MinimumWidth = 100, Name = "ColDate" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ITEMS", FillWeight = 12, MinimumWidth = 95, Name = "ColItems" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PAYMENT", FillWeight = 10, MinimumWidth = 85, Name = "ColPay" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "REGISTER", FillWeight = 9, MinimumWidth = 80, Name = "ColCashier" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TAX (12%)", FillWeight = 7, MinimumWidth = 70, Name = "ColTax" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TOTAL (PHP)", FillWeight = 11, MinimumWidth = 90, Name = "ColTotal" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STATUS", FillWeight = 8, MinimumWidth = 80, Name = "ColStatus" });
+            _gridOrders.Columns.Add(new DataGridViewButtonColumn
+            {
+                HeaderText = "RECEIPT",
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
+                Width = 75,
+                MinimumWidth = 75,
+                Text = "View",
+                UseColumnTextForButtonValue = true,
+                Name = "ColAction"
+            });
+            _gridOrders.Columns.Add(new DataGridViewButtonColumn
+            {
+                HeaderText = "ACTION",
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
+                Width = 110,
+                MinimumWidth = 110,
+                Name = "ColVoid"
+            });
 
             _gridOrders.CellContentClick += (s, e) =>
             {
@@ -334,10 +414,10 @@ namespace ERP.winforms.UI.Views
             // ========================================================
             // 5. FOOTER & CENTERED PAGINATION
             // ========================================================
-            Panel pnlFooter = new Panel { Dock = DockStyle.Bottom, Height = 40 };
+            Panel pnlFooter = new Panel { Dock = DockStyle.Bottom, Height = 40, BackColor = Color.Transparent };
             _lblSummary = new Label { Text = "Showing 0 transactions", Font = new Font("Segoe UI", 7.5F, FontStyle.Regular), ForeColor = AppTheme.TextMuted, Location = new Point(0, 12), AutoSize = true };
 
-            _pnlPagin = new Panel { Size = new Size(245, 28) };
+            _pnlPagin = new Panel { Size = new Size(245, 28), BackColor = Color.Transparent };
             string[] pages = { "Prev", "1", "2", "3", "Next" };
             int pgx = 0;
             foreach (var pg in pages)
@@ -373,6 +453,7 @@ namespace ERP.winforms.UI.Views
             pnlMain.Controls.Add(pnlFilterBar);
             pnlMain.Controls.Add(tlpMetrics);
             pnlMain.Controls.Add(pnlTitle);
+            cardGrid.BringToFront();
 
             Controls.Add(pnlMain);
             ResumeLayout(false);
@@ -396,9 +477,15 @@ namespace ERP.winforms.UI.Views
             lblVal = new Label { Text = value, Font = new Font("Segoe UI", 15F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Location = new Point(10, 24), AutoSize = true };
             Label lblSub = new Label { Text = subtitle, Font = new Font("Segoe UI", 7.5F, FontStyle.Regular), ForeColor = AppTheme.TextMuted, Location = new Point(10, 56), AutoSize = true };
 
-            Panel pnlBadge = new Panel { Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(card.Width - 65, 8), Size = new Size(55, 18), BackColor = Color.FromArgb(254, 248, 230) };
+            Panel pnlBadge = new Panel { Size = new Size(62, 18), BackColor = Color.FromArgb(254, 248, 230) };
             Label lblB = new Label { Text = badge, Font = new Font("Segoe UI", 6.5F, FontStyle.Bold), ForeColor = Color.FromArgb(130, 95, 10), Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter };
             pnlBadge.Controls.Add(lblB);
+
+            card.Resize += (s, e) =>
+            {
+                pnlBadge.Location = new Point(Math.Max(10, card.Width - pnlBadge.Width - 12), 8);
+            };
+            pnlBadge.Location = new Point(Math.Max(10, card.Width - 74), 8);
 
             card.Controls.Add(lblTitle);
             card.Controls.Add(lblVal);
@@ -487,7 +574,7 @@ namespace ERP.winforms.UI.Views
                     $"₱{t.Total:N2}",
                     t.Status,
                     "View",
-                    isVoided ? "♻️ Restore" : "📦 Archive / Void"
+                    isVoided ? "♻️ Restore" : "📦 Void"
                 );
 
                 var row = _gridOrders.Rows[rowIdx];
@@ -528,11 +615,11 @@ namespace ERP.winforms.UI.Views
 
         private int GetEffectivePageSize()
         {
-            if (_gridOrders == null || _gridOrders.ClientSize.Height <= 100) return 12;
-            int availableHeight = _gridOrders.ClientSize.Height - _gridOrders.ColumnHeadersHeight;
-            int rowHeight = _gridOrders.RowTemplate.Height > 0 ? _gridOrders.RowTemplate.Height : 46;
+            if (_gridOrders == null || _gridOrders.ClientSize.Height <= 100) return 8;
+            int availableHeight = _gridOrders.ClientSize.Height - _gridOrders.ColumnHeadersHeight - 6;
+            int rowHeight = _gridOrders.RowTemplate.Height > 0 ? _gridOrders.RowTemplate.Height : 44;
             int fitRows = availableHeight / rowHeight;
-            return Math.Max(10, fitRows);
+            return Math.Clamp(fitRows, 4, 15);
         }
 
         private void UpdatePaginationButtons(int totalCount, decimal totalRevenue, int pageSize)
