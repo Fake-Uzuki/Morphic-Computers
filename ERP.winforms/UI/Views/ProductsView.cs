@@ -19,6 +19,7 @@ namespace ERP.winforms.UI.Views
         private TextBox _txtFormSku = null!;
         private TextBox _txtFormName = null!;
         private ComboBox _cboFormCategory = null!;
+        private ComboBox _cboFormSupplier = null!;
         private TextBox _txtFormPrice = null!;
         private TextBox _txtFormCost = null!;
         private NumericUpDown _numFormStock = null!;
@@ -60,6 +61,22 @@ namespace ERP.winforms.UI.Views
                     else
                     {
                         RefreshCategoriesInUI();
+                        ApplyFilters();
+                    }
+                }
+            };
+
+            _dataService.SuppliersChanged += () =>
+            {
+                if (IsHandleCreated && !IsDisposed)
+                {
+                    if (InvokeRequired)
+                    {
+                        BeginInvoke(new Action(() => { RefreshSuppliersInUI(); ApplyFilters(); }));
+                    }
+                    else
+                    {
+                        RefreshSuppliersInUI();
                         ApplyFilters();
                     }
                 }
@@ -219,6 +236,13 @@ namespace ERP.winforms.UI.Views
             btnManageCat.Click += (s, e) => OpenManageCategoriesDialog();
             y += 32;
 
+            // Supplier / Distributor
+            Label lblSupplier = new Label { Text = "SUPPLIER / DISTRIBUTOR", Font = new Font("Segoe UI", 7.5F, FontStyle.Bold), ForeColor = AppTheme.TextMuted, Location = new Point(12, y), AutoSize = true };
+            y += 18;
+            _cboFormSupplier = new ComboBox { Font = new Font("Segoe UI", 9F), Location = new Point(12, y), Width = 298, DropDownStyle = ComboBoxStyle.DropDownList };
+            RefreshSuppliersInUI();
+            y += 32;
+
             // Price & Cost in a 2-column row
             Label lblPrice = new Label { Text = "RETAIL PRICE (₱) *", Font = new Font("Segoe UI", 7.5F, FontStyle.Bold), ForeColor = AppTheme.TextMuted, Location = new Point(12, y), AutoSize = true };
             Label lblCost = new Label { Text = "UNIT COST (₱)", Font = new Font("Segoe UI", 7.5F, FontStyle.Bold), ForeColor = AppTheme.TextMuted, Location = new Point(165, y), AutoSize = true };
@@ -296,6 +320,8 @@ namespace ERP.winforms.UI.Views
             card.Controls.Add(_cboFormCategory);
             card.Controls.Add(btnAddCat);
             card.Controls.Add(btnManageCat);
+            card.Controls.Add(lblSupplier);
+            card.Controls.Add(_cboFormSupplier);
             card.Controls.Add(lblPrice);
             card.Controls.Add(lblCost);
             card.Controls.Add(_txtFormPrice);
@@ -460,13 +486,14 @@ namespace ERP.winforms.UI.Views
             };
 
             _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ID / SKU", FillWeight = 11, Name = "ColId" });
-            _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PRODUCT NAME", FillWeight = 28, Name = "ColName" });
-            _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CATEGORY", FillWeight = 16, Name = "ColCat" });
+            _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PRODUCT NAME", FillWeight = 25, Name = "ColName" });
+            _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CATEGORY", FillWeight = 14, Name = "ColCat" });
+            _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "SUPPLIER", FillWeight = 15, Name = "ColSupplier" });
             _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PRICE (PHP)", FillWeight = 12, Name = "ColPrice" });
             _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "COST (PHP)", FillWeight = 11, Name = "ColCost" });
-            _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STOCK", FillWeight = 11, Name = "ColStock" });
-            _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STATUS", FillWeight = 11, Name = "ColStatus" });
-            _gridProducts.Columns.Add(new DataGridViewButtonColumn { HeaderText = "ACTIONS", FillWeight = 14, Name = "ColAction" });
+            _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STOCK", FillWeight = 9, Name = "ColStock" });
+            _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STATUS", FillWeight = 10, Name = "ColStatus" });
+            _gridProducts.Columns.Add(new DataGridViewButtonColumn { HeaderText = "ACTIONS", FillWeight = 13, Name = "ColAction" });
 
             _gridProducts.SelectionChanged += (s, e) => LoadSelectedRowToForm();
             _gridProducts.CellContentClick += (s, e) =>
@@ -592,6 +619,18 @@ namespace ERP.winforms.UI.Views
                     _cboFormCategory.SelectedIndex = 0;
                 }
 
+                string supName = string.IsNullOrWhiteSpace(p.SupplierName) ? "Direct Distribution" : p.SupplierName;
+                int supIdx = _cboFormSupplier.FindStringExact(supName);
+                if (supIdx >= 0)
+                {
+                    _cboFormSupplier.SelectedIndex = supIdx;
+                }
+                else
+                {
+                    _cboFormSupplier.Items.Add(supName);
+                    _cboFormSupplier.SelectedItem = supName;
+                }
+
                 if (_btnArchiveRestore != null)
                 {
                     _btnArchiveRestore.Enabled = true;
@@ -632,6 +671,7 @@ namespace ERP.winforms.UI.Views
             _numFormMinStock.Value = 3;
             _txtFormDesc.Clear();
             if (_cboFormCategory.Items.Count > 0) _cboFormCategory.SelectedIndex = 0;
+            if (_cboFormSupplier != null && _cboFormSupplier.Items.Count > 0) _cboFormSupplier.SelectedIndex = 0;
             _txtFormSku.Focus();
         }
 
@@ -675,12 +715,14 @@ namespace ERP.winforms.UI.Views
             }
 
             string cat = _cboFormCategory.SelectedItem?.ToString() ?? "Graphics Cards (GPU)";
+            string sup = _cboFormSupplier?.SelectedItem?.ToString() ?? "Direct Distribution";
 
             Product newProd = new Product
             {
                 ProductCode = sku,
                 ProductName = name,
                 CategoryName = cat,
+                SupplierName = sup,
                 UnitPrice = price,
                 StockQuantity = (int)_numFormStock.Value,
                 Description = _txtFormDesc.Text.Trim()
@@ -726,10 +768,12 @@ namespace ERP.winforms.UI.Views
             }
 
             string cat = _cboFormCategory.SelectedItem?.ToString() ?? "Graphics Cards (GPU)";
+            string sup = _cboFormSupplier?.SelectedItem?.ToString() ?? "Direct Distribution";
 
             _selectedProduct.ProductName = name;
             _selectedProduct.ProductCode = skuText;
             _selectedProduct.CategoryName = cat;
+            _selectedProduct.SupplierName = sup;
             _selectedProduct.UnitPrice = price;
             _selectedProduct.StockQuantity = (int)_numFormStock.Value;
             _selectedProduct.Description = _txtFormDesc.Text.Trim();
@@ -781,6 +825,23 @@ namespace ERP.winforms.UI.Views
                 int filterIdx = _cboCategory.FindStringExact(currentFilterSelection);
                 _cboCategory.SelectedIndex = filterIdx >= 0 ? filterIdx : 0;
             }
+        }
+
+        private void RefreshSuppliersInUI(string? selectedSupplier = null)
+        {
+            if (_cboFormSupplier == null) return;
+            string current = selectedSupplier ?? _cboFormSupplier.SelectedItem?.ToString() ?? "Direct Distribution";
+            _cboFormSupplier.Items.Clear();
+            _cboFormSupplier.Items.Add("Direct Distribution");
+            foreach (var s in _dataService.Suppliers.Where(s => s.IsActive))
+            {
+                if (!string.IsNullOrWhiteSpace(s.SupplierName) && !_cboFormSupplier.Items.Contains(s.SupplierName))
+                {
+                    _cboFormSupplier.Items.Add(s.SupplierName);
+                }
+            }
+            int idx = _cboFormSupplier.FindStringExact(current);
+            _cboFormSupplier.SelectedIndex = idx >= 0 ? idx : 0;
         }
 
         private void BtnArchiveRestore_Click(object? sender, EventArgs e)
@@ -901,6 +962,7 @@ namespace ERP.winforms.UI.Views
                     p.ProductCode,
                     p.ProductName,
                     p.CategoryName,
+                    string.IsNullOrWhiteSpace(p.SupplierName) ? "Direct Distribution" : p.SupplierName,
                     $"₱{p.UnitPrice:N2}",
                     $"₱{cost:N2}",
                     $"{p.StockQuantity}",

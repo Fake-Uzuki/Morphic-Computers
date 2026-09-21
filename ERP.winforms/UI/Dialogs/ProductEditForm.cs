@@ -17,6 +17,7 @@ namespace ERP.winforms.UI.Dialogs
         private TextBox _txtCode = null!;
         private TextBox _txtName = null!;
         private ComboBox _cboCategory = null!;
+        private ComboBox _cboSupplier = null!;
         private NumericUpDown _numPrice = null!;
         private NumericUpDown _numStock = null!;
         private TextBox _txtDescription = null!;
@@ -28,7 +29,7 @@ namespace ERP.winforms.UI.Dialogs
             _targetProduct = product;
 
             Text = _targetProduct == null ? "Add New Product" : "Edit Product Details";
-            Size = new Size(460, 480);
+            Size = new Size(460, 560);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -44,6 +45,13 @@ namespace ERP.winforms.UI.Dialogs
                 int cIdx = _cboCategory.FindStringExact(_targetProduct.CategoryName);
                 if (cIdx >= 0) _cboCategory.SelectedIndex = cIdx;
                 else if (_cboCategory.Items.Count > 0) _cboCategory.SelectedIndex = 0;
+
+                if (!string.IsNullOrEmpty(_targetProduct.SupplierName))
+                {
+                    int sIdx = _cboSupplier.FindStringExact(_targetProduct.SupplierName);
+                    if (sIdx >= 0) _cboSupplier.SelectedIndex = sIdx;
+                }
+
                 _numPrice.Value = Math.Min(_targetProduct.UnitPrice, _numPrice.Maximum);
                 _numStock.Value = Math.Min(_targetProduct.StockQuantity, _numStock.Maximum);
                 _txtDescription.Text = _targetProduct.Description;
@@ -148,6 +156,18 @@ namespace ERP.winforms.UI.Dialogs
             };
             y += 48;
 
+            // Supplier / Vendor
+            Label lblSupplier = new Label { Text = "Supplier / Vendor:", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(20, y), AutoSize = true };
+            _cboSupplier = new ComboBox { Font = AppTheme.BodyFont, Location = new Point(20, y + 18), Width = 404, DropDownStyle = ComboBoxStyle.DropDownList };
+            _cboSupplier.Items.Add("Direct Distribution");
+            foreach (var sup in _dataService.Suppliers)
+            {
+                if (!_cboSupplier.Items.Contains(sup.SupplierName))
+                    _cboSupplier.Items.Add(sup.SupplierName);
+            }
+            _cboSupplier.SelectedIndex = 0;
+            y += 48;
+
             // Price & Stock
             Label lblPrice = new Label { Text = "Unit Price (₱):", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(20, y), AutoSize = true };
             _numPrice = new NumericUpDown { Font = AppTheme.BodyFont, Location = new Point(20, y + 18), Width = 195, DecimalPlaces = 2, Maximum = 100000, Value = 10.00m };
@@ -162,16 +182,17 @@ namespace ERP.winforms.UI.Dialogs
             {
                 Font = AppTheme.BodyFont,
                 Location = new Point(20, y + 18),
-                Size = new Size(404, 80),
+                Size = new Size(404, 75),
                 Multiline = true
             };
+            y += 100;
 
             // Action Buttons
             _btnSave = new SunshineButton
             {
                 Text = _targetProduct == null ? "Add Product" : "Save Changes",
                 IsPrimary = true,
-                Location = new Point(20, 370),
+                Location = new Point(20, y),
                 Width = 195,
                 Height = 44
             };
@@ -181,7 +202,7 @@ namespace ERP.winforms.UI.Dialogs
             {
                 Text = "Cancel",
                 IsPrimary = false,
-                Location = new Point(229, 370),
+                Location = new Point(229, y),
                 Width = 195,
                 Height = 44
             };
@@ -196,6 +217,8 @@ namespace ERP.winforms.UI.Dialogs
             Controls.Add(_cboCategory);
             Controls.Add(btnAddCat);
             Controls.Add(btnManageCat);
+            Controls.Add(lblSupplier);
+            Controls.Add(_cboSupplier);
             Controls.Add(lblPrice);
             Controls.Add(_numPrice);
             Controls.Add(lblStock);
@@ -226,6 +249,7 @@ namespace ERP.winforms.UI.Dialogs
 
             string code = string.IsNullOrWhiteSpace(_txtCode.Text) ? $"PRD{DateTime.Now:fff}" : _txtCode.Text.Trim();
             string cat = _cboCategory.SelectedItem?.ToString() ?? "Graphics Cards (GPU)";
+            string sup = _cboSupplier.SelectedItem?.ToString() ?? "Direct Distribution";
 
             if (_targetProduct == null)
             {
@@ -234,6 +258,7 @@ namespace ERP.winforms.UI.Dialogs
                     ProductCode = code,
                     Name = _txtName.Text.Trim(),
                     CategoryName = cat,
+                    SupplierName = sup,
                     Price = _numPrice.Value,
                     StockQuantity = (int)_numStock.Value,
                     Description = _txtDescription.Text.Trim()
@@ -245,6 +270,7 @@ namespace ERP.winforms.UI.Dialogs
                 _targetProduct.ProductCode = code;
                 _targetProduct.Name = _txtName.Text.Trim();
                 _targetProduct.CategoryName = cat;
+                _targetProduct.SupplierName = sup;
                 _targetProduct.Price = _numPrice.Value;
                 _targetProduct.StockQuantity = (int)_numStock.Value;
                 _targetProduct.Description = _txtDescription.Text.Trim();

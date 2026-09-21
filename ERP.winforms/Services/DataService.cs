@@ -618,7 +618,7 @@ namespace ERP.winforms.Services
         private static string GetTenantConnectionString(int companyId)
         {
             return companyId == 2
-                ? "Server=db66562.public.databaseasp.net;Database=db66562;User Id=db66562;Password=Ex6_n9#YZb3%;Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=True;Connect Timeout=2;"
+                ? "Server=db67675.databaseasp.net;Database=db67675;User Id=db67675;Password=k@4FMx=9d6E%;Encrypt=False;TrustServerCertificate=True;MultipleActiveResultSets=True;Connect Timeout=2;"
                 : "Server=db67673.public.databaseasp.net;Database=db67673;User Id=db67673;Password=Wt7-8=mFA3#i;Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=True;Connect Timeout=2;";
         }
 
@@ -925,6 +925,8 @@ namespace ERP.winforms.Services
                 existing.CategoryName = product.CategoryName;
                 existing.Description = product.Description;
                 existing.IsActive = product.IsActive;
+                existing.SupplierName = product.SupplierName;
+                existing.SupplierId = product.SupplierId;
             }
 
             try

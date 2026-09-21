@@ -26,6 +26,8 @@ namespace ERP.domain.entities
         public int CompanyId { get; set; } = 1;
 
         public string CategoryName { get; set; } = "Graphics Cards (GPU)";
+        public string? SupplierName { get; set; } = "Direct Distribution";
+        public int? SupplierId { get; set; }
 
         [NotMapped]
         public int StockQuantity { get; set; }
