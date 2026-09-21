@@ -321,7 +321,7 @@ namespace ERP.winforms.Services
                 {
                     int remaining = PendingCount;
                     string msg = remaining == 0
-                        ? $"All {syncedCount} offline changes successfully synced to MonsterASP cloud!"
+                        ? $"All {syncedCount} offline changes successfully synced to cloud database!"
                         : $"{syncedCount} items synced. {remaining} items remaining.";
 
                     SyncStatusChanged?.Invoke(true, remaining, msg);
