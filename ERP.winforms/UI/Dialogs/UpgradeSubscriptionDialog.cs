@@ -53,9 +53,9 @@ namespace ERP.winforms.UI.Dialogs
 
             Label lblDescription = new Label
             {
-                Text = "This module is not included in the Micro Company subscription plan. " +
-                       "Your current plan includes Dashboard, Products & Stock Inventory, and Point of Sale (POS). " +
-                       "To unlock Repair Job Orders and Supplier Management, upgrade to the Small Business tier.",
+                Text = "This feature is not included in the Micro Company subscription plan. " +
+                       "Micro tier is restricted to basic Store Operations and POS. " +
+                       "To unlock Executive Business Intelligence, Advanced Analytics, Repair Job Orders, and Supplier Management, upgrade to Small Business tier.",
                 Font = AppTheme.BodyFont,
                 ForeColor = AppTheme.TextMuted,
                 Location = new Point(20, 82),
@@ -64,7 +64,7 @@ namespace ERP.winforms.UI.Dialogs
 
             Label lblPlanStatus = new Label
             {
-                Text = "Current Tier: Micro (Company A)  |  Required Tier: Small Business",
+                Text = "Current Tier: Micro  |  Required Tier: Small Business",
                 Font = new Font("Segoe UI", 9F, FontStyle.Bold),
                 ForeColor = Color.FromArgb(160, 110, 10),
                 Location = new Point(20, 155),

@@ -2,23 +2,92 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using ERP.winforms.Services;
 using ERP.winforms.Theme;
 using ERP.winforms.UI.Components;
+using ERP.winforms.UI.Dialogs;
 
 namespace ERP.winforms.UI.Views
 {
+    public enum DashboardMode
+    {
+        BusinessIntelligence,
+        StoreOperations
+    }
+
     public class DashboardView : UserControl
     {
         private readonly DataService _dataService = DataService.Instance;
+
+        private bool IsSmallBusinessOrHigher =>
+            _dataService.CurrentCompany != null &&
+            !string.Equals(_dataService.CurrentCompany.PlanName, "Micro", StringComparison.OrdinalIgnoreCase);
 
         public Action? OnNavigateToPOSRequest;
         public Action<bool>? OnNavigateToProductsRequest;
         public Action? OnNavigateToOrdersRequest;
 
-        // Command Center Labels (3 Main Stats Only)
+        // Current Active States
+        private DashboardMode _currentMode = DashboardMode.BusinessIntelligence;
+        private BiTimeRange _currentBiRange = BiTimeRange.Today;
+
+        // Header Mode Switchers & Timeframe Filters
+        private Button _btnModeBI = null!;
+        private Button _btnModeOps = null!;
+        private Button _btnTfToday = null!;
+        private Button _btnTfWeek = null!;
+        private Button _btnTfMonth = null!;
+        private Button _btnTfAll = null!;
+        private Panel _pnlTimeframeBar = null!;
+
+        // Containers
+        private Panel _pnlMainContent = null!;
+        private Panel _pnlBiScrollContainer = null!;
+        private TableLayoutPanel _tlpOpsContainer = null!;
+
+        // ========================================================
+        // 1. BUSINESS INTELLIGENCE (BI) CONTROLS
+        // ========================================================
+        // KPI Card Labels
+        private Label _lblBiSalesVal = null!;
+        private Label _lblBiSalesSub = null!;
+        private Label _lblBiSalesOrders = null!;
+
+        private Label _lblBiEarningsVal = null!;
+        private Label _lblBiEarningsMargin = null!;
+        private Label _lblBiEarningsProjected = null!;
+
+        private Label _lblBiAovVal = null!;
+        private Label _lblBiAovUnits = null!;
+        private Label _lblBiAovBasket = null!;
+
+        private Label _lblBiStockValuationVal = null!;
+        private Label _lblBiStockInStockRate = null!;
+        private Label _lblBiStockSkus = null!;
+
+        // Category Breakdown Container
+        private Panel _pnlCategoryBars = null!;
+
+        // Best Sellers Container
+        private Panel _pnlBestSellers = null!;
+
+        // Stock Trends & Health
+        private Panel _pnlStockHealthBar = null!;
+        private Label _lblStockHealthyCount = null!;
+        private Label _lblStockLowCount = null!;
+        private Label _lblStockOutCount = null!;
+        private Label _lblStockTotalAssetVal = null!;
+
+        // Inventory Movement
+        private Panel _pnlFastMovers = null!;
+        private Panel _pnlSlowMovers = null!;
+
+        // ========================================================
+        // 2. STORE OPERATIONS (ORIGINAL DASHBOARD) CONTROLS
+        // ========================================================
         private Label _lblRevenueVal = null!;
         private Label _lblSalesSub = null!;
         private Label _lblTargetProgressVal = null!;
@@ -27,7 +96,6 @@ namespace ERP.winforms.UI.Views
         private Label _lblTxSub = null!;
         private ProgressBar _pbTarget = null!;
 
-        // 2x2 Metric Labels
         private Label _lblRefundVal = null!;
         private Label _lblRefundDesc = null!;
         private Label _lblStockCount = null!;
@@ -38,7 +106,6 @@ namespace ERP.winforms.UI.Views
         private Label _lblBenchCount = null!;
         private Label _lblBenchDesc = null!;
 
-        // Tables & Lists
         private DataGridView _gridRecentOrders = null!;
         private TextBox _txtSearchOrders = null!;
         private Panel _pnlPagination = null!;
@@ -46,15 +113,12 @@ namespace ERP.winforms.UI.Views
         private int _recentOrdersPage = 1;
         private const int RecentPageSize = 8;
         private int _recentTotalPages = 1;
-
-        // Critical Inventory Container
         private Panel _pnlInventoryItems = null!;
 
         public DashboardView()
         {
             Dock = DockStyle.Fill;
             BackColor = AppTheme.AppBackground;
-            AutoScroll = true;
             InitializeLayout();
         }
 
@@ -63,7 +127,1076 @@ namespace ERP.winforms.UI.Views
             SuspendLayout();
             Controls.Clear();
 
-            // Main 2-Row Layout Container
+            // ========================================================
+            // TOP COMMAND BAR (Mode switch, Timeframe filters, Export)
+            // ========================================================
+            Panel pnlTopBar = CreateTopCommandBar();
+            pnlTopBar.Dock = DockStyle.Top;
+
+            // Main Content Display Container
+            _pnlMainContent = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = AppTheme.AppBackground
+            };
+
+            // 1. Build BI Container
+            _pnlBiScrollContainer = CreateBusinessIntelligenceView();
+            _pnlBiScrollContainer.Dock = DockStyle.Fill;
+
+            // 2. Build Operations Container
+            _tlpOpsContainer = CreateOperationsView();
+            _tlpOpsContainer.Dock = DockStyle.Fill;
+
+            // Add default view based on subscription plan
+            if (IsSmallBusinessOrHigher)
+            {
+                _currentMode = DashboardMode.BusinessIntelligence;
+                _pnlMainContent.Controls.Add(_pnlBiScrollContainer);
+            }
+            else
+            {
+                _currentMode = DashboardMode.StoreOperations;
+                _pnlMainContent.Controls.Add(_tlpOpsContainer);
+            }
+
+            Controls.Add(_pnlMainContent);
+            Controls.Add(pnlTopBar);
+
+            UpdatePlanAccessUI();
+
+            ResumeLayout(false);
+
+            RefreshMetrics();
+        }
+
+        private Panel CreateTopCommandBar()
+        {
+            Panel pnl = new Panel
+            {
+                Height = 52,
+                BackColor = Color.FromArgb(244, 241, 232),
+                Padding = new Padding(16, 8, 16, 8)
+            };
+
+            pnl.Paint += (s, e) =>
+            {
+                using Pen borderPen = new Pen(Color.FromArgb(226, 221, 208), 1);
+                e.Graphics.DrawLine(borderPen, 0, pnl.Height - 1, pnl.Width, pnl.Height - 1);
+            };
+
+            // Mode Selector (Left)
+            Panel pnlModeSwitcher = new Panel
+            {
+                Dock = DockStyle.Left,
+                Width = 430,
+                BackColor = Color.Transparent
+            };
+
+            _btnModeBI = new Button
+            {
+                Text = "📊 Executive BI & Analytics",
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                Location = new Point(0, 3),
+                Size = new Size(220, 30),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = AppTheme.Primary,
+                ForeColor = AppTheme.TextDark,
+                Cursor = Cursors.Hand
+            };
+            _btnModeBI.FlatAppearance.BorderSize = 0;
+            _btnModeBI.Click += (s, e) => SetDashboardMode(DashboardMode.BusinessIntelligence);
+
+            _btnModeOps = new Button
+            {
+                Text = "⚡ Store Operations",
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                Location = new Point(226, 3),
+                Size = new Size(185, 30),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(235, 230, 220),
+                ForeColor = AppTheme.TextDark,
+                Cursor = Cursors.Hand
+            };
+            _btnModeOps.FlatAppearance.BorderSize = 0;
+            _btnModeOps.Click += (s, e) => SetDashboardMode(DashboardMode.StoreOperations);
+
+            pnlModeSwitcher.Controls.Add(_btnModeBI);
+            pnlModeSwitcher.Controls.Add(_btnModeOps);
+
+            // Timeframe Selector & Export Report (Right)
+            _pnlTimeframeBar = new Panel
+            {
+                Dock = DockStyle.Right,
+                Width = 470,
+                BackColor = Color.Transparent
+            };
+
+            Label lblTf = new Label
+            {
+                Text = "PERIOD:",
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
+                ForeColor = AppTheme.TextMuted,
+                Location = new Point(10, 10),
+                AutoSize = true
+            };
+
+            int bx = 65;
+            _btnTfToday = CreateTimeframeButton("Today", BiTimeRange.Today, bx, 55);
+            bx += 60;
+            _btnTfWeek = CreateTimeframeButton("This Week", BiTimeRange.ThisWeek, bx, 75);
+            bx += 80;
+            _btnTfMonth = CreateTimeframeButton("This Month", BiTimeRange.ThisMonth, bx, 80);
+            bx += 85;
+            _btnTfAll = CreateTimeframeButton("All-Time", BiTimeRange.AllTime, bx, 70);
+            bx += 76;
+
+            Button btnExportCsv = new Button
+            {
+                Text = "Export BI ▾",
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
+                Location = new Point(bx, 3),
+                Size = new Size(88, 30),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(32, 34, 28),
+                ForeColor = Color.White,
+                Cursor = Cursors.Hand
+            };
+            btnExportCsv.FlatAppearance.BorderSize = 0;
+            btnExportCsv.Click += (s, e) => ExportBiCsvReport();
+
+            _pnlTimeframeBar.Controls.Add(lblTf);
+            _pnlTimeframeBar.Controls.Add(_btnTfToday);
+            _pnlTimeframeBar.Controls.Add(_btnTfWeek);
+            _pnlTimeframeBar.Controls.Add(_btnTfMonth);
+            _pnlTimeframeBar.Controls.Add(_btnTfAll);
+            _pnlTimeframeBar.Controls.Add(btnExportCsv);
+
+            pnl.Controls.Add(pnlModeSwitcher);
+            pnl.Controls.Add(_pnlTimeframeBar);
+
+            return pnl;
+        }
+
+        private Button CreateTimeframeButton(string text, BiTimeRange range, int x, int width)
+        {
+            Button btn = new Button
+            {
+                Text = text,
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
+                Location = new Point(x, 4),
+                Size = new Size(width, 28),
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand,
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+            btn.FlatAppearance.BorderSize = 0;
+            btn.Click += (s, e) => SetBiTimeRange(range);
+            return btn;
+        }
+
+        private void SetDashboardMode(DashboardMode mode)
+        {
+            if (mode == DashboardMode.BusinessIntelligence && !IsSmallBusinessOrHigher)
+            {
+                using var upgradeDlg = new UpgradeSubscriptionDialog("Executive Business Intelligence & Profit Analytics");
+                var result = upgradeDlg.ShowDialog(FindForm());
+                if (result == DialogResult.OK && upgradeDlg.Upgraded)
+                {
+                    UpdatePlanAccessUI();
+                    SetDashboardMode(DashboardMode.BusinessIntelligence);
+                }
+                return;
+            }
+
+            _currentMode = mode;
+            UpdatePlanAccessUI();
+
+            _pnlMainContent.Controls.Clear();
+            if (mode == DashboardMode.BusinessIntelligence)
+            {
+                _pnlMainContent.Controls.Add(_pnlBiScrollContainer);
+            }
+            else
+            {
+                _pnlMainContent.Controls.Add(_tlpOpsContainer);
+            }
+
+            RefreshMetrics();
+        }
+
+        private void UpdatePlanAccessUI()
+        {
+            bool isSmallBiz = IsSmallBusinessOrHigher;
+            if (!isSmallBiz)
+            {
+                _btnModeBI.Text = "🔒 Executive BI (Small Business)";
+                _btnModeBI.BackColor = Color.FromArgb(242, 238, 230);
+                _btnModeBI.ForeColor = Color.FromArgb(140, 125, 110);
+
+                _btnModeOps.Text = "⚡ Store Operations (Active)";
+                _btnModeOps.BackColor = AppTheme.Primary;
+                _btnModeOps.ForeColor = AppTheme.TextDark;
+
+                _pnlTimeframeBar.Visible = false;
+            }
+            else
+            {
+                _btnModeBI.Text = "📊 Executive BI & Analytics";
+                _btnModeOps.Text = "⚡ Store Operations";
+
+                _btnModeBI.BackColor = _currentMode == DashboardMode.BusinessIntelligence ? AppTheme.Primary : Color.FromArgb(235, 230, 220);
+                _btnModeBI.ForeColor = AppTheme.TextDark;
+
+                _btnModeOps.BackColor = _currentMode == DashboardMode.StoreOperations ? AppTheme.Primary : Color.FromArgb(235, 230, 220);
+                _btnModeOps.ForeColor = AppTheme.TextDark;
+
+                _pnlTimeframeBar.Visible = _currentMode == DashboardMode.BusinessIntelligence;
+            }
+        }
+
+        private void SetBiTimeRange(BiTimeRange range)
+        {
+            _currentBiRange = range;
+            UpdateTimeframeButtonStyles();
+            RefreshBiData();
+        }
+
+        private void UpdateTimeframeButtonStyles()
+        {
+            void ApplyStyle(Button btn, bool isActive)
+            {
+                btn.BackColor = isActive ? AppTheme.Primary : Color.White;
+                btn.ForeColor = isActive ? AppTheme.TextDark : AppTheme.TextMuted;
+                btn.Font = new Font("Segoe UI", 7.5F, isActive ? FontStyle.Bold : FontStyle.Regular);
+            }
+
+            ApplyStyle(_btnTfToday, _currentBiRange == BiTimeRange.Today);
+            ApplyStyle(_btnTfWeek, _currentBiRange == BiTimeRange.ThisWeek);
+            ApplyStyle(_btnTfMonth, _currentBiRange == BiTimeRange.ThisMonth);
+            ApplyStyle(_btnTfAll, _currentBiRange == BiTimeRange.AllTime);
+        }
+
+        // ========================================================
+        // 1. BUSINESS INTELLIGENCE (BI) VIEW IMPLEMENTATION
+        // ========================================================
+        private Panel CreateBusinessIntelligenceView()
+        {
+            Panel scrollPanel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                AutoScroll = true,
+                Padding = new Padding(16, 12, 16, 16),
+                BackColor = Color.Transparent
+            };
+
+            TableLayoutPanel tlp = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                ColumnCount = 1,
+                RowCount = 3,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                BackColor = Color.Transparent
+            };
+            tlp.RowStyles.Add(new RowStyle(SizeType.Absolute, 115f)); // Row 0: 4 Hero KPI Cards
+            tlp.RowStyles.Add(new RowStyle(SizeType.Absolute, 330f)); // Row 1: Category Shares (55%) + Best Sellers (45%)
+            tlp.RowStyles.Add(new RowStyle(SizeType.Absolute, 270f)); // Row 2: Stock Trends & Health (50%) + Velocity (50%)
+
+            // ROW 0: 4 KPI Cards
+            TableLayoutPanel tlpKpis = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 4,
+                RowCount = 1,
+                Margin = new Padding(0, 0, 0, 10),
+                BackColor = Color.Transparent
+            };
+            for (int i = 0; i < 4; i++) tlpKpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
+
+            // KPI 1: Sales Revenue
+            tlpKpis.Controls.Add(CreateBiKpiCard(
+                "SALES REVENUE",
+                out _lblBiSalesVal,
+                out _lblBiSalesSub,
+                out _lblBiSalesOrders,
+                "₱0.00",
+                "+0.0% vs prev period",
+                "0 orders completed",
+                AppTheme.Primary), 0, 0);
+
+            // KPI 2: Monthly Earnings (Gross Profit)
+            tlpKpis.Controls.Add(CreateBiKpiCard(
+                "MONTHLY EARNINGS (EST. PROFIT)",
+                out _lblBiEarningsVal,
+                out _lblBiEarningsMargin,
+                out _lblBiEarningsProjected,
+                "₱0.00",
+                "28.5% Gross Margin",
+                "Projected: ₱0.00",
+                Color.FromArgb(27, 122, 79)), 1, 0);
+
+            // KPI 3: Average Order Value (AOV)
+            tlpKpis.Controls.Add(CreateBiKpiCard(
+                "AVERAGE ORDER VALUE (AOV)",
+                out _lblBiAovVal,
+                out _lblBiAovUnits,
+                out _lblBiAovBasket,
+                "₱0.00",
+                "0 units sold",
+                "Store retail basket",
+                Color.FromArgb(30, 95, 180)), 2, 0);
+
+            // KPI 4: Inventory Valuation
+            tlpKpis.Controls.Add(CreateBiKpiCard(
+                "INVENTORY ASSET VALUATION",
+                out _lblBiStockValuationVal,
+                out _lblBiStockInStockRate,
+                out _lblBiStockSkus,
+                "₱0.00",
+                "100% In-Stock Rate",
+                "0 catalog products",
+                Color.FromArgb(168, 110, 5)), 3, 0);
+
+            tlp.Controls.Add(tlpKpis, 0, 0);
+
+            // ROW 1: Category Shares (Left 55%) + Best Sellers (Right 45%)
+            TableLayoutPanel tlpMiddle = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 1,
+                Margin = new Padding(0, 0, 0, 10),
+                BackColor = Color.Transparent
+            };
+            tlpMiddle.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55f));
+            tlpMiddle.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45f));
+
+            Panel pnlCategories = CreateCategoryDistributionCard();
+            Panel pnlBestSellersCard = CreateBestSellersCard();
+
+            tlpMiddle.Controls.Add(pnlCategories, 0, 0);
+            tlpMiddle.Controls.Add(pnlBestSellersCard, 1, 0);
+
+            tlp.Controls.Add(tlpMiddle, 0, 1);
+
+            // ROW 2: Stock Health & Trends (Left 50%) + Inventory Velocity (Right 50%)
+            TableLayoutPanel tlpBottom = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 1,
+                Margin = new Padding(0, 0, 0, 10),
+                BackColor = Color.Transparent
+            };
+            tlpBottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+            tlpBottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+
+            Panel pnlStockTrendsCard = CreateStockTrendsCard();
+            Panel pnlInventoryMovementCard = CreateInventoryMovementCard();
+
+            tlpBottom.Controls.Add(pnlStockTrendsCard, 0, 0);
+            tlpBottom.Controls.Add(pnlInventoryMovementCard, 1, 0);
+
+            tlp.Controls.Add(tlpBottom, 0, 2);
+
+            scrollPanel.Controls.Add(tlp);
+            return scrollPanel;
+        }
+
+        private SunshineCard CreateBiKpiCard(
+            string title,
+            out Label lblVal,
+            out Label lblSub,
+            out Label lblDetail,
+            string defVal,
+            string defSub,
+            string defDetail,
+            Color accentColor)
+        {
+            SunshineCard card = new SunshineCard
+            {
+                Dock = DockStyle.Fill,
+                Margin = new Padding(4),
+                Padding = new Padding(14, 10, 14, 10),
+                BorderRadius = 4,
+                CustomBgColor = Color.White,
+                CustomBorderColor = AppTheme.CardBorder
+            };
+
+            card.Paint += (s, e) =>
+            {
+                using Brush brush = new SolidBrush(accentColor);
+                e.Graphics.FillRectangle(brush, 0, 0, 4, card.Height);
+            };
+
+            Label lblTitle = new Label
+            {
+                Text = title,
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
+                ForeColor = AppTheme.TextMuted,
+                Dock = DockStyle.Top,
+                Height = 16,
+                UseMnemonic = false
+            };
+
+            lblVal = new Label
+            {
+                Text = defVal,
+                Font = new Font("Segoe UI", 16F, FontStyle.Bold),
+                ForeColor = AppTheme.TextDark,
+                Dock = DockStyle.Top,
+                Height = 32,
+                AutoEllipsis = true
+            };
+
+            lblSub = new Label
+            {
+                Text = defSub,
+                Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                ForeColor = accentColor,
+                Dock = DockStyle.Top,
+                Height = 18,
+                AutoEllipsis = true
+            };
+
+            lblDetail = new Label
+            {
+                Text = defDetail,
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Regular),
+                ForeColor = AppTheme.TextMuted,
+                Dock = DockStyle.Bottom,
+                Height = 16,
+                AutoEllipsis = true
+            };
+
+            card.Controls.Add(lblDetail);
+            card.Controls.Add(lblSub);
+            card.Controls.Add(lblVal);
+            card.Controls.Add(lblTitle);
+
+            return card;
+        }
+
+        private Panel CreateCategoryDistributionCard()
+        {
+            SunshineCard card = new SunshineCard
+            {
+                Dock = DockStyle.Fill,
+                Margin = new Padding(0, 0, 6, 0),
+                Padding = new Padding(14),
+                BorderRadius = 4,
+                CustomBgColor = Color.White,
+                CustomBorderColor = AppTheme.CardBorder
+            };
+
+            Panel pnlHeader = new Panel { Dock = DockStyle.Top, Height = 32 };
+            Label lblTitle = new Label
+            {
+                Text = "Sales by Product & Category",
+                Font = new Font("Segoe UI", 11F, FontStyle.Bold),
+                ForeColor = AppTheme.TextDark,
+                Dock = DockStyle.Left,
+                AutoSize = true
+            };
+            Label lblSubtitle = new Label
+            {
+                Text = "Revenue contribution and volume breakdown",
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Regular),
+                ForeColor = AppTheme.TextMuted,
+                Dock = DockStyle.Right,
+                AutoSize = true
+            };
+            pnlHeader.Controls.Add(lblTitle);
+            pnlHeader.Controls.Add(lblSubtitle);
+
+            _pnlCategoryBars = new Panel
+            {
+                Dock = DockStyle.Fill,
+                AutoScroll = true,
+                Padding = new Padding(0, 6, 0, 0)
+            };
+
+            card.Controls.Add(_pnlCategoryBars);
+            card.Controls.Add(pnlHeader);
+
+            return card;
+        }
+
+        private Panel CreateBestSellersCard()
+        {
+            SunshineCard card = new SunshineCard
+            {
+                Dock = DockStyle.Fill,
+                Margin = new Padding(6, 0, 0, 0),
+                Padding = new Padding(14),
+                BorderRadius = 4,
+                CustomBgColor = Color.White,
+                CustomBorderColor = AppTheme.CardBorder
+            };
+
+            Panel pnlHeader = new Panel { Dock = DockStyle.Top, Height = 32 };
+            Label lblTitle = new Label
+            {
+                Text = "Best-Selling Products",
+                Font = new Font("Segoe UI", 11F, FontStyle.Bold),
+                ForeColor = AppTheme.TextDark,
+                Dock = DockStyle.Left,
+                AutoSize = true
+            };
+            Label lblRank = new Label
+            {
+                Text = "Top 5 Volume Leaders",
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Regular),
+                ForeColor = AppTheme.TextMuted,
+                Dock = DockStyle.Right,
+                AutoSize = true
+            };
+            pnlHeader.Controls.Add(lblTitle);
+            pnlHeader.Controls.Add(lblRank);
+
+            _pnlBestSellers = new Panel
+            {
+                Dock = DockStyle.Fill,
+                AutoScroll = true,
+                Padding = new Padding(0, 6, 0, 0)
+            };
+
+            card.Controls.Add(_pnlBestSellers);
+            card.Controls.Add(pnlHeader);
+
+            return card;
+        }
+
+        private Panel CreateStockTrendsCard()
+        {
+            SunshineCard card = new SunshineCard
+            {
+                Dock = DockStyle.Fill,
+                Margin = new Padding(0, 0, 6, 0),
+                Padding = new Padding(14),
+                BorderRadius = 4,
+                CustomBgColor = Color.White,
+                CustomBorderColor = AppTheme.CardBorder
+            };
+
+            Panel pnlHeader = new Panel { Dock = DockStyle.Top, Height = 32 };
+            Label lblTitle = new Label
+            {
+                Text = "Stock Trends & Catalog Health",
+                Font = new Font("Segoe UI", 11F, FontStyle.Bold),
+                ForeColor = AppTheme.TextDark,
+                Dock = DockStyle.Left,
+                AutoSize = true
+            };
+            _lblStockTotalAssetVal = new Label
+            {
+                Text = "Asset: ₱0.00",
+                Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                ForeColor = AppTheme.TextDark,
+                Dock = DockStyle.Right,
+                AutoSize = true
+            };
+            pnlHeader.Controls.Add(lblTitle);
+            pnlHeader.Controls.Add(_lblStockTotalAssetVal);
+
+            _pnlStockHealthBar = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 18,
+                BackColor = Color.FromArgb(235, 232, 222),
+                Margin = new Padding(0, 6, 0, 10)
+            };
+
+            Panel pnlCounters = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 10, 0, 0) };
+
+            _lblStockHealthyCount = new Label
+            {
+                Text = "● Healthy Stock (>5): 0 SKUs",
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(27, 122, 79),
+                Dock = DockStyle.Top,
+                Height = 26
+            };
+            _lblStockLowCount = new Label
+            {
+                Text = "● Low Stock Warning (1-5): 0 SKUs",
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(168, 110, 5),
+                Dock = DockStyle.Top,
+                Height = 26
+            };
+            _lblStockOutCount = new Label
+            {
+                Text = "● Out of Stock (0): 0 SKUs",
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(184, 50, 38),
+                Dock = DockStyle.Top,
+                Height = 26
+            };
+
+            pnlCounters.Controls.Add(_lblStockOutCount);
+            pnlCounters.Controls.Add(_lblStockLowCount);
+            pnlCounters.Controls.Add(_lblStockHealthyCount);
+
+            card.Controls.Add(pnlCounters);
+            card.Controls.Add(_pnlStockHealthBar);
+            card.Controls.Add(pnlHeader);
+
+            return card;
+        }
+
+        private Panel CreateInventoryMovementCard()
+        {
+            SunshineCard card = new SunshineCard
+            {
+                Dock = DockStyle.Fill,
+                Margin = new Padding(6, 0, 0, 0),
+                Padding = new Padding(14),
+                BorderRadius = 4,
+                CustomBgColor = Color.White,
+                CustomBorderColor = AppTheme.CardBorder
+            };
+
+            Panel pnlHeader = new Panel { Dock = DockStyle.Top, Height = 32 };
+            Label lblTitle = new Label
+            {
+                Text = "Inventory Movement Velocity",
+                Font = new Font("Segoe UI", 11F, FontStyle.Bold),
+                ForeColor = AppTheme.TextDark,
+                Dock = DockStyle.Left,
+                AutoSize = true
+            };
+            Label lblSub = new Label
+            {
+                Text = "Fast vs. Slow-Moving Stock",
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Regular),
+                ForeColor = AppTheme.TextMuted,
+                Dock = DockStyle.Right,
+                AutoSize = true
+            };
+            pnlHeader.Controls.Add(lblTitle);
+            pnlHeader.Controls.Add(lblSub);
+
+            TableLayoutPanel tlpSplit = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 1
+            };
+            tlpSplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+            tlpSplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+
+            // Fast Movers Left
+            Panel pnlFast = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 0, 4, 0) };
+            Label lblFastTitle = new Label { Text = "⚡ Fast-Moving High Demand", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = Color.FromArgb(27, 122, 79), Dock = DockStyle.Top, Height = 20 };
+            _pnlFastMovers = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+            pnlFast.Controls.Add(_pnlFastMovers);
+            pnlFast.Controls.Add(lblFastTitle);
+
+            // Slow Movers Right
+            Panel pnlSlow = new Panel { Dock = DockStyle.Fill, Padding = new Padding(4, 0, 0, 0) };
+            Label lblSlowTitle = new Label { Text = "⏳ Stagnant / Slow-Moving", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = Color.FromArgb(168, 110, 5), Dock = DockStyle.Top, Height = 20 };
+            _pnlSlowMovers = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+            pnlSlow.Controls.Add(_pnlSlowMovers);
+            pnlSlow.Controls.Add(lblSlowTitle);
+
+            tlpSplit.Controls.Add(pnlFast, 0, 0);
+            tlpSplit.Controls.Add(pnlSlow, 1, 0);
+
+            card.Controls.Add(tlpSplit);
+            card.Controls.Add(pnlHeader);
+
+            return card;
+        }
+
+        private void RefreshBiData()
+        {
+            // 1. Sales & Performance Metrics for current selected range
+            var salesMetrics = _dataService.GetBiSalesMetrics(_currentBiRange);
+            if (_lblBiSalesVal != null) _lblBiSalesVal.Text = $"₱{salesMetrics.TotalRevenue:N2}";
+            if (_lblBiSalesSub != null)
+            {
+                string sign = salesMetrics.GrowthRate >= 0 ? "+" : "";
+                _lblBiSalesSub.Text = $"{sign}{salesMetrics.GrowthRate:N1}% vs prior period";
+                _lblBiSalesSub.ForeColor = salesMetrics.GrowthRate >= 0 ? Color.FromArgb(27, 122, 79) : Color.FromArgb(184, 50, 38);
+            }
+            if (_lblBiSalesOrders != null)
+            {
+                _lblBiSalesOrders.Text = $"{salesMetrics.OrderCount} orders  •  {salesMetrics.TotalItemsSold} items sold";
+            }
+
+            // 2. Monthly Earnings (Profit Margin)
+            var earnings = _dataService.GetBiEarningsSummary();
+            if (_lblBiEarningsVal != null) _lblBiEarningsVal.Text = $"₱{earnings.GrossProfit:N2}";
+            if (_lblBiEarningsMargin != null) _lblBiEarningsMargin.Text = $"{earnings.MarginPercent:N1}% Gross Margin (₱{earnings.GrossRevenue:N0} rev)";
+            if (_lblBiEarningsProjected != null) _lblBiEarningsProjected.Text = $"Projected Month-End: ₱{earnings.ProjectedMonthEnd:N2}";
+
+            // 3. Average Order Value
+            if (_lblBiAovVal != null) _lblBiAovVal.Text = $"₱{salesMetrics.AverageOrderValue:N2}";
+            if (_lblBiAovUnits != null) _lblBiAovUnits.Text = $"{salesMetrics.TotalItemsSold} units shipped across all tickets";
+            if (_lblBiAovBasket != null) _lblBiAovBasket.Text = $"{salesMetrics.OrderCount} total transactions in period";
+
+            // 4. Inventory Valuation & Health
+            var stockTrends = _dataService.GetBiStockTrends();
+            if (_lblBiStockValuationVal != null) _lblBiStockValuationVal.Text = $"₱{stockTrends.TotalAssetValuation:N2}";
+            if (_lblBiStockInStockRate != null) _lblBiStockInStockRate.Text = $"{stockTrends.InStockRate:N1}% In-Stock Health Rate";
+            if (_lblBiStockSkus != null) _lblBiStockSkus.Text = $"{stockTrends.TotalCatalogItems} active SKUs ({stockTrends.TotalStockUnits} units)";
+
+            // 5. Category Breakdown Bars
+            PopulateCategoryBars();
+
+            // 6. Best-Selling Products Leaderboard
+            PopulateBestSellers();
+
+            // 7. Stock Health Trends
+            PopulateStockHealth(stockTrends);
+
+            // 8. Inventory Movement
+            PopulateInventoryMovement(stockTrends);
+        }
+
+        private void PopulateCategoryBars()
+        {
+            if (_pnlCategoryBars == null) return;
+            _pnlCategoryBars.SuspendLayout();
+            _pnlCategoryBars.Controls.Clear();
+
+            var categories = _dataService.GetBiCategoryDistribution(_currentBiRange);
+            if (categories.Count == 0)
+            {
+                Label lblEmpty = new Label
+                {
+                    Text = "No sales recorded for this timeframe.",
+                    Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
+                    ForeColor = AppTheme.TextMuted,
+                    Dock = DockStyle.Fill,
+                    TextAlign = ContentAlignment.MiddleCenter
+                };
+                _pnlCategoryBars.Controls.Add(lblEmpty);
+            }
+            else
+            {
+                Color[] barColors = new[]
+                {
+                    AppTheme.Primary,
+                    Color.FromArgb(52, 152, 219),
+                    Color.FromArgb(46, 204, 113),
+                    Color.FromArgb(155, 89, 182),
+                    Color.FromArgb(243, 156, 18)
+                };
+
+                int colorIdx = 0;
+                foreach (var cat in categories)
+                {
+                    Color color = barColors[colorIdx % barColors.Length];
+                    colorIdx++;
+
+                    Panel row = new Panel
+                    {
+                        Dock = DockStyle.Top,
+                        Height = 46,
+                        Margin = new Padding(0, 0, 0, 6),
+                        BackColor = Color.Transparent
+                    };
+
+                    // Label Top: Name and Amount
+                    Label lblName = new Label
+                    {
+                        Text = $"{cat.CategoryName} ({cat.Percentage:N1}%)",
+                        Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                        ForeColor = AppTheme.TextDark,
+                        Location = new Point(0, 2),
+                        AutoSize = true
+                    };
+
+                    Label lblAmount = new Label
+                    {
+                        Text = $"₱{cat.Revenue:N2} ({cat.UnitsSold} sold)",
+                        Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                        ForeColor = AppTheme.TextMuted,
+                        Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                        Location = new Point(row.Width - 180, 2),
+                        Size = new Size(175, 16),
+                        TextAlign = ContentAlignment.MiddleRight
+                    };
+
+                    // Proportional Progress Bar Panel
+                    Panel pnlBarBg = new Panel
+                    {
+                        Location = new Point(0, 22),
+                        Size = new Size(row.Width - 10, 12),
+                        Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                        BackColor = Color.FromArgb(240, 237, 228)
+                    };
+
+                    int barWidth = Math.Max(6, (int)((cat.Percentage / 100m) * pnlBarBg.Width));
+                    Panel pnlBarFill = new Panel
+                    {
+                        Location = new Point(0, 0),
+                        Size = new Size(barWidth, 12),
+                        BackColor = color
+                    };
+                    pnlBarBg.Controls.Add(pnlBarFill);
+
+                    pnlBarBg.Resize += (s, e) =>
+                    {
+                        int newW = Math.Max(6, (int)((cat.Percentage / 100m) * pnlBarBg.Width));
+                        pnlBarFill.Width = newW;
+                    };
+
+                    row.Controls.Add(lblName);
+                    row.Controls.Add(lblAmount);
+                    row.Controls.Add(pnlBarBg);
+
+                    _pnlCategoryBars.Controls.Add(row);
+                }
+            }
+
+            _pnlCategoryBars.ResumeLayout();
+        }
+
+        private void PopulateBestSellers()
+        {
+            if (_pnlBestSellers == null) return;
+            _pnlBestSellers.SuspendLayout();
+            _pnlBestSellers.Controls.Clear();
+
+            var bestSellers = _dataService.GetBiBestSellers(_currentBiRange, 5);
+            if (bestSellers.Count == 0)
+            {
+                Label lblEmpty = new Label
+                {
+                    Text = "No product sales recorded in selected timeframe.",
+                    Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
+                    ForeColor = AppTheme.TextMuted,
+                    Dock = DockStyle.Fill,
+                    TextAlign = ContentAlignment.MiddleCenter
+                };
+                _pnlBestSellers.Controls.Add(lblEmpty);
+            }
+            else
+            {
+                string[] ranks = new[] { "🥇 #1", "🥈 #2", "🥉 #3", "   #4", "   #5" };
+                for (int i = 0; i < bestSellers.Count; i++)
+                {
+                    var prod = bestSellers[i];
+                    string rankStr = i < ranks.Length ? ranks[i] : $"   #{i + 1}";
+
+                    Panel row = new Panel
+                    {
+                        Dock = DockStyle.Top,
+                        Height = 44,
+                        Margin = new Padding(0, 0, 0, 4),
+                        Padding = new Padding(6, 4, 6, 4),
+                        BackColor = Color.FromArgb(253, 251, 246)
+                    };
+
+                    row.Paint += (s, e) =>
+                    {
+                        using Pen pen = new Pen(Color.FromArgb(235, 230, 220), 1);
+                        e.Graphics.DrawRectangle(pen, 0, 0, row.Width - 1, row.Height - 1);
+                    };
+
+                    Label lblRank = new Label
+                    {
+                        Text = rankStr,
+                        Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                        ForeColor = AppTheme.TextDark,
+                        Location = new Point(4, 10),
+                        Size = new Size(50, 20),
+                        TextAlign = ContentAlignment.MiddleLeft
+                    };
+
+                    Label lblName = new Label
+                    {
+                        Text = prod.ProductName,
+                        Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                        ForeColor = AppTheme.TextDark,
+                        Location = new Point(58, 4),
+                        Size = new Size(row.Width - 230, 16),
+                        Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                        AutoEllipsis = true
+                    };
+
+                    Label lblDetails = new Label
+                    {
+                        Text = $"{prod.UnitsSold} sold  •  ₱{prod.Revenue:N2}",
+                        Font = new Font("Segoe UI", 7.5F, FontStyle.Regular),
+                        ForeColor = Color.FromArgb(140, 100, 10),
+                        Location = new Point(58, 22),
+                        Size = new Size(row.Width - 230, 16),
+                        Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                        AutoEllipsis = true
+                    };
+
+                    Label lblStock = new Label
+                    {
+                        Text = $"{prod.CurrentStock} in stock",
+                        Font = new Font("Segoe UI", 7F, FontStyle.Bold),
+                        ForeColor = prod.CurrentStock <= 5 ? AppTheme.RedPillText : AppTheme.GreenPillText,
+                        BackColor = prod.CurrentStock <= 5 ? AppTheme.RedPillBg : AppTheme.GreenPillBg,
+                        Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                        Location = new Point(row.Width - 100, 10),
+                        Size = new Size(90, 20),
+                        TextAlign = ContentAlignment.MiddleCenter
+                    };
+
+                    row.Controls.Add(lblRank);
+                    row.Controls.Add(lblName);
+                    row.Controls.Add(lblDetails);
+                    row.Controls.Add(lblStock);
+
+                    _pnlBestSellers.Controls.Add(row);
+                }
+            }
+
+            _pnlBestSellers.ResumeLayout();
+        }
+
+        private void PopulateStockHealth(BiStockTrends trends)
+        {
+            if (_lblStockTotalAssetVal != null)
+            {
+                _lblStockTotalAssetVal.Text = $"Total Inventory: ₱{trends.TotalAssetValuation:N2}";
+            }
+            if (_lblStockHealthyCount != null)
+            {
+                _lblStockHealthyCount.Text = $"● Healthy Stock (>5): {trends.HealthyStockCount} SKUs";
+            }
+            if (_lblStockLowCount != null)
+            {
+                _lblStockLowCount.Text = $"● Low Stock Safety Alert (1-5): {trends.LowStockCount} SKUs";
+            }
+            if (_lblStockOutCount != null)
+            {
+                _lblStockOutCount.Text = $"● Out of Stock (Critical): {trends.OutOfStockCount} SKUs";
+            }
+
+            if (_pnlStockHealthBar != null)
+            {
+                _pnlStockHealthBar.SuspendLayout();
+                _pnlStockHealthBar.Controls.Clear();
+
+                int total = Math.Max(1, trends.TotalCatalogItems);
+                float healthyRatio = (float)trends.HealthyStockCount / total;
+                float lowRatio = (float)trends.LowStockCount / total;
+                float outRatio = (float)trends.OutOfStockCount / total;
+
+                int w = _pnlStockHealthBar.Width;
+                int hW = (int)(healthyRatio * w);
+                int lW = (int)(lowRatio * w);
+                int oW = w - hW - lW;
+
+                Panel pnlH = new Panel { Dock = DockStyle.Left, Width = hW, BackColor = Color.FromArgb(46, 204, 113) };
+                Panel pnlL = new Panel { Dock = DockStyle.Left, Width = lW, BackColor = Color.FromArgb(241, 196, 15) };
+                Panel pnlO = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(231, 76, 60) };
+
+                _pnlStockHealthBar.Controls.Add(pnlO);
+                _pnlStockHealthBar.Controls.Add(pnlL);
+                _pnlStockHealthBar.Controls.Add(pnlH);
+
+                _pnlStockHealthBar.ResumeLayout();
+            }
+        }
+
+        private void PopulateInventoryMovement(BiStockTrends trends)
+        {
+            if (_pnlFastMovers != null)
+            {
+                _pnlFastMovers.SuspendLayout();
+                _pnlFastMovers.Controls.Clear();
+                foreach (var item in trends.FastMovingProducts.Take(3))
+                {
+                    Label lbl = new Label
+                    {
+                        Text = $"⚡ {item.ProductName}\n   {item.UnitsSold} sold  |  ₱{item.Revenue:N0}",
+                        Font = new Font("Segoe UI", 7.5F, FontStyle.Regular),
+                        ForeColor = AppTheme.TextDark,
+                        Dock = DockStyle.Top,
+                        Height = 34,
+                        AutoEllipsis = true
+                    };
+                    _pnlFastMovers.Controls.Add(lbl);
+                }
+                _pnlFastMovers.ResumeLayout();
+            }
+
+            if (_pnlSlowMovers != null)
+            {
+                _pnlSlowMovers.SuspendLayout();
+                _pnlSlowMovers.Controls.Clear();
+                foreach (var item in trends.SlowMovingProducts.Take(3))
+                {
+                    Label lbl = new Label
+                    {
+                        Text = $"⏳ {item.Name}\n   {item.StockQuantity} shelf stock  |  ₱{item.Price:N0}",
+                        Font = new Font("Segoe UI", 7.5F, FontStyle.Regular),
+                        ForeColor = AppTheme.TextMuted,
+                        Dock = DockStyle.Top,
+                        Height = 34,
+                        AutoEllipsis = true
+                    };
+                    _pnlSlowMovers.Controls.Add(lbl);
+                }
+                _pnlSlowMovers.ResumeLayout();
+            }
+        }
+
+        private void ExportBiCsvReport()
+        {
+            try
+            {
+                var metrics = _dataService.GetBiSalesMetrics(_currentBiRange);
+                var earnings = _dataService.GetBiEarningsSummary();
+                var stock = _dataService.GetBiStockTrends();
+                var cats = _dataService.GetBiCategoryDistribution(_currentBiRange);
+                var best = _dataService.GetBiBestSellers(_currentBiRange, 10);
+
+                using var sfd = new SaveFileDialog
+                {
+                    Title = "Export Business Intelligence CSV Report",
+                    Filter = "CSV File (*.csv)|*.csv",
+                    FileName = $"BI_Report_{DateTime.Now:yyyyMMdd_HHmm}.csv"
+                };
+
+                if (sfd.ShowDialog(this) == DialogResult.OK)
+                {
+                    using var sw = new StreamWriter(sfd.FileName);
+                    sw.WriteLine($"Morphic Core ERP - Business Intelligence Report ({_currentBiRange})");
+                    sw.WriteLine($"Generated At: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                    sw.WriteLine();
+                    sw.WriteLine("--- EXECUTIVE METRICS ---");
+                    sw.WriteLine($"Total Revenue,PHP {metrics.TotalRevenue:N2}");
+                    sw.WriteLine($"Completed Orders,{metrics.OrderCount}");
+                    sw.WriteLine($"Units Sold,{metrics.TotalItemsSold}");
+                    sw.WriteLine($"Average Order Value,PHP {metrics.AverageOrderValue:N2}");
+                    sw.WriteLine($"Estimated Gross Profit,PHP {earnings.GrossProfit:N2}");
+                    sw.WriteLine($"Gross Margin Percentage,{earnings.MarginPercent:N1}%");
+                    sw.WriteLine($"Total Inventory Valuation,PHP {stock.TotalAssetValuation:N2}");
+                    sw.WriteLine();
+                    sw.WriteLine("--- SALES BY CATEGORY ---");
+                    sw.WriteLine("Category,Revenue,Units Sold,Share %");
+                    foreach (var c in cats) sw.WriteLine($"\"{c.CategoryName}\",{c.Revenue:N2},{c.UnitsSold},{c.Percentage:N1}%");
+                    sw.WriteLine();
+                    sw.WriteLine("--- BEST SELLING PRODUCTS ---");
+                    sw.WriteLine("Product,Category,Revenue,Units Sold,Remaining Stock");
+                    foreach (var b in best) sw.WriteLine($"\"{b.ProductName}\",\"{b.CategoryName}\",{b.Revenue:N2},{b.UnitsSold},{b.CurrentStock}");
+
+                    MessageBox.Show($"Business Intelligence report exported successfully!\n\nFile: {sfd.FileName}", "Export Completed", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to export report: {ex.Message}", "Export Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // ========================================================
+        // 2. STORE OPERATIONS (ORIGINAL DASHBOARD) IMPLEMENTATION
+        // ========================================================
+        private TableLayoutPanel CreateOperationsView()
+        {
             TableLayoutPanel tlpContainer = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
@@ -72,31 +1205,24 @@ namespace ERP.winforms.UI.Views
                 RowCount = 2,
                 BackColor = Color.Transparent
             };
-            tlpContainer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 63f)); // Left: 63%
-            tlpContainer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 37f)); // Right: 37%
-            tlpContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 230f));      // Top: 230px (ample space to prevent any text clipping)
-            tlpContainer.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));       // Bottom: Fills remaining height
+            tlpContainer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 63f));
+            tlpContainer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 37f));
+            tlpContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 230f));
+            tlpContainer.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
 
-            // TOP-LEFT: TODAY'S OVERVIEW (Minimal Hero Card)
             Panel pnlOverview = CreateOverviewHero();
             tlpContainer.Controls.Add(pnlOverview, 0, 0);
 
-            // TOP-RIGHT: 2x2 MINI CARDS
             TableLayoutPanel tlpMiniCards = CreateMiniCardsGrid();
             tlpContainer.Controls.Add(tlpMiniCards, 1, 0);
 
-            // BOTTOM-LEFT: RECENT TRANSACTIONS (Fills width & height, no dead space)
             Panel pnlRecentOrders = CreateRecentOrdersCard();
             tlpContainer.Controls.Add(pnlRecentOrders, 0, 1);
 
-            // BOTTOM-RIGHT: CRITICAL INVENTORY WATCH (Minimal & Dynamic)
             Panel pnlInventoryWatch = CreateCriticalInventoryCard();
             tlpContainer.Controls.Add(pnlInventoryWatch, 1, 1);
 
-            Controls.Add(tlpContainer);
-            ResumeLayout(false);
-
-            RefreshMetrics();
+            return tlpContainer;
         }
 
         private Panel CreateOverviewHero()
@@ -119,12 +1245,9 @@ namespace ERP.winforms.UI.Views
                 Margin = new Padding(0),
                 Padding = new Padding(0)
             };
-            tlpLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36f));  // Row 0: Clean Header
-            tlpLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));  // Row 1: 3 Big Hero Stats
+            tlpLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36f));
+            tlpLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
 
-            // ========================================================
-            // ROW 0: HEADER (Title "Today's Overview", no subtitle)
-            // ========================================================
             Panel pnlHeader = new Panel { Dock = DockStyle.Fill, Margin = new Padding(0) };
 
             Label lblTitle = new Label
@@ -151,9 +1274,6 @@ namespace ERP.winforms.UI.Views
             pnlHeader.Controls.Add(lblTitle);
             pnlHeader.Controls.Add(btnExport);
 
-            // ========================================================
-            // ROW 1: 3 MAIN STATS (Sales, Shift Target, Transactions)
-            // ========================================================
             TableLayoutPanel tlpStats = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
@@ -338,10 +1458,9 @@ namespace ERP.winforms.UI.Views
                 ForeColor = AppTheme.TextMuted,
                 Dock = DockStyle.Top,
                 Height = 16,
-                UseMnemonic = false // Ensures '&' displays cleanly without clipping
+                UseMnemonic = false
             };
 
-            // Stacking order: Top-to-bottom so no overlapping occurs
             card.Controls.Add(pnlFooter);
             card.Controls.Add(lblDesc);
             card.Controls.Add(lblVal);
@@ -362,7 +1481,6 @@ namespace ERP.winforms.UI.Views
                 CustomBorderColor = AppTheme.CardBorder
             };
 
-            // Top Bar of Card
             Panel pnlTop = new Panel { Dock = DockStyle.Top, Height = 38 };
 
             Label lblTitle = new Label
@@ -406,7 +1524,6 @@ namespace ERP.winforms.UI.Views
             pnlTop.Controls.Add(lblTitle);
             pnlTop.Controls.Add(pnlSearchContainer);
 
-            // Table DataGridView - 4 Columns Only: Order ID, Customer, Time, Total
             _gridRecentOrders = new DataGridView
             {
                 Dock = DockStyle.Fill,
@@ -448,7 +1565,6 @@ namespace ERP.winforms.UI.Views
             _gridRecentOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TIME", FillWeight = 18, Name = "ColTime" });
             _gridRecentOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TOTAL", FillWeight = 18, Name = "ColTotal" });
 
-            // Bottom Footer
             Panel pnlFooter = new Panel { Dock = DockStyle.Bottom, Height = 32 };
             _lblOrderCount = new Label { Text = "No transactions recorded yet", Font = new Font("Segoe UI", 7.5F, FontStyle.Regular), ForeColor = AppTheme.TextMuted, Location = new Point(0, 8), AutoSize = true };
 
@@ -487,7 +1603,6 @@ namespace ERP.winforms.UI.Views
             pnlTop.Controls.Add(lblTitle);
             pnlTop.Controls.Add(lblOpenStock);
 
-            // Dynamic Items Container
             _pnlInventoryItems = new Panel
             {
                 Dock = DockStyle.Fill,
@@ -530,7 +1645,6 @@ namespace ERP.winforms.UI.Views
                 e.Graphics.DrawRectangle(pen, 0, 0, pnl.Width - 1, pnl.Height - 1);
             };
 
-            // Left: Product Name & Reorder Level
             Panel pnlLeft = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 2, 8, 0) };
             Label lblName = new Label
             {
@@ -552,7 +1666,6 @@ namespace ERP.winforms.UI.Views
             pnlLeft.Controls.Add(lblReorder);
             pnlLeft.Controls.Add(lblName);
 
-            // Right: Stock badge & Price
             Panel pnlRight = new Panel { Dock = DockStyle.Right, Width = 110, Padding = new Padding(0, 2, 0, 0) };
             Panel pnlBadge = new Panel { Dock = DockStyle.Top, Height = 20, BackColor = badgeBg, Margin = new Padding(0) };
             Label lblBadge = new Label { Text = stockBadge, Font = new Font("Segoe UI", 7F, FontStyle.Bold), ForeColor = badgeText, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter };
@@ -721,7 +1834,15 @@ namespace ERP.winforms.UI.Views
 
         public void RefreshMetrics()
         {
-            // Calculate real today's sales directly from live orders
+            UpdatePlanAccessUI();
+
+            // 1. Refresh BI Data if authorized
+            if (IsSmallBusinessOrHigher)
+            {
+                RefreshBiData();
+            }
+
+            // 2. Refresh Operations Data
             var todayOrders = _dataService.Orders
                 .Where(o => o.CreatedAt.Date == DateTime.Today)
                 .ToList();
@@ -734,7 +1855,6 @@ namespace ERP.winforms.UI.Views
                 _lblSalesSub.Text = todaySales > 0 ? "Live gross today" : "No sales recorded today";
             }
 
-            // Dynamic Shift Target Progress based on ₱20,000.00 daily target
             decimal shiftTarget = 20000.00m;
             decimal progressPct = shiftTarget > 0 ? (todaySales / shiftTarget) * 100m : 0m;
             int pbVal = Math.Min(100, Math.Max(0, (int)Math.Round(progressPct)));
@@ -755,7 +1875,6 @@ namespace ERP.winforms.UI.Views
                 }
             }
 
-            // Dynamic Completed Transactions
             int todayTx = todayOrders.Count;
             if (_lblTransactionsVal != null) _lblTransactionsVal.Text = todayTx.ToString("N0");
             if (_lblTxSub != null)
@@ -763,7 +1882,6 @@ namespace ERP.winforms.UI.Views
                 _lblTxSub.Text = todayTx == 1 ? "1 completed today" : $"{todayTx} completed today";
             }
 
-            // 1. Dynamic Returns & Refunds
             var refunds = todayOrders
                 .Where(o => o.TotalAmount < 0 || (o.PaymentMethod != null && o.PaymentMethod.Equals("Refund", StringComparison.OrdinalIgnoreCase)))
                 .ToList();
@@ -774,12 +1892,10 @@ namespace ERP.winforms.UI.Views
             if (_lblRefundVal != null) _lblRefundVal.Text = $"₱{refundTotal:N2}";
             if (_lblRefundDesc != null) _lblRefundDesc.Text = $"{refundCount} refund{(refundCount == 1 ? "" : "s")} today";
 
-            // 2. Dynamic Low Stock Alert from live Products
             int lowStockCount = _dataService.Products.Count(p => p.StockQuantity <= 5);
             if (_lblStockCount != null) _lblStockCount.Text = $"{lowStockCount} SKUs";
             if (_lblStockDesc != null) _lblStockDesc.Text = lowStockCount > 0 ? "under safety mark" : "all items well stocked";
 
-            // 3. Dynamic Top Product
             var topProductItem = todayOrders
                 .SelectMany(o => o.Items)
                 .GroupBy(i => i.ProductName)
@@ -803,7 +1919,6 @@ namespace ERP.winforms.UI.Views
                 if (_lblTopProdAction != null) _lblTopProdAction.Text = "View Products →";
             }
 
-            // 4. Dynamic Top Category
             string topCat = "None";
             string catDesc = "0 products in stock";
             if (_dataService.Products.Count > 0)
@@ -819,10 +1934,6 @@ namespace ERP.winforms.UI.Views
                     topCat = topCatGroup.Key.Split('(')[0].Trim();
                     catDesc = $"{topCatGroup.Count()} products in stock";
                 }
-            }
-            else if (_dataService.Categories.Count > 0)
-            {
-                topCat = _dataService.Categories[0].Name.Split('(')[0].Trim();
             }
             if (_lblBenchCount != null) _lblBenchCount.Text = topCat;
             if (_lblBenchDesc != null) _lblBenchDesc.Text = catDesc;
