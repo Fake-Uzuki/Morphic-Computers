@@ -45,8 +45,8 @@ namespace ERP.infrastructure.services
             }
 
             // Fallback default routing (Company 1 -> TenantA, Company 2 -> TenantB)
-            string server = companyId == 2 ? "db66562.public.databaseasp.net" : "db67673.public.databaseasp.net";
-            string dbName = companyId == 2 ? "db66562" : "db67673";
+            string server = companyId == 2 ? "db67675.databaseasp.net" : "db67673.public.databaseasp.net";
+            string dbName = companyId == 2 ? "db67675" : "db67673";
             string credKey = companyId == 2 ? "TenantB" : "TenantA";
 
             return new TenantDatabaseInfo

@@ -41,10 +41,10 @@ namespace ERP.infrastructure.services
                 $"Database={databaseInfo.DatabaseName};" +
                 $"User Id={userId};" +
                 $"Password={password};" +
-                $"Encrypt=True;" +
+                $"Encrypt=False;" +
                 $"TrustServerCertificate=True;" +
                 $"MultipleActiveResultSets=True;" +
-                $"Connect Timeout=3;";
+                $"Connect Timeout=5;";
 
             var options = new DbContextOptionsBuilder<TenantErpDbContext>()
                 .UseSqlServer(connectionString)
