@@ -78,7 +78,8 @@ namespace ERP.winforms.UI.Views
                     PaymentMethod = o.PaymentMethod,
                     Cashier = "Terminal 1",
                     Tax = o.Tax,
-                    Total = o.TotalAmount
+                    Total = o.TotalAmount,
+                    Status = string.IsNullOrWhiteSpace(o.Status) ? "Completed" : o.Status
                 });
             }
         }
@@ -593,7 +594,7 @@ namespace ERP.winforms.UI.Views
             }
 
             var results = query.ToList();
-            decimal totalRevenue = results.Sum(t => t.Total);
+            decimal totalRevenue = results.Where(t => t.Status != "Voided").Sum(t => t.Total);
             int pageSize = GetEffectivePageSize();
             _totalPages = Math.Max(1, (int)Math.Ceiling(results.Count / (double)pageSize));
 
@@ -614,7 +615,7 @@ namespace ERP.winforms.UI.Views
                     t.Cashier,
                     $"₱{t.Tax:N2}",
                     $"₱{t.Total:N2}",
-                    t.Status,
+                    isVoided ? "⛔ VOIDED" : "✓ Completed",
                     "View",
                     isVoided ? "♻️ Restore" : "📦 Void"
                 );
@@ -623,22 +624,27 @@ namespace ERP.winforms.UI.Views
                 row.Tag = t;
                 row.Cells["ColId"].Style.ForeColor = Color.FromArgb(160, 110, 10);
                 row.Cells["ColId"].Style.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
-                row.Cells["ColTotal"].Style.Font = new Font("Segoe UI", 8.5F, FontStyle.Bold);
 
                 var voidCell = row.Cells["ColVoid"];
                 voidCell.Style.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
 
                 if (isVoided)
                 {
-                    row.DefaultCellStyle.ForeColor = Color.FromArgb(150, 150, 150);
-                    row.Cells["ColStatus"].Style.ForeColor = Color.FromArgb(184, 50, 38);
-                    row.Cells["ColStatus"].Style.Font = new Font("Segoe UI", 8F, FontStyle.Italic);
+                    row.DefaultCellStyle.ForeColor = Color.FromArgb(140, 140, 140);
+                    row.Cells["ColStatus"].Style.ForeColor = Color.FromArgb(220, 38, 38);
+                    row.Cells["ColStatus"].Style.BackColor = Color.FromArgb(254, 242, 242);
+                    row.Cells["ColStatus"].Style.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+                    row.Cells["ColTotal"].Style.Font = new Font("Segoe UI", 8.5F, FontStyle.Strikeout);
+                    row.Cells["ColTotal"].Style.ForeColor = Color.FromArgb(140, 140, 140);
                     voidCell.Style.ForeColor = Color.FromArgb(27, 122, 79);
                 }
                 else
                 {
                     row.Cells["ColStatus"].Style.ForeColor = Color.FromArgb(27, 122, 79);
+                    row.Cells["ColStatus"].Style.BackColor = Color.FromArgb(240, 253, 244);
                     row.Cells["ColStatus"].Style.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+                    row.Cells["ColTotal"].Style.Font = new Font("Segoe UI", 8.5F, FontStyle.Bold);
+                    row.Cells["ColTotal"].Style.ForeColor = AppTheme.TextDark;
                     voidCell.Style.ForeColor = Color.FromArgb(184, 50, 38);
                 }
             }
