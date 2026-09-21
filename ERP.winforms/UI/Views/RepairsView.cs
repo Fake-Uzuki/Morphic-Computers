@@ -19,12 +19,6 @@ namespace ERP.winforms.UI.Views
         private TextBox _txtSearch = null!;
         private FlowLayoutPanel _flpFilterPills = null!;
 
-        // Metric Card Labels
-        private Label _lblMetricTotal = null!;
-        private Label _lblMetricBench = null!;
-        private Label _lblMetricReady = null!;
-        private Label _lblMetricRevenue = null!;
-
         // Right Detail Panel Controls
         private Panel _pnlDetails = null!;
         private Label _lblDetailTicket = null!;
@@ -57,34 +51,7 @@ namespace ERP.winforms.UI.Views
         {
             Controls.Clear();
 
-            // ========================================================
-            // 1. TOP METRICS STRIP (Height: 95px)
-            // ========================================================
-            Panel pnlMetrics = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = 95,
-                Padding = new Padding(20, 14, 20, 10),
-                BackColor = Color.Transparent
-            };
 
-            int cardW = 280;
-            int cardH = 75;
-            int gap = 16;
-            int x = 20;
-
-            var cardTotal = CreateMetricCard("TOTAL REPAIR JOBS", "0", "All time tickets registered", x, cardW, cardH, out _lblMetricTotal);
-            x += cardW + gap;
-            var cardBench = CreateMetricCard("ACTIVE ON BENCH", "0", "Diagnosing or awaiting parts", x, cardW, cardH, out _lblMetricBench);
-            x += cardW + gap;
-            var cardReady = CreateMetricCard("READY FOR PICKUP", "0", "Repairs completed, ready for release", x, cardW, cardH, out _lblMetricReady);
-            x += cardW + gap;
-            var cardRev = CreateMetricCard("REPAIR REVENUE", "₱0.00", "Labor fees & parts billed", x, cardW, cardH, out _lblMetricRevenue);
-
-            pnlMetrics.Controls.Add(cardTotal);
-            pnlMetrics.Controls.Add(cardBench);
-            pnlMetrics.Controls.Add(cardReady);
-            pnlMetrics.Controls.Add(cardRev);
 
             // ========================================================
             // 2. FILTER & ACTION TOOLBAR (Height: 52px)
@@ -140,7 +107,7 @@ namespace ERP.winforms.UI.Views
             // "+ New Repair Ticket" Action Button
             SunshineButton btnNewTicket = new SunshineButton
             {
-                Text = "+ New Repair Ticket (F3)",
+                Text = "+ New Repair Ticket",
                 IsPrimary = true,
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 Location = new Point(Width - 230, 8),
@@ -252,55 +219,9 @@ namespace ERP.winforms.UI.Views
 
             Controls.Add(pnlMainContainer);
             Controls.Add(pnlToolbar);
-            Controls.Add(pnlMetrics);
         }
 
-        private Panel CreateMetricCard(string title, string val, string sub, int x, int w, int h, out Label valLabel)
-        {
-            Panel card = new Panel
-            {
-                Location = new Point(x, 10),
-                Size = new Size(w, h),
-                BackColor = Color.White
-            };
-            card.Paint += (s, e) =>
-            {
-                using var pen = new Pen(AppTheme.CardBorder, 1);
-                e.Graphics.DrawRectangle(pen, 0, 0, card.Width - 1, card.Height - 1);
-            };
 
-            Label lblTitle = new Label
-            {
-                Text = title,
-                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
-                ForeColor = AppTheme.TextMuted,
-                Location = new Point(14, 10),
-                AutoSize = true
-            };
-
-            valLabel = new Label
-            {
-                Text = val,
-                Font = new Font("Segoe UI", 16F, FontStyle.Bold),
-                ForeColor = AppTheme.TextDark,
-                Location = new Point(12, 26),
-                AutoSize = true
-            };
-
-            Label lblSub = new Label
-            {
-                Text = sub,
-                Font = new Font("Segoe UI", 7F, FontStyle.Regular),
-                ForeColor = AppTheme.TextSubtle,
-                Location = new Point(14, 54),
-                AutoSize = true
-            };
-
-            card.Controls.Add(lblTitle);
-            card.Controls.Add(valLabel);
-            card.Controls.Add(lblSub);
-            return card;
-        }
 
         private void AddFilterPill(string filterKey, string label)
         {
@@ -496,7 +417,7 @@ namespace ERP.winforms.UI.Views
 
             _lblDetailTicket.Text = $"TICKET: {_selectedTicket.TicketNumber}   ({_selectedTicket.AssignedTechnician ?? "Unassigned"})";
             _lblDetailCustomer.Text = $"Customer: {_selectedTicket.CustomerName}   |   Phone: {_selectedTicket.CustomerPhone ?? "N/A"}";
-            _lblDetailDevice.Text = $"Device: {_selectedTicket.DeviceBrandModel} ({_selectedTicket.DeviceType})";
+            _lblDetailDevice.Text = $"Device: {_selectedTicket.DeviceBrandModel} ({_selectedTicket.DeviceType}) | Parts: {_selectedTicket.PartsSupplier ?? "In-House"}";
             _lblDetailStatus.Text = $"Current Stage: {_selectedTicket.Status.ToUpperInvariant()}";
             _lblDetailStatus.ForeColor = GetStatusColor(_selectedTicket.Status);
             _lblDetailPricing.Text = $"Total: ₱{_selectedTicket.TotalAmount:N2}  (Labor: ₱{_selectedTicket.LaborFee:N2} | Parts: ₱{_selectedTicket.PartsCost:N2}) | Bal: ₱{_selectedTicket.BalanceDue:N2}";
@@ -517,14 +438,6 @@ namespace ERP.winforms.UI.Views
 
         public void RefreshData()
         {
-            // Update metrics
-            var all = _dataService.RepairTickets;
-            _lblMetricTotal.Text = all.Count.ToString();
-            _lblMetricBench.Text = all.Count(t => t.Status is "Diagnosing" or "InRepair" or "AwaitingParts").ToString();
-            _lblMetricReady.Text = all.Count(t => t.Status == "ReadyForPickup").ToString();
-            decimal totalRev = all.Sum(t => t.TotalAmount);
-            _lblMetricRevenue.Text = $"₱{totalRev:N2}";
-
             ApplyFilters();
         }
 

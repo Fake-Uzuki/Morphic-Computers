@@ -22,6 +22,7 @@ namespace ERP.domain.entities
         public string ReportedIssue { get; set; } = string.Empty;
         public string? DiagnosticNotes { get; set; }
         public string? AssignedTechnician { get; set; } = "Hardware Tech";
+        public string? PartsSupplier { get; set; } = "In-House Stock";
         
         // Status pipeline: Received, Diagnosing, AwaitingParts, InRepair, ReadyForPickup, Completed, Cancelled
         public string Status { get; set; } = "Received";

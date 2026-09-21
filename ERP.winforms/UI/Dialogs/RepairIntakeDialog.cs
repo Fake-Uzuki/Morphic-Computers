@@ -13,7 +13,7 @@ namespace ERP.winforms.UI.Dialogs
         private readonly DataService _dataService = DataService.Instance;
         private readonly RepairTicket? _targetTicket;
 
-        private TextBox _txtCustomer = null!;
+        private ComboBox _cboCustomer = null!;
         private TextBox _txtPhone = null!;
         private TextBox _txtEmail = null!;
         private ComboBox _cboDeviceType = null!;
@@ -21,6 +21,7 @@ namespace ERP.winforms.UI.Dialogs
         private TextBox _txtSerial = null!;
         private TextBox _txtIssue = null!;
         private ComboBox _cboTechnician = null!;
+        private ComboBox _cboPartsSupplier = null!;
         private NumericUpDown _numLabor = null!;
         private NumericUpDown _numParts = null!;
         private NumericUpDown _numDeposit = null!;
@@ -44,7 +45,7 @@ namespace ERP.winforms.UI.Dialogs
 
             if (_targetTicket != null)
             {
-                _txtCustomer.Text = _targetTicket.CustomerName;
+                _cboCustomer.Text = _targetTicket.CustomerName;
                 _txtPhone.Text = _targetTicket.CustomerPhone ?? "";
                 _txtEmail.Text = _targetTicket.CustomerEmail ?? "";
                 _cboDeviceType.SelectedItem = _targetTicket.DeviceType;
@@ -52,6 +53,8 @@ namespace ERP.winforms.UI.Dialogs
                 _txtSerial.Text = _targetTicket.SerialNumber ?? "";
                 _txtIssue.Text = _targetTicket.ReportedIssue;
                 _cboTechnician.SelectedItem = _targetTicket.AssignedTechnician ?? "Lead Tech Alex";
+                if (!string.IsNullOrWhiteSpace(_targetTicket.PartsSupplier))
+                    _cboPartsSupplier.Text = _targetTicket.PartsSupplier;
                 _numLabor.Value = Math.Min(_targetTicket.LaborFee, _numLabor.Maximum);
                 _numParts.Value = Math.Min(_targetTicket.PartsCost, _numParts.Maximum);
                 _numDeposit.Value = Math.Min(_targetTicket.DepositAmount, _numDeposit.Maximum);
@@ -104,13 +107,37 @@ namespace ERP.winforms.UI.Dialogs
             int y = 10;
 
             // Customer Name & Phone
-            card.Controls.Add(CreateLabel("CUSTOMER NAME *", 15, y));
+            card.Controls.Add(CreateLabel("CUSTOMER NAME / REGISTERED CLIENT *", 15, y));
             card.Controls.Add(CreateLabel("CONTACT NUMBER *", 265, y));
             y += 20;
 
-            _txtCustomer = new TextBox { Location = new Point(15, y), Width = 235, Font = AppTheme.BodyFont };
+            _cboCustomer = new ComboBox
+            {
+                Location = new Point(15, y),
+                Width = 235,
+                Font = AppTheme.BodyFont,
+                DropDownStyle = ComboBoxStyle.DropDown,
+                AutoCompleteMode = AutoCompleteMode.SuggestAppend,
+                AutoCompleteSource = AutoCompleteSource.ListItems
+            };
+            foreach (var c in _dataService.Customers.Where(cust => cust.IsActive))
+            {
+                if (!string.IsNullOrWhiteSpace(c.CustomerName))
+                    _cboCustomer.Items.Add(c.CustomerName);
+            }
+            _cboCustomer.SelectedIndexChanged += (s, e) =>
+            {
+                string sel = _cboCustomer.Text;
+                var cust = _dataService.Customers.FirstOrDefault(c => c.CustomerName.Equals(sel, StringComparison.OrdinalIgnoreCase));
+                if (cust != null)
+                {
+                    if (!string.IsNullOrWhiteSpace(cust.ContactNumber)) _txtPhone.Text = cust.ContactNumber;
+                    if (!string.IsNullOrWhiteSpace(cust.EmailAddress)) _txtEmail.Text = cust.EmailAddress;
+                }
+            };
+
             _txtPhone = new TextBox { Location = new Point(265, y), Width = 220, Font = AppTheme.BodyFont };
-            card.Controls.Add(_txtCustomer);
+            card.Controls.Add(_cboCustomer);
             card.Controls.Add(_txtPhone);
             y += 35;
 
@@ -159,8 +186,9 @@ namespace ERP.winforms.UI.Dialogs
             card.Controls.Add(_txtIssue);
             y += 75;
 
-            // Technician Assignment
+            // Technician Assignment & Parts Supplier
             card.Controls.Add(CreateLabel("ASSIGNED TECHNICIAN", 15, y));
+            card.Controls.Add(CreateLabel("PARTS SUPPLIER / VENDOR", 265, y));
             y += 20;
             _cboTechnician = new ComboBox
             {
@@ -171,7 +199,27 @@ namespace ERP.winforms.UI.Dialogs
             };
             _cboTechnician.Items.AddRange(new object[] { "Lead Tech Alex", "Tech Justin", "Tech Ryan", "Bench Queue (Unassigned)" });
             _cboTechnician.SelectedIndex = 0;
+
+            _cboPartsSupplier = new ComboBox
+            {
+                Location = new Point(265, y),
+                Width = 220,
+                Font = AppTheme.BodyFont,
+                DropDownStyle = ComboBoxStyle.DropDown,
+                AutoCompleteMode = AutoCompleteMode.SuggestAppend,
+                AutoCompleteSource = AutoCompleteSource.ListItems
+            };
+            _cboPartsSupplier.Items.Add("In-House Stock");
+            _cboPartsSupplier.Items.Add("Direct Distribution");
+            foreach (var s in _dataService.Suppliers.Where(s => s.IsActive))
+            {
+                if (!string.IsNullOrWhiteSpace(s.SupplierName) && !_cboPartsSupplier.Items.Contains(s.SupplierName))
+                    _cboPartsSupplier.Items.Add(s.SupplierName);
+            }
+            _cboPartsSupplier.SelectedIndex = 0;
+
             card.Controls.Add(_cboTechnician);
+            card.Controls.Add(_cboPartsSupplier);
             y += 35;
 
             // Pricing & Billing
@@ -210,7 +258,7 @@ namespace ERP.winforms.UI.Dialogs
             // Bottom Buttons
             SunshineButton btnSave = new SunshineButton
             {
-                Text = _targetTicket == null ? "Create Job Order (F4)" : "Update Job Order",
+                Text = _targetTicket == null ? "Create Job Order" : "Update Job Order",
                 IsPrimary = true,
                 Location = new Point(275, 590),
                 Size = new Size(248, 42)
@@ -254,15 +302,16 @@ namespace ERP.winforms.UI.Dialogs
 
         private void SaveTicket()
         {
-            string customer = _txtCustomer.Text.Trim();
+            string customer = _cboCustomer.Text.Trim();
             string phone = _txtPhone.Text.Trim();
             string brand = _txtBrandModel.Text.Trim();
             string issue = _txtIssue.Text.Trim();
+            string partsSupplier = _cboPartsSupplier.Text.Trim();
 
             if (string.IsNullOrEmpty(customer))
             {
-                MessageBox.Show("Please enter the customer's name.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                _txtCustomer.Focus();
+                MessageBox.Show("Please enter or select the customer's name.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                _cboCustomer.Focus();
                 return;
             }
 
@@ -292,6 +341,7 @@ namespace ERP.winforms.UI.Dialogs
                     SerialNumber = _txtSerial.Text.Trim(),
                     ReportedIssue = issue,
                     AssignedTechnician = _cboTechnician.SelectedItem?.ToString() ?? "Lead Tech Alex",
+                    PartsSupplier = partsSupplier,
                     Status = "Received",
                     LaborFee = _numLabor.Value,
                     PartsCost = _numParts.Value,
@@ -313,6 +363,7 @@ namespace ERP.winforms.UI.Dialogs
                 _targetTicket.SerialNumber = _txtSerial.Text.Trim();
                 _targetTicket.ReportedIssue = issue;
                 _targetTicket.AssignedTechnician = _cboTechnician.SelectedItem?.ToString() ?? "Lead Tech Alex";
+                _targetTicket.PartsSupplier = partsSupplier;
                 _targetTicket.LaborFee = _numLabor.Value;
                 _targetTicket.PartsCost = _numParts.Value;
                 _targetTicket.DepositAmount = _numDeposit.Value;
