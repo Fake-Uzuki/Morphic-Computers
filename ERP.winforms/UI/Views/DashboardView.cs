@@ -1542,6 +1542,7 @@ namespace ERP.winforms.UI.Views
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
                 RowTemplate = { Height = 38 }
             };
+            _gridRecentOrders.Resize += (s, e) => PopulateRecentOrders();
 
             _gridRecentOrders.EnableHeadersVisualStyles = false;
             _gridRecentOrders.ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
@@ -1562,10 +1563,10 @@ namespace ERP.winforms.UI.Views
                 Padding = new Padding(10, 0, 0, 0)
             };
 
-            _gridRecentOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ORDER ID", FillWeight = 22, Name = "ColId" });
-            _gridRecentOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CUSTOMER", FillWeight = 42, Name = "ColCust" });
-            _gridRecentOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TIME", FillWeight = 18, Name = "ColTime" });
-            _gridRecentOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TOTAL", FillWeight = 18, Name = "ColTotal" });
+            _gridRecentOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ORDER ID", FillWeight = 22, MinimumWidth = 100, Name = "ColId" });
+            _gridRecentOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CUSTOMER", FillWeight = 42, MinimumWidth = 140, Name = "ColCust" });
+            _gridRecentOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TIME", FillWeight = 18, MinimumWidth = 80, Name = "ColTime" });
+            _gridRecentOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TOTAL", FillWeight = 18, MinimumWidth = 90, Name = "ColTotal" });
 
             Panel pnlFooter = new Panel { Dock = DockStyle.Bottom, Height = 32 };
             _lblOrderCount = new Label { Text = "No transactions recorded yet", Font = new Font("Segoe UI", 7.5F, FontStyle.Regular), ForeColor = AppTheme.TextMuted, Location = new Point(0, 8), AutoSize = true };
@@ -1747,13 +1748,14 @@ namespace ERP.winforms.UI.Views
                     .ToList();
             }
 
+            int effectivePageSize = GetEffectiveRecentOrdersPageSize();
             int totalCount = ordersList.Count;
-            _recentTotalPages = Math.Max(1, (int)Math.Ceiling(totalCount / (double)RecentPageSize));
+            _recentTotalPages = Math.Max(1, (int)Math.Ceiling(totalCount / (double)effectivePageSize));
 
             if (_recentOrdersPage > _recentTotalPages) _recentOrdersPage = _recentTotalPages;
             if (_recentOrdersPage < 1) _recentOrdersPage = 1;
 
-            var pageItems = ordersList.Skip((_recentOrdersPage - 1) * RecentPageSize).Take(RecentPageSize).ToList();
+            var pageItems = ordersList.Skip((_recentOrdersPage - 1) * effectivePageSize).Take(effectivePageSize).ToList();
 
             foreach (var item in pageItems)
             {
@@ -1764,8 +1766,8 @@ namespace ERP.winforms.UI.Views
                 row.Cells["ColTotal"].Style.Font = new Font("Segoe UI", 8.5F, FontStyle.Bold);
             }
 
-            int start = totalCount == 0 ? 0 : (_recentOrdersPage - 1) * RecentPageSize + 1;
-            int end = Math.Min(_recentOrdersPage * RecentPageSize, totalCount);
+            int start = totalCount == 0 ? 0 : (_recentOrdersPage - 1) * effectivePageSize + 1;
+            int end = Math.Min(_recentOrdersPage * effectivePageSize, totalCount);
             if (_lblOrderCount != null)
             {
                 _lblOrderCount.Text = totalCount == 0
@@ -1774,6 +1776,15 @@ namespace ERP.winforms.UI.Views
             }
 
             UpdateDashboardPagination();
+        }
+
+        private int GetEffectiveRecentOrdersPageSize()
+        {
+            if (_gridRecentOrders == null || _gridRecentOrders.ClientSize.Height <= 80) return 8;
+            int availHeight = _gridRecentOrders.ClientSize.Height - _gridRecentOrders.ColumnHeadersHeight;
+            int rowHeight = _gridRecentOrders.RowTemplate.Height > 0 ? _gridRecentOrders.RowTemplate.Height : 38;
+            int fitRows = availHeight / rowHeight;
+            return Math.Clamp(fitRows, 6, 25);
         }
 
         private void UpdateDashboardPagination()

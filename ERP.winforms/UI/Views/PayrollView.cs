@@ -25,7 +25,7 @@ namespace ERP.winforms.UI.Views
         {
             Dock = DockStyle.Fill;
             BackColor = AppTheme.AppBackground;
-            AutoScroll = true;
+            AutoScroll = false;
 
             InitializeLayout();
             _dataService.PayrollRecordsChanged += () =>
@@ -168,17 +168,17 @@ namespace ERP.winforms.UI.Views
                 Padding = new Padding(6, 0, 0, 0)
             };
 
-            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ID", FillWeight = 8, Name = "ColId" });
-            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "EMPLOYEE NAME", FillWeight = 18, Name = "ColName" });
-            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ROLE / DEPARTMENT", FillWeight = 16, Name = "ColRole" });
-            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PAY PERIOD", FillWeight = 17, Name = "ColPeriod" });
-            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "BASE SALARY", FillWeight = 12, Name = "ColBase" });
-            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "COMMISSION & OT", FillWeight = 14, Name = "ColComm" });
-            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "DEDUCTIONS", FillWeight = 11, Name = "ColDeduc" });
-            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "NET TAKE-HOME", FillWeight = 14, Name = "ColNet" });
-            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CHANNEL", FillWeight = 14, Name = "ColChannel" });
-            _gridPayroll.Columns.Add(new DataGridViewButtonColumn { HeaderText = "PAYSLIP", FillWeight = 9, Text = "Payslip", UseColumnTextForButtonValue = true, Name = "ColPayslip" });
-            _gridPayroll.Columns.Add(new DataGridViewButtonColumn { HeaderText = "VOID", FillWeight = 7, Text = "Void", UseColumnTextForButtonValue = true, Name = "ColDelete" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ID", FillWeight = 8, MinimumWidth = 50, Name = "ColId" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "EMPLOYEE NAME", FillWeight = 18, MinimumWidth = 140, Name = "ColName" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ROLE / DEPARTMENT", FillWeight = 16, MinimumWidth = 130, Name = "ColRole" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PAY PERIOD", FillWeight = 17, MinimumWidth = 130, Name = "ColPeriod" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "BASE SALARY", FillWeight = 12, MinimumWidth = 90, Name = "ColBase" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "COMMISSION & OT", FillWeight = 14, MinimumWidth = 100, Name = "ColComm" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "DEDUCTIONS", FillWeight = 11, MinimumWidth = 90, Name = "ColDeduc" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "NET TAKE-HOME", FillWeight = 14, MinimumWidth = 100, Name = "ColNet" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CHANNEL", FillWeight = 14, MinimumWidth = 100, Name = "ColChannel" });
+            _gridPayroll.Columns.Add(new DataGridViewButtonColumn { HeaderText = "PAYSLIP", FillWeight = 9, MinimumWidth = 70, Text = "Payslip", UseColumnTextForButtonValue = true, Name = "ColPayslip" });
+            _gridPayroll.Columns.Add(new DataGridViewButtonColumn { HeaderText = "VOID", FillWeight = 7, MinimumWidth = 60, Text = "Void", UseColumnTextForButtonValue = true, Name = "ColDelete" });
 
             _gridPayroll.CellContentClick += (s, e) =>
             {
@@ -212,6 +212,7 @@ namespace ERP.winforms.UI.Views
 
             cardGrid.Controls.Add(_gridPayroll);
             pnlMainContainer.Controls.Add(cardGrid);
+            cardGrid.BringToFront();
 
             Controls.Add(pnlMainContainer);
             Controls.Add(pnlToolbar);

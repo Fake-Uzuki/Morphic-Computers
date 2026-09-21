@@ -44,7 +44,7 @@ namespace ERP.winforms.UI.Views
 
             Dock = DockStyle.Fill;
             BackColor = AppTheme.AppBackground;
-            AutoScroll = true;
+            AutoScroll = false;
 
             InitializeLayout();
             _dataService.ApprovalRequestsChanged += () =>
@@ -202,12 +202,12 @@ namespace ERP.winforms.UI.Views
                 Padding = new Padding(6, 0, 0, 0)
             };
 
-            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "REQ #", FillWeight = 13, Name = "ColNum" });
-            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CATEGORY", FillWeight = 16, Name = "ColType" });
-            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "SUBJECT / TITLE", FillWeight = 26, Name = "ColTitle" });
-            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "REQUESTED BY", FillWeight = 15, Name = "ColBy" });
-            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "AMOUNT", FillWeight = 14, Name = "ColAmt" });
-            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STATUS", FillWeight = 12, Name = "ColStatus" });
+            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "REQ #", FillWeight = 13, MinimumWidth = 85, Name = "ColNum" });
+            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CATEGORY", FillWeight = 16, MinimumWidth = 110, Name = "ColType" });
+            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "SUBJECT / TITLE", FillWeight = 26, MinimumWidth = 150, Name = "ColTitle" });
+            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "REQUESTED BY", FillWeight = 15, MinimumWidth = 110, Name = "ColBy" });
+            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "AMOUNT", FillWeight = 14, MinimumWidth = 90, Name = "ColAmt" });
+            _gridRequests.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STATUS", FillWeight = 12, MinimumWidth = 85, Name = "ColStatus" });
 
             _gridRequests.SelectionChanged += (s, e) =>
             {
@@ -226,6 +226,7 @@ namespace ERP.winforms.UI.Views
             pnlMainContainer.Controls.Add(cardGrid);
             pnlMainContainer.Controls.Add(pnlSpacer);
             pnlMainContainer.Controls.Add(_pnlDetails);
+            cardGrid.BringToFront();
 
             Controls.Add(pnlMainContainer);
             Controls.Add(pnlToolbar);

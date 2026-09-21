@@ -35,7 +35,7 @@ namespace ERP.winforms.UI.Views
         {
             Dock = DockStyle.Fill;
             BackColor = AppTheme.AppBackground;
-            AutoScroll = true;
+            AutoScroll = false;
 
             InitializeLayout();
             _dataService.RepairTicketsChanged += () =>
@@ -190,13 +190,13 @@ namespace ERP.winforms.UI.Views
                 Padding = new Padding(6, 0, 0, 0)
             };
 
-            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TICKET #", FillWeight = 14, Name = "ColTicket" });
-            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CUSTOMER", FillWeight = 16, Name = "ColCust" });
-            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "DEVICE / MODEL", FillWeight = 18, Name = "ColDevice" });
-            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "SYMPTOMS", FillWeight = 18, Name = "ColIssue" });
-            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TECHNICIAN", FillWeight = 12, Name = "ColTech" });
-            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STATUS", FillWeight = 11, Name = "ColStatus" });
-            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TOTAL (PHP)", FillWeight = 11, Name = "ColTotal" });
+            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TICKET #", FillWeight = 14, MinimumWidth = 90, Name = "ColTicket" });
+            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CUSTOMER", FillWeight = 16, MinimumWidth = 110, Name = "ColCust" });
+            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "DEVICE / MODEL", FillWeight = 18, MinimumWidth = 120, Name = "ColDevice" });
+            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "SYMPTOMS", FillWeight = 18, MinimumWidth = 120, Name = "ColIssue" });
+            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TECHNICIAN", FillWeight = 12, MinimumWidth = 100, Name = "ColTech" });
+            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STATUS", FillWeight = 11, MinimumWidth = 85, Name = "ColStatus" });
+            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TOTAL (PHP)", FillWeight = 11, MinimumWidth = 85, Name = "ColTotal" });
 
             _gridRepairs.SelectionChanged += (s, e) =>
             {
@@ -216,6 +216,7 @@ namespace ERP.winforms.UI.Views
             pnlMainContainer.Controls.Add(cardGrid);
             pnlMainContainer.Controls.Add(pnlSpacer);
             pnlMainContainer.Controls.Add(_pnlDetails);
+            cardGrid.BringToFront();
 
             Controls.Add(pnlMainContainer);
             Controls.Add(pnlToolbar);
