@@ -18,9 +18,6 @@ namespace ERP.winforms.UI.Views
         private DataGridView _gridSuppliers = null!;
         private TextBox _txtSearch = null!;
 
-        private Label _lblMetricTotal = null!;
-        private Label _lblMetricActive = null!;
-
         public SuppliersView()
         {
             Dock = DockStyle.Fill;
@@ -41,28 +38,7 @@ namespace ERP.winforms.UI.Views
         {
             Controls.Clear();
 
-            // ========================================================
-            // 1. TOP METRICS STRIP (Height: 95px)
-            // ========================================================
-            Panel pnlMetrics = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = 95,
-                Padding = new Padding(20, 14, 20, 10),
-                BackColor = Color.Transparent
-            };
 
-            int cardW = 320;
-            int cardH = 75;
-            int gap = 16;
-            int x = 20;
-
-            var cardTotal = CreateMetricCard("REGISTERED SUPPLIERS", "0", "Wholesale partners & manufacturers", x, cardW, cardH, out _lblMetricTotal);
-            x += cardW + gap;
-            var cardActive = CreateMetricCard("ACTIVE SUPPLY CHANNELS", "0", "Components, GPUs, RAM & Peripherals", x, cardW, cardH, out _lblMetricActive);
-
-            pnlMetrics.Controls.Add(cardTotal);
-            pnlMetrics.Controls.Add(cardActive);
 
             // ========================================================
             // 2. TOOLBAR (Search & Actions)
@@ -220,60 +196,10 @@ namespace ERP.winforms.UI.Views
 
             Controls.Add(pnlMainContainer);
             Controls.Add(pnlToolbar);
-            Controls.Add(pnlMetrics);
-        }
-
-        private Panel CreateMetricCard(string title, string val, string sub, int x, int w, int h, out Label valLabel)
-        {
-            Panel card = new Panel
-            {
-                Location = new Point(x, 10),
-                Size = new Size(w, h),
-                BackColor = Color.White
-            };
-            card.Paint += (s, e) =>
-            {
-                using var pen = new Pen(AppTheme.CardBorder, 1);
-                e.Graphics.DrawRectangle(pen, 0, 0, card.Width - 1, card.Height - 1);
-            };
-
-            Label lblTitle = new Label
-            {
-                Text = title,
-                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
-                ForeColor = AppTheme.TextMuted,
-                Location = new Point(14, 10),
-                AutoSize = true
-            };
-
-            valLabel = new Label
-            {
-                Text = val,
-                Font = new Font("Segoe UI", 16F, FontStyle.Bold),
-                ForeColor = AppTheme.TextDark,
-                Location = new Point(12, 26),
-                AutoSize = true
-            };
-
-            Label lblSub = new Label
-            {
-                Text = sub,
-                Font = new Font("Segoe UI", 7F, FontStyle.Regular),
-                ForeColor = AppTheme.TextSubtle,
-                Location = new Point(14, 54),
-                AutoSize = true
-            };
-
-            card.Controls.Add(lblTitle);
-            card.Controls.Add(valLabel);
-            card.Controls.Add(lblSub);
-            return card;
         }
 
         public void RefreshData()
         {
-            _lblMetricTotal.Text = _dataService.Suppliers.Count.ToString();
-            _lblMetricActive.Text = _dataService.Suppliers.Count(s => s.IsActive).ToString();
             ApplyFilters();
         }
 

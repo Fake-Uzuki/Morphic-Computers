@@ -18,11 +18,6 @@ namespace ERP.winforms.UI.Views
         private DataGridView _gridCustomers = null!;
         private TextBox _txtSearch = null!;
 
-        // Metric Card Labels
-        private Label _lblMetricTotal = null!;
-        private Label _lblMetricRepairs = null!;
-        private Label _lblMetricSpend = null!;
-
         public CustomersView()
         {
             Dock = DockStyle.Fill;
@@ -43,31 +38,7 @@ namespace ERP.winforms.UI.Views
         {
             Controls.Clear();
 
-            // ========================================================
-            // 1. TOP METRICS STRIP (Height: 95px)
-            // ========================================================
-            Panel pnlMetrics = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = 95,
-                Padding = new Padding(20, 14, 20, 10),
-                BackColor = Color.Transparent
-            };
 
-            int cardW = 320;
-            int cardH = 75;
-            int gap = 16;
-            int x = 20;
-
-            var cardTotal = CreateMetricCard("REGISTERED CLIENTS", "0", "Retail buyers & corporate accounts", x, cardW, cardH, out _lblMetricTotal);
-            x += cardW + gap;
-            var cardRepairs = CreateMetricCard("ACTIVE SERVICE ACCOUNTS", "0", "Customers with open repair tickets", x, cardW, cardH, out _lblMetricRepairs);
-            x += cardW + gap;
-            var cardSpend = CreateMetricCard("LIFETIME CLIENT PURCHASES", "₱0.00", "Combined retail & service spending", x, cardW, cardH, out _lblMetricSpend);
-
-            pnlMetrics.Controls.Add(cardTotal);
-            pnlMetrics.Controls.Add(cardRepairs);
-            pnlMetrics.Controls.Add(cardSpend);
 
             // ========================================================
             // 2. TOOLBAR (Search & Actions)
@@ -225,73 +196,10 @@ namespace ERP.winforms.UI.Views
 
             Controls.Add(pnlMainContainer);
             Controls.Add(pnlToolbar);
-            Controls.Add(pnlMetrics);
-        }
-
-        private Panel CreateMetricCard(string title, string val, string sub, int x, int w, int h, out Label valLabel)
-        {
-            Panel card = new Panel
-            {
-                Location = new Point(x, 10),
-                Size = new Size(w, h),
-                BackColor = Color.White
-            };
-            card.Paint += (s, e) =>
-            {
-                using var pen = new Pen(AppTheme.CardBorder, 1);
-                e.Graphics.DrawRectangle(pen, 0, 0, card.Width - 1, card.Height - 1);
-            };
-
-            Label lblTitle = new Label
-            {
-                Text = title,
-                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
-                ForeColor = AppTheme.TextMuted,
-                Location = new Point(14, 10),
-                AutoSize = true
-            };
-
-            valLabel = new Label
-            {
-                Text = val,
-                Font = new Font("Segoe UI", 16F, FontStyle.Bold),
-                ForeColor = AppTheme.TextDark,
-                Location = new Point(12, 26),
-                AutoSize = true
-            };
-
-            Label lblSub = new Label
-            {
-                Text = sub,
-                Font = new Font("Segoe UI", 7F, FontStyle.Regular),
-                ForeColor = AppTheme.TextSubtle,
-                Location = new Point(14, 54),
-                AutoSize = true
-            };
-
-            card.Controls.Add(lblTitle);
-            card.Controls.Add(valLabel);
-            card.Controls.Add(lblSub);
-            return card;
         }
 
         public void RefreshData()
         {
-            var all = _dataService.Customers;
-            _lblMetricTotal.Text = all.Count.ToString();
-
-            // Count customers currently in repair bench
-            var activeRepairCusts = _dataService.RepairTickets
-                .Where(t => t.Status is "Diagnosing" or "InRepair" or "AwaitingParts" or "ReadyForPickup")
-                .Select(t => t.CustomerName.ToLowerInvariant())
-                .Distinct();
-
-            int repairCount = all.Count(c => activeRepairCusts.Contains(c.CustomerName.ToLowerInvariant()));
-            _lblMetricRepairs.Text = repairCount.ToString();
-
-            decimal totalSpent = all.Sum(c => c.TotalSpent);
-            _lblMetricSpend.Text = $"₱{totalSpent:N0}";
-
             ApplyFilters();
         }
 

@@ -14,12 +14,6 @@ namespace ERP.winforms.UI.Views
     {
         private readonly DataService _dataService = DataService.Instance;
 
-        // Metric Labels
-        private Label _lblActiveCount = null!;
-        private Label _lblLastUpdated = null!;
-        private Label _lblWaiverStatus = null!;
-        private Label _lblWarrantyWindow = null!;
-
         // Policy Navigation Buttons
         private Button _btnPolWaiver = null!;
         private Button _btnPolWarranty = null!;
@@ -53,34 +47,7 @@ namespace ERP.winforms.UI.Views
         {
             Controls.Clear();
 
-            // ========================================================
-            // 1. TOP METRICS STRIP (Height: 95px)
-            // ========================================================
-            Panel pnlMetrics = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = 95,
-                Padding = new Padding(20, 14, 20, 10),
-                BackColor = Color.Transparent
-            };
 
-            int cardW = 280;
-            int cardH = 75;
-            int gap = 16;
-            int x = 20;
-
-            var cardCount = CreateMetricCard("ACTIVE STORE POLICIES", "4", "Operational legal agreements", x, cardW, cardH, out _lblActiveCount);
-            x += cardW + gap;
-            var cardAudit = CreateMetricCard("COMPLIANCE STATUS", "VERIFIED", "RA 7394 & RA 10173 aligned", x, cardW, cardH, out _lblLastUpdated);
-            x += cardW + gap;
-            var cardWaiver = CreateMetricCard("REPAIR BENCH WAIVER", "MANDATORY", "Enforced on claim intake", x, cardW, cardH, out _lblWaiverStatus);
-            x += cardW + gap;
-            var cardWarranty = CreateMetricCard("WARRANTY WINDOW", "30 DAYS", "Store direct replacement", x, cardW, cardH, out _lblWarrantyWindow);
-
-            pnlMetrics.Controls.Add(cardCount);
-            pnlMetrics.Controls.Add(cardAudit);
-            pnlMetrics.Controls.Add(cardWaiver);
-            pnlMetrics.Controls.Add(cardWarranty);
 
             // ========================================================
             // 2. MAIN SPLIT WORKBENCH (Left Selector + Right Editor)
@@ -225,7 +192,6 @@ namespace ERP.winforms.UI.Views
             pnlMain.Controls.Add(cardLeft);
 
             Controls.Add(pnlMain);
-            Controls.Add(pnlMetrics);
         }
 
         private Button CreatePolicyNavButton(string text, string policyType)
@@ -289,54 +255,8 @@ namespace ERP.winforms.UI.Views
             }
         }
 
-        private Control CreateMetricCard(string title, string value, string subtitle, int x, int width, int height, out Label lblValue)
-        {
-            SunshineCard card = new SunshineCard
-            {
-                Location = new Point(x, 10),
-                Size = new Size(width, height),
-                Padding = new Padding(14, 8, 14, 8),
-                CustomBgColor = Color.White,
-                CustomBorderColor = AppTheme.CardBorder
-            };
-
-            Label lblTitle = new Label
-            {
-                Text = title,
-                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
-                ForeColor = Color.FromArgb(140, 135, 125),
-                Location = new Point(14, 10),
-                Size = new Size(width - 28, 14)
-            };
-
-            lblValue = new Label
-            {
-                Text = value,
-                Font = new Font("Segoe UI", 15F, FontStyle.Bold),
-                ForeColor = AppTheme.TextDark,
-                Location = new Point(14, 25),
-                Size = new Size(width - 28, 26)
-            };
-
-            Label lblSub = new Label
-            {
-                Text = subtitle,
-                Font = new Font("Segoe UI", 7.5F, FontStyle.Regular),
-                ForeColor = Color.FromArgb(150, 145, 135),
-                Location = new Point(14, 51),
-                Size = new Size(width - 28, 16)
-            };
-
-            card.Controls.Add(lblTitle);
-            card.Controls.Add(lblValue);
-            card.Controls.Add(lblSub);
-
-            return card;
-        }
-
         public void RefreshData()
         {
-            _lblActiveCount.Text = _dataService.StorePolicies.Count.ToString();
         }
 
         private void OnSavePolicy(object? sender, EventArgs e)

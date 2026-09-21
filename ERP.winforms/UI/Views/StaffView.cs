@@ -19,12 +19,6 @@ namespace ERP.winforms.UI.Views
         private TextBox _txtSearch = null!;
         private FlowLayoutPanel _flpFilterPills = null!;
 
-        // Metric Card Labels
-        private Label _lblMetricTotal = null!;
-        private Label _lblMetricTechs = null!;
-        private Label _lblMetricCashiers = null!;
-        private Label _lblMetricPayroll = null!;
-
         private string _currentRoleFilter = "All";
 
         public StaffView()
@@ -47,34 +41,7 @@ namespace ERP.winforms.UI.Views
         {
             Controls.Clear();
 
-            // ========================================================
-            // 1. TOP METRICS STRIP (Height: 95px)
-            // ========================================================
-            Panel pnlMetrics = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = 95,
-                Padding = new Padding(20, 14, 20, 10),
-                BackColor = Color.Transparent
-            };
 
-            int cardW = 280;
-            int cardH = 75;
-            int gap = 16;
-            int x = 20;
-
-            var cardTotal = CreateMetricCard("ACTIVE EMPLOYEES", "0", "Total registered personnel", x, cardW, cardH, out _lblMetricTotal);
-            x += cardW + gap;
-            var cardTechs = CreateMetricCard("TECHNICAL BENCH", "0", "Diagnostic & hardware technicians", x, cardW, cardH, out _lblMetricTechs);
-            x += cardW + gap;
-            var cardCashiers = CreateMetricCard("COUNTER / SALES", "0", "Cashiers & counter operators", x, cardW, cardH, out _lblMetricCashiers);
-            x += cardW + gap;
-            var cardPay = CreateMetricCard("MONTHLY SALARY BASE", "₱0.00", "Base compensation pool", x, cardW, cardH, out _lblMetricPayroll);
-
-            pnlMetrics.Controls.Add(cardTotal);
-            pnlMetrics.Controls.Add(cardTechs);
-            pnlMetrics.Controls.Add(cardCashiers);
-            pnlMetrics.Controls.Add(cardPay);
 
             // ========================================================
             // 2. TOOLBAR (Search & Actions)
@@ -249,55 +216,9 @@ namespace ERP.winforms.UI.Views
 
             Controls.Add(pnlMainContainer);
             Controls.Add(pnlToolbar);
-            Controls.Add(pnlMetrics);
         }
 
-        private Panel CreateMetricCard(string title, string val, string sub, int x, int w, int h, out Label valLabel)
-        {
-            Panel card = new Panel
-            {
-                Location = new Point(x, 10),
-                Size = new Size(w, h),
-                BackColor = Color.White
-            };
-            card.Paint += (s, e) =>
-            {
-                using var pen = new Pen(AppTheme.CardBorder, 1);
-                e.Graphics.DrawRectangle(pen, 0, 0, card.Width - 1, card.Height - 1);
-            };
 
-            Label lblTitle = new Label
-            {
-                Text = title,
-                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
-                ForeColor = AppTheme.TextMuted,
-                Location = new Point(14, 10),
-                AutoSize = true
-            };
-
-            valLabel = new Label
-            {
-                Text = val,
-                Font = new Font("Segoe UI", 16F, FontStyle.Bold),
-                ForeColor = AppTheme.TextDark,
-                Location = new Point(12, 26),
-                AutoSize = true
-            };
-
-            Label lblSub = new Label
-            {
-                Text = sub,
-                Font = new Font("Segoe UI", 7F, FontStyle.Regular),
-                ForeColor = AppTheme.TextSubtle,
-                Location = new Point(14, 54),
-                AutoSize = true
-            };
-
-            card.Controls.Add(lblTitle);
-            card.Controls.Add(valLabel);
-            card.Controls.Add(lblSub);
-            return card;
-        }
 
         private void AddFilterPill(string filterKey, string label)
         {
@@ -335,13 +256,6 @@ namespace ERP.winforms.UI.Views
 
         public void RefreshData()
         {
-            var all = _dataService.StaffMembers;
-            _lblMetricTotal.Text = all.Count.ToString();
-            _lblMetricTechs.Text = all.Count(s => s.Role.Contains("Tech")).ToString();
-            _lblMetricCashiers.Text = all.Count(s => s.Role.Contains("Cashier")).ToString();
-            decimal totalSalary = all.Sum(s => s.MonthlySalary);
-            _lblMetricPayroll.Text = $"₱{totalSalary:N0}";
-
             ApplyFilters();
         }
 

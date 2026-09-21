@@ -21,12 +21,6 @@ namespace ERP.winforms.UI.Views
         private TextBox _txtSearch = null!;
         private FlowLayoutPanel _flpFilterPills = null!;
 
-        // Metric Card Labels
-        private Label _lblMetricPending = null!;
-        private Label _lblMetricApproved = null!;
-        private Label _lblMetricRejected = null!;
-        private Label _lblMetricAmount = null!;
-
         // Right Detail Workbench
         private Panel _pnlDetails = null!;
         private Label _lblDetailReqNum = null!;
@@ -66,34 +60,7 @@ namespace ERP.winforms.UI.Views
         {
             Controls.Clear();
 
-            // ========================================================
-            // 1. TOP METRICS STRIP (Height: 95px)
-            // ========================================================
-            Panel pnlMetrics = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = 95,
-                Padding = new Padding(20, 14, 20, 10),
-                BackColor = Color.Transparent
-            };
 
-            int cardW = 280;
-            int cardH = 75;
-            int gap = 16;
-            int x = 20;
-
-            var cardPending = CreateMetricCard("PENDING REVIEWS", "0", "Awaiting manager / admin decision", x, cardW, cardH, out _lblMetricPending, true);
-            x += cardW + gap;
-            var cardApproved = CreateMetricCard("APPROVED REQUESTS", "0", "Authorized exceptions & voids", x, cardW, cardH, out _lblMetricApproved);
-            x += cardW + gap;
-            var cardRejected = CreateMetricCard("REJECTED REQUESTS", "0", "Declined requests", x, cardW, cardH, out _lblMetricRejected);
-            x += cardW + gap;
-            var cardAmount = CreateMetricCard("PENDING VALUE (PHP)", "₱0.00", "Total financial impact", x, cardW, cardH, out _lblMetricAmount);
-
-            pnlMetrics.Controls.Add(cardPending);
-            pnlMetrics.Controls.Add(cardApproved);
-            pnlMetrics.Controls.Add(cardRejected);
-            pnlMetrics.Controls.Add(cardAmount);
 
             // ========================================================
             // 2. TOOLBAR (Search & Actions)
@@ -262,54 +229,6 @@ namespace ERP.winforms.UI.Views
 
             Controls.Add(pnlMainContainer);
             Controls.Add(pnlToolbar);
-            Controls.Add(pnlMetrics);
-        }
-
-        private Panel CreateMetricCard(string title, string val, string sub, int x, int w, int h, out Label valLabel, bool isHighlight = false)
-        {
-            Panel card = new Panel
-            {
-                Location = new Point(x, 10),
-                Size = new Size(w, h),
-                BackColor = isHighlight ? Color.FromArgb(255, 252, 240) : Color.White
-            };
-            card.Paint += (s, e) =>
-            {
-                using var pen = new Pen(isHighlight ? AppTheme.Primary : AppTheme.CardBorder, isHighlight ? 2 : 1);
-                e.Graphics.DrawRectangle(pen, 0, 0, card.Width - 1, card.Height - 1);
-            };
-
-            Label lblTitle = new Label
-            {
-                Text = title,
-                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
-                ForeColor = isHighlight ? Color.FromArgb(160, 110, 10) : AppTheme.TextMuted,
-                Location = new Point(14, 10),
-                AutoSize = true
-            };
-
-            valLabel = new Label
-            {
-                Text = val,
-                Font = new Font("Segoe UI", 16F, FontStyle.Bold),
-                ForeColor = isHighlight ? Color.FromArgb(160, 110, 10) : AppTheme.TextDark,
-                Location = new Point(12, 26),
-                AutoSize = true
-            };
-
-            Label lblSub = new Label
-            {
-                Text = sub,
-                Font = new Font("Segoe UI", 7F, FontStyle.Regular),
-                ForeColor = AppTheme.TextSubtle,
-                Location = new Point(14, 54),
-                AutoSize = true
-            };
-
-            card.Controls.Add(lblTitle);
-            card.Controls.Add(valLabel);
-            card.Controls.Add(lblSub);
-            return card;
         }
 
         private void AddFilterPill(string filterKey, string label)
@@ -497,13 +416,6 @@ namespace ERP.winforms.UI.Views
 
         public void RefreshData()
         {
-            var all = _dataService.ApprovalRequests;
-            _lblMetricPending.Text = all.Count(r => r.Status == "Pending").ToString();
-            _lblMetricApproved.Text = all.Count(r => r.Status == "Approved").ToString();
-            _lblMetricRejected.Text = all.Count(r => r.Status == "Rejected").ToString();
-            decimal pendingAmt = all.Where(r => r.Status == "Pending").Sum(r => r.RequestedAmount);
-            _lblMetricAmount.Text = $"₱{pendingAmt:N2}";
-
             ApplyFilters();
         }
 

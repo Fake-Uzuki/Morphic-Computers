@@ -19,12 +19,6 @@ namespace ERP.winforms.UI.Views
         private TextBox _txtSearch = null!;
         private FlowLayoutPanel _flpFilterPills = null!;
 
-        // Metric Card Labels
-        private Label _lblMetricTotal = null!;
-        private Label _lblMetricStaffCount = null!;
-        private Label _lblMetricCommissions = null!;
-        private Label _lblMetricAvgNet = null!;
-
         private string _currentRoleFilter = "All";
 
         public PayrollView()
@@ -47,34 +41,7 @@ namespace ERP.winforms.UI.Views
         {
             Controls.Clear();
 
-            // ========================================================
-            // 1. TOP METRICS STRIP (Height: 95px)
-            // ========================================================
-            Panel pnlMetrics = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = 95,
-                Padding = new Padding(20, 14, 20, 10),
-                BackColor = Color.Transparent
-            };
 
-            int cardW = 280;
-            int cardH = 75;
-            int gap = 16;
-            int x = 20;
-
-            var cardTotal = CreateMetricCard("TOTAL DISBURSED", "₱0.00", "Total net salary payouts", x, cardW, cardH, out _lblMetricTotal);
-            x += cardW + gap;
-            var cardStaff = CreateMetricCard("PAYROLL RUNS", "0", "Disbursement statements issued", x, cardW, cardH, out _lblMetricStaffCount);
-            x += cardW + gap;
-            var cardComm = CreateMetricCard("PERFORMANCE COMMISSIONS", "₱0.00", "Tech & counter incentives", x, cardW, cardH, out _lblMetricCommissions);
-            x += cardW + gap;
-            var cardAvg = CreateMetricCard("AVERAGE NET PAY", "₱0.00", "Per employee compensation", x, cardW, cardH, out _lblMetricAvgNet);
-
-            pnlMetrics.Controls.Add(cardTotal);
-            pnlMetrics.Controls.Add(cardStaff);
-            pnlMetrics.Controls.Add(cardComm);
-            pnlMetrics.Controls.Add(cardAvg);
 
             // ========================================================
             // 2. TOOLBAR (Search & Actions)
@@ -248,53 +215,9 @@ namespace ERP.winforms.UI.Views
 
             Controls.Add(pnlMainContainer);
             Controls.Add(pnlToolbar);
-            Controls.Add(pnlMetrics);
         }
 
-        private Control CreateMetricCard(string title, string value, string subtitle, int x, int width, int height, out Label lblValue)
-        {
-            SunshineCard card = new SunshineCard
-            {
-                Location = new Point(x, 10),
-                Size = new Size(width, height),
-                Padding = new Padding(14, 8, 14, 8),
-                CustomBgColor = Color.White,
-                CustomBorderColor = AppTheme.CardBorder
-            };
 
-            Label lblTitle = new Label
-            {
-                Text = title,
-                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
-                ForeColor = Color.FromArgb(140, 135, 125),
-                Location = new Point(14, 10),
-                Size = new Size(width - 28, 14)
-            };
-
-            lblValue = new Label
-            {
-                Text = value,
-                Font = new Font("Segoe UI", 15F, FontStyle.Bold),
-                ForeColor = AppTheme.TextDark,
-                Location = new Point(14, 25),
-                Size = new Size(width - 28, 26)
-            };
-
-            Label lblSub = new Label
-            {
-                Text = subtitle,
-                Font = new Font("Segoe UI", 7.5F, FontStyle.Regular),
-                ForeColor = Color.FromArgb(150, 145, 135),
-                Location = new Point(14, 51),
-                Size = new Size(width - 28, 16)
-            };
-
-            card.Controls.Add(lblTitle);
-            card.Controls.Add(lblValue);
-            card.Controls.Add(lblSub);
-
-            return card;
-        }
 
         private void AddFilterPill(string roleFilter, string label)
         {
@@ -336,18 +259,6 @@ namespace ERP.winforms.UI.Views
 
         public void RefreshData()
         {
-            var records = _dataService.PayrollRecords;
-
-            decimal totalDisbursed = records.Sum(r => r.NetPay);
-            int count = records.Count;
-            decimal totalComm = records.Sum(r => r.CommissionAmount);
-            decimal avgNet = count > 0 ? totalDisbursed / count : 0;
-
-            _lblMetricTotal.Text = $"₱{totalDisbursed:N2}";
-            _lblMetricStaffCount.Text = count.ToString();
-            _lblMetricCommissions.Text = $"₱{totalComm:N2}";
-            _lblMetricAvgNet.Text = $"₱{avgNet:N2}";
-
             ApplyFilters();
         }
 
