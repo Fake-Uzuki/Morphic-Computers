@@ -21,7 +21,6 @@ namespace ERP.winforms.UI.Dialogs
         private TextBox _txtSerial = null!;
         private TextBox _txtIssue = null!;
         private ComboBox _cboTechnician = null!;
-        private ComboBox _cboPartsSupplier = null!;
         private NumericUpDown _numLabor = null!;
         private NumericUpDown _numParts = null!;
         private NumericUpDown _numDeposit = null!;
@@ -53,8 +52,6 @@ namespace ERP.winforms.UI.Dialogs
                 _txtSerial.Text = _targetTicket.SerialNumber ?? "";
                 _txtIssue.Text = _targetTicket.ReportedIssue;
                 _cboTechnician.SelectedItem = _targetTicket.AssignedTechnician ?? "Lead Tech Alex";
-                if (!string.IsNullOrWhiteSpace(_targetTicket.PartsSupplier))
-                    _cboPartsSupplier.Text = _targetTicket.PartsSupplier;
                 _numLabor.Value = Math.Min(_targetTicket.LaborFee, _numLabor.Maximum);
                 _numParts.Value = Math.Min(_targetTicket.PartsCost, _numParts.Maximum);
                 _numDeposit.Value = Math.Min(_targetTicket.DepositAmount, _numDeposit.Maximum);
@@ -107,7 +104,7 @@ namespace ERP.winforms.UI.Dialogs
             int y = 10;
 
             // Customer Name & Phone
-            card.Controls.Add(CreateLabel("CUSTOMER NAME / REGISTERED CLIENT *", 15, y));
+            card.Controls.Add(CreateLabel("CUSTOMER NAME *", 15, y));
             card.Controls.Add(CreateLabel("CONTACT NUMBER *", 265, y));
             y += 20;
 
@@ -186,40 +183,20 @@ namespace ERP.winforms.UI.Dialogs
             card.Controls.Add(_txtIssue);
             y += 75;
 
-            // Technician Assignment & Parts Supplier
+            // Technician Assignment (Parts Supplier removed per design)
             card.Controls.Add(CreateLabel("ASSIGNED TECHNICIAN", 15, y));
-            card.Controls.Add(CreateLabel("PARTS SUPPLIER / VENDOR", 265, y));
             y += 20;
             _cboTechnician = new ComboBox
             {
                 Location = new Point(15, y),
-                Width = 235,
+                Width = 470,
                 Font = AppTheme.BodyFont,
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
             _cboTechnician.Items.AddRange(new object[] { "Lead Tech Alex", "Tech Justin", "Tech Ryan", "Bench Queue (Unassigned)" });
             _cboTechnician.SelectedIndex = 0;
 
-            _cboPartsSupplier = new ComboBox
-            {
-                Location = new Point(265, y),
-                Width = 220,
-                Font = AppTheme.BodyFont,
-                DropDownStyle = ComboBoxStyle.DropDown,
-                AutoCompleteMode = AutoCompleteMode.SuggestAppend,
-                AutoCompleteSource = AutoCompleteSource.ListItems
-            };
-            _cboPartsSupplier.Items.Add("In-House Stock");
-            _cboPartsSupplier.Items.Add("Direct Distribution");
-            foreach (var s in _dataService.Suppliers.Where(s => s.IsActive))
-            {
-                if (!string.IsNullOrWhiteSpace(s.SupplierName) && !_cboPartsSupplier.Items.Contains(s.SupplierName))
-                    _cboPartsSupplier.Items.Add(s.SupplierName);
-            }
-            _cboPartsSupplier.SelectedIndex = 0;
-
             card.Controls.Add(_cboTechnician);
-            card.Controls.Add(_cboPartsSupplier);
             y += 35;
 
             // Pricing & Billing
@@ -306,7 +283,7 @@ namespace ERP.winforms.UI.Dialogs
             string phone = _txtPhone.Text.Trim();
             string brand = _txtBrandModel.Text.Trim();
             string issue = _txtIssue.Text.Trim();
-            string partsSupplier = _cboPartsSupplier.Text.Trim();
+            string partsSupplier = _targetTicket?.PartsSupplier ?? "In-House Stock";
 
             if (string.IsNullOrEmpty(customer))
             {
