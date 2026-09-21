@@ -17,11 +17,29 @@ namespace ERP.winforms
         private readonly string _currentUser;
         private readonly string _currentRole;
 
+        public bool IsLoggedOut { get; private set; }
+
         // Top Header & Sub-bars
         private Panel _pnlTopBar = null!;
         private Panel _pnlNavTabs = null!;
         private Panel _pnlBottomBar = null!;
         private Panel _pnlContentArea = null!;
+
+        // Upper-right header controls
+        private Panel _pnlTopRight = null!;
+        private Button _btnLogout = null!;
+        private Button _btnNotifications = null!;
+        private Label _lblNotificationBadge = null!;
+        private NotificationFlyout _notificationFlyout = null!;
+
+        // Scrollable navigation slidebar controls
+        private Button _btnNavScrollLeft = null!;
+        private Button _btnNavScrollRight = null!;
+        private Panel _pnlTabsViewport = null!;
+        private Panel _pnlTabsTrack = null!;
+        private Panel _pnlNavSliderTrack = null!;
+        private Panel _pnlNavSliderThumb = null!;
+        private int _navScrollOffset = 0;
 
         // Navigation tab buttons
         private Button _btnNavDashboard = null!;
@@ -51,6 +69,8 @@ namespace ERP.winforms
         private PayrollView _payrollView = null!;
         private PoliciesView _policiesView = null!;
 
+        private readonly HashSet<string> _dismissedAlertKeys = new();
+
         public Form1(string userName = "Cirunay", string userRole = "Store Administrator", Company? company = null)
         {
             _currentUser = userName;
@@ -61,8 +81,6 @@ namespace ERP.winforms
             }
 
             InitializeComponent();
-            KeyPreview = true;
-            KeyDown += Form1_KeyDown;
             FormClosing += (s, e) => _dataService.SaveAllToDisk();
 
             SetupCustomLayout();
@@ -126,39 +144,79 @@ namespace ERP.winforms
                 AutoSize = true
             };
 
-            // Right Header Utilities
-            Label lblCloudSync = new Label
+            // ========================================================
+            // UPPER-RIGHT HEADER UTILITIES (Notification, User, Logout)
+            // ========================================================
+            _pnlTopRight = new Panel
             {
-                Text = "Central Cloud Sync: Active (100%)",
-                Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
-                ForeColor = Color.FromArgb(180, 178, 168),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(Width - 560, 18),
-                AutoSize = true
+                Dock = DockStyle.Right,
+                Height = 54,
+                Width = 490,
+                BackColor = Color.Transparent
             };
 
+            // 1. New Sale Action Button
             SunshineButton btnNewSale = new SunshineButton
             {
-                Text = "+ New Sale (F2)",
+                Text = "+ New Sale",
                 IsPrimary = true,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(Width - 340, 11),
-                Size = new Size(130, 32),
+                Location = new Point(12, 11),
+                Size = new Size(110, 32),
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Bold)
             };
             btnNewSale.Click += (s, e) => SwitchView(_posView, _btnNavPOS);
 
-            // User Avatar Pill
+            // 2. Notification Center Button with dynamic Unread Badge
+            Panel pnlNotifBox = new Panel
+            {
+                Location = new Point(130, 11),
+                Size = new Size(88, 32),
+                BackColor = Color.Transparent
+            };
+
+            _btnNotifications = new Button
+            {
+                Text = "🔔 Alerts",
+                Location = new Point(0, 0),
+                Size = new Size(88, 32),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                ForeColor = Color.White,
+                BackColor = Color.FromArgb(32, 34, 28),
+                Cursor = Cursors.Hand,
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+            _btnNotifications.FlatAppearance.BorderSize = 0;
+            _btnNotifications.FlatAppearance.MouseOverBackColor = Color.FromArgb(48, 50, 42);
+            _btnNotifications.Click += (s, e) => ToggleNotifications();
+
+            _lblNotificationBadge = new Label
+            {
+                Text = "0",
+                Font = new Font("Segoe UI", 6.8F, FontStyle.Bold),
+                ForeColor = AppTheme.TextDark,
+                BackColor = AppTheme.Primary,
+                Location = new Point(66, 2),
+                Size = new Size(18, 16),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Visible = false
+            };
+            _lblNotificationBadge.Click += (s, e) => ToggleNotifications();
+
+            pnlNotifBox.Controls.Add(_lblNotificationBadge);
+            pnlNotifBox.Controls.Add(_btnNotifications);
+            _lblNotificationBadge.BringToFront();
+
+            // 3. User Profile Avatar Pill
             Panel pnlUser = new Panel
             {
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(Width - 195, 8),
-                Size = new Size(175, 38),
+                Location = new Point(226, 8),
+                Size = new Size(168, 38),
                 BackColor = Color.FromArgb(32, 34, 28)
             };
             Label lblUserAvatar = new Label
             {
-                Text = _currentUser.Substring(0, 1).ToUpperInvariant(),
+                Text = _currentUser.Length > 0 ? _currentUser.Substring(0, 1).ToUpperInvariant() : "U",
                 Font = new Font("Segoe UI", 9F, FontStyle.Bold),
                 ForeColor = AppTheme.TextDark,
                 BackColor = AppTheme.Primary,
@@ -172,29 +230,129 @@ namespace ERP.winforms
                 Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
                 ForeColor = Color.White,
                 Location = new Point(36, 4),
-                Size = new Size(135, 30)
+                Size = new Size(128, 30)
             };
             pnlUser.Controls.Add(lblUserAvatar);
             pnlUser.Controls.Add(lblUserName);
 
+            // 4. Logout Action Button
+            _btnLogout = new Button
+            {
+                Text = "⎋ Logout",
+                Location = new Point(402, 11),
+                Size = new Size(76, 32),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(240, 235, 220),
+                BackColor = Color.FromArgb(42, 36, 30),
+                Cursor = Cursors.Hand,
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+            _btnLogout.FlatAppearance.BorderSize = 0;
+            _btnLogout.FlatAppearance.MouseOverBackColor = Color.FromArgb(170, 45, 35);
+            _btnLogout.Click += BtnLogout_Click;
+
+            _pnlTopRight.Controls.Add(btnNewSale);
+            _pnlTopRight.Controls.Add(pnlNotifBox);
+            _pnlTopRight.Controls.Add(pnlUser);
+            _pnlTopRight.Controls.Add(_btnLogout);
+
             _pnlTopBar.Controls.Add(lblLogoBadge);
             _pnlTopBar.Controls.Add(lblBrandName);
             _pnlTopBar.Controls.Add(lblTagline);
-            _pnlTopBar.Controls.Add(lblCloudSync);
-            _pnlTopBar.Controls.Add(btnNewSale);
-            _pnlTopBar.Controls.Add(pnlUser);
+            _pnlTopBar.Controls.Add(_pnlTopRight);
+
+            // Notification Flyout Setup
+            _notificationFlyout = new NotificationFlyout
+            {
+                Visible = false,
+                Location = new Point(Width - 410, 54),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
+            };
+            _notificationFlyout.OnRequestClose = () => _notificationFlyout.Visible = false;
+            _notificationFlyout.OnNotificationsChanged = () => UpdateNotificationBadge();
+            Controls.Add(_notificationFlyout);
 
             // ========================================================
-            // 2. NAVIGATION TABS BAR (Height: 42px, Flush Dark Background)
+            // 2. NAVIGATION TABS BAR (Height: 46px, Scrollable Slidebar)
             // ========================================================
             _pnlNavTabs = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 42,
+                Height = 46,
                 BackColor = AppTheme.HeaderBg
             };
 
-            int tabX = 20;
+            _btnNavScrollLeft = new Button
+            {
+                Text = "◀",
+                Dock = DockStyle.Left,
+                Width = 28,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                ForeColor = AppTheme.Primary,
+                BackColor = Color.FromArgb(24, 25, 20),
+                Cursor = Cursors.Hand
+            };
+            _btnNavScrollLeft.FlatAppearance.BorderSize = 0;
+            _btnNavScrollLeft.Click += (s, e) => ScrollNavTabs(-200);
+
+            _btnNavScrollRight = new Button
+            {
+                Text = "▶",
+                Dock = DockStyle.Right,
+                Width = 28,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                ForeColor = AppTheme.Primary,
+                BackColor = Color.FromArgb(24, 25, 20),
+                Cursor = Cursors.Hand
+            };
+            _btnNavScrollRight.FlatAppearance.BorderSize = 0;
+            _btnNavScrollRight.Click += (s, e) => ScrollNavTabs(200);
+
+            _pnlTabsViewport = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = AppTheme.HeaderBg,
+                AutoScroll = false
+            };
+
+            _pnlTabsTrack = new Panel
+            {
+                Location = new Point(0, 0),
+                Height = 43,
+                Width = 1600,
+                BackColor = Color.Transparent
+            };
+
+            // Slidebar track at bottom of navigation
+            _pnlNavSliderTrack = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 3,
+                BackColor = Color.FromArgb(32, 34, 28)
+            };
+            _pnlNavSliderThumb = new Panel
+            {
+                Height = 3,
+                Width = 100,
+                BackColor = AppTheme.Primary,
+                Location = new Point(0, 0)
+            };
+            _pnlNavSliderTrack.Controls.Add(_pnlNavSliderThumb);
+
+            _pnlTabsViewport.Controls.Add(_pnlTabsTrack);
+            _pnlNavTabs.Controls.Add(_pnlTabsViewport);
+            _pnlNavTabs.Controls.Add(_btnNavScrollLeft);
+            _pnlNavTabs.Controls.Add(_btnNavScrollRight);
+            _pnlNavTabs.Controls.Add(_pnlNavSliderTrack);
+
+            void HandleWheel(object? s, MouseEventArgs e) => ScrollNavTabs(e.Delta > 0 ? -150 : 150);
+            _pnlTabsViewport.MouseWheel += HandleWheel;
+            _pnlTabsTrack.MouseWheel += HandleWheel;
+
+            int tabX = 10;
             _btnNavDashboard = CreateEnterpriseTab("Dashboard", tabX, 130);
             tabX += 132;
             _btnNavProducts = CreateEnterpriseTab("Products Stock", tabX, 145);
@@ -209,10 +367,10 @@ namespace ERP.winforms
             _btnNavPOS.Click += (s, e) => SwitchView(_posView, _btnNavPOS);
             _btnNavOrders.Click += (s, e) => SwitchView(_ordersView, _btnNavOrders);
 
-            _pnlNavTabs.Controls.Add(_btnNavDashboard);
-            _pnlNavTabs.Controls.Add(_btnNavProducts);
-            _pnlNavTabs.Controls.Add(_btnNavPOS);
-            _pnlNavTabs.Controls.Add(_btnNavOrders);
+            _pnlTabsTrack.Controls.Add(_btnNavDashboard);
+            _pnlTabsTrack.Controls.Add(_btnNavProducts);
+            _pnlTabsTrack.Controls.Add(_btnNavPOS);
+            _pnlTabsTrack.Controls.Add(_btnNavOrders);
 
             // ========================================================
             // TENANT B (SMALL BUSINESS) MODULES DYNAMIC INTEGRATION
@@ -225,7 +383,7 @@ namespace ERP.winforms
             {
                 _btnNavRepairs = CreateEnterpriseTab("Repair Services", tabX, 145);
                 _btnNavRepairs.Click += (s, e) => SwitchView(_repairsView, _btnNavRepairs);
-                _pnlNavTabs.Controls.Add(_btnNavRepairs);
+                _pnlTabsTrack.Controls.Add(_btnNavRepairs);
                 tabX += 147;
             }
 
@@ -241,7 +399,7 @@ namespace ERP.winforms
             {
                 _btnNavSuppliers = CreateEnterpriseTab("Suppliers", tabX, 130);
                 _btnNavSuppliers.Click += (s, e) => SwitchView(_suppliersView, _btnNavSuppliers);
-                _pnlNavTabs.Controls.Add(_btnNavSuppliers);
+                _pnlTabsTrack.Controls.Add(_btnNavSuppliers);
                 tabX += 132;
             }
 
@@ -250,7 +408,7 @@ namespace ERP.winforms
             {
                 _btnNavStaff = CreateEnterpriseTab("Staff & Team", tabX, 130);
                 _btnNavStaff.Click += (s, e) => SwitchView(_staffView, _btnNavStaff);
-                _pnlNavTabs.Controls.Add(_btnNavStaff);
+                _pnlTabsTrack.Controls.Add(_btnNavStaff);
                 tabX += 132;
             }
 
@@ -259,7 +417,7 @@ namespace ERP.winforms
             {
                 _btnNavApprovals = CreateEnterpriseTab("Approvals", tabX, 120);
                 _btnNavApprovals.Click += (s, e) => SwitchView(_approvalsView, _btnNavApprovals);
-                _pnlNavTabs.Controls.Add(_btnNavApprovals);
+                _pnlTabsTrack.Controls.Add(_btnNavApprovals);
                 tabX += 122;
             }
 
@@ -268,7 +426,7 @@ namespace ERP.winforms
             {
                 _btnNavCustomers = CreateEnterpriseTab("Customers", tabX, 120);
                 _btnNavCustomers.Click += (s, e) => SwitchView(_customersView, _btnNavCustomers);
-                _pnlNavTabs.Controls.Add(_btnNavCustomers);
+                _pnlTabsTrack.Controls.Add(_btnNavCustomers);
                 tabX += 122;
             }
 
@@ -277,7 +435,7 @@ namespace ERP.winforms
             {
                 _btnNavPayroll = CreateEnterpriseTab("Store Payroll", tabX, 130);
                 _btnNavPayroll.Click += (s, e) => SwitchView(_payrollView, _btnNavPayroll);
-                _pnlNavTabs.Controls.Add(_btnNavPayroll);
+                _pnlTabsTrack.Controls.Add(_btnNavPayroll);
                 tabX += 132;
             }
 
@@ -286,9 +444,13 @@ namespace ERP.winforms
             {
                 _btnNavPolicies = CreateEnterpriseTab("Policies & Terms", tabX, 140);
                 _btnNavPolicies.Click += (s, e) => SwitchView(_policiesView, _btnNavPolicies);
-                _pnlNavTabs.Controls.Add(_btnNavPolicies);
+                _pnlTabsTrack.Controls.Add(_btnNavPolicies);
                 tabX += 142;
             }
+
+            _pnlTabsTrack.Width = tabX + 20;
+            UpdateNavScrollState();
+            UpdateNotificationCenter();
 
             // ========================================================
             // 3. BOTTOM SYSTEM STATUS BAR (Height: 28px, Dark Charcoal)
@@ -399,11 +561,14 @@ namespace ERP.winforms
             };
             btn.FlatAppearance.BorderSize = 0;
             btn.FlatAppearance.MouseOverBackColor = AppTheme.NavTabHover;
+            btn.MouseWheel += (s, e) => ScrollNavTabs(e.Delta > 0 ? -150 : 150);
             return btn;
         }
 
         private void SwitchView(UserControl view, Button navButton)
         {
+            if (_notificationFlyout != null) _notificationFlyout.Visible = false;
+
             if (_activeNavButton != null)
             {
                 _activeNavButton.BackColor = Color.Transparent;
@@ -413,6 +578,8 @@ namespace ERP.winforms
             _activeNavButton = navButton;
             _activeNavButton.BackColor = AppTheme.NavTabActive;
             _activeNavButton.ForeColor = AppTheme.NavTabActiveText;
+
+            ScrollTabIntoView(navButton);
 
             _pnlContentArea.Controls.Clear();
             view.Dock = DockStyle.Fill;
@@ -429,18 +596,196 @@ namespace ERP.winforms
             if (view is CustomersView cv) cv.RefreshData();
         }
 
-        private void Form1_KeyDown(object? sender, KeyEventArgs e)
+        private void ToggleNotifications()
         {
-            if (e.KeyCode == Keys.F2)
+            if (_notificationFlyout == null) return;
+            _notificationFlyout.Visible = !_notificationFlyout.Visible;
+            if (_notificationFlyout.Visible)
             {
-                SwitchView(_posView, _btnNavPOS);
-                e.Handled = true;
+                UpdateNotificationCenter();
+                _notificationFlyout.Location = new Point(Width - 410, 54);
+                _notificationFlyout.BringToFront();
             }
-            else if (e.KeyCode == Keys.F3)
+        }
+
+        private void UpdateNotificationCenter()
+        {
+            if (_notificationFlyout == null) return;
+
+            var alerts = new System.Collections.Generic.List<NotificationItem>();
+
+            // 1. Critical and Low Stock Alerts
+            var lowStockItems = _dataService.Products.Where(p => p.StockQuantity <= 5).Take(6).ToList();
+            foreach (var p in lowStockItems)
             {
-                SwitchView(_productsView, _btnNavProducts);
-                e.Handled = true;
+                string key = $"STOCK_{p.ProductId}_{p.StockQuantity}";
+                if (_dismissedAlertKeys.Contains(key)) continue;
+
+                alerts.Add(new NotificationItem
+                {
+                    Key = key,
+                    Category = "STOCK",
+                    Title = p.StockQuantity == 0 ? $"Out of Stock: {p.Name}" : $"Low Stock Alert: {p.Name}",
+                    Message = p.StockQuantity == 0 ? "Inventory exhausted. Order replenishment immediately." : $"Only {p.StockQuantity} units remaining in stock.",
+                    ActionText = "Review Stock →",
+                    OnClickAction = () =>
+                    {
+                        SwitchView(_productsView, _btnNavProducts);
+                        _productsView.FilterLowStockOnly();
+                    },
+                    OnDismiss = () =>
+                    {
+                        _dismissedAlertKeys.Add(key);
+                        UpdateNotificationBadge();
+                    }
+                });
             }
+
+            // 2. Pending Approval Requests
+            var pendingApprovals = _dataService.ApprovalRequests.Where(a => a.Status.Equals("Pending", StringComparison.OrdinalIgnoreCase)).Take(3).ToList();
+            foreach (var app in pendingApprovals)
+            {
+                string key = $"APPROVAL_{app.RequestId}";
+                if (_dismissedAlertKeys.Contains(key)) continue;
+
+                alerts.Add(new NotificationItem
+                {
+                    Key = key,
+                    Category = "APPROVAL",
+                    Title = $"Pending Approval: {app.RequestType}",
+                    Message = $"Requester: {app.RequestedBy} - {app.ReasonDescription}",
+                    ActionText = "Open Approvals →",
+                    OnClickAction = () =>
+                    {
+                        if (_btnNavApprovals != null) SwitchView(_approvalsView, _btnNavApprovals);
+                    },
+                    OnDismiss = () =>
+                    {
+                        _dismissedAlertKeys.Add(key);
+                        UpdateNotificationBadge();
+                    }
+                });
+            }
+
+            // 3. Active Repair Tickets
+            var activeRepairs = _dataService.RepairTickets.Where(r => !r.Status.Equals("Completed", StringComparison.OrdinalIgnoreCase) && !r.Status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase)).Take(3).ToList();
+            foreach (var rep in activeRepairs)
+            {
+                string key = $"REPAIR_{rep.RepairTicketId}_{rep.Status}";
+                if (_dismissedAlertKeys.Contains(key)) continue;
+
+                alerts.Add(new NotificationItem
+                {
+                    Key = key,
+                    Category = "REPAIR",
+                    Title = $"Repair Job: #{rep.TicketNumber}",
+                    Message = $"{rep.CustomerName} - {rep.DeviceBrandModel} ({rep.Status})",
+                    ActionText = "View Repairs →",
+                    OnClickAction = () =>
+                    {
+                        if (_btnNavRepairs != null) SwitchView(_repairsView, _btnNavRepairs);
+                    },
+                    OnDismiss = () =>
+                    {
+                        _dismissedAlertKeys.Add(key);
+                        UpdateNotificationBadge();
+                    }
+                });
+            }
+
+            _notificationFlyout.SetNotifications(alerts);
+            UpdateNotificationBadge();
+        }
+
+        private void UpdateNotificationBadge()
+        {
+            if (_lblNotificationBadge == null || _notificationFlyout == null) return;
+            int count = _notificationFlyout.UnreadCount;
+            _lblNotificationBadge.Text = count > 9 ? "9+" : count.ToString();
+            _lblNotificationBadge.Visible = count > 0;
+        }
+
+        private void BtnLogout_Click(object? sender, EventArgs e)
+        {
+            var result = MessageBox.Show(
+                $"Are you sure you want to log out from {_dataService.CurrentCompany?.CompanyName ?? "the system"}?\n\nAll session data and pending operations will be safely preserved.",
+                "Confirm Sign Out",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (result == DialogResult.Yes)
+            {
+                IsLoggedOut = true;
+                _dataService.SaveAllToDisk();
+                Close();
+            }
+        }
+
+        private void ScrollNavTabs(int delta)
+        {
+            if (_pnlTabsTrack == null || _pnlTabsViewport == null) return;
+            int maxScroll = Math.Max(0, _pnlTabsTrack.Width - _pnlTabsViewport.Width);
+            _navScrollOffset = Math.Clamp(_navScrollOffset + delta, 0, maxScroll);
+            _pnlTabsTrack.Location = new Point(-_navScrollOffset, 0);
+            UpdateNavScrollState();
+        }
+
+        private void ScrollTabIntoView(Button? tabButton)
+        {
+            if (tabButton == null || _pnlTabsViewport == null || _pnlTabsTrack == null) return;
+            int maxScroll = Math.Max(0, _pnlTabsTrack.Width - _pnlTabsViewport.Width);
+            if (maxScroll <= 0) return;
+
+            int tabLeft = tabButton.Left;
+            int tabRight = tabButton.Right;
+            int viewLeft = _navScrollOffset;
+            int viewRight = _navScrollOffset + _pnlTabsViewport.Width;
+
+            if (tabLeft < viewLeft)
+            {
+                ScrollNavTabs(tabLeft - viewLeft - 30);
+            }
+            else if (tabRight > viewRight)
+            {
+                ScrollNavTabs(tabRight - viewRight + 30);
+            }
+        }
+
+        private void UpdateNavScrollState()
+        {
+            if (_pnlTabsTrack == null || _pnlTabsViewport == null || _pnlNavSliderTrack == null || _pnlNavSliderThumb == null) return;
+            int maxScroll = Math.Max(0, _pnlTabsTrack.Width - _pnlTabsViewport.Width);
+            bool canScroll = maxScroll > 0;
+
+            _btnNavScrollLeft.Visible = canScroll;
+            _btnNavScrollRight.Visible = canScroll;
+            _pnlNavSliderTrack.Visible = canScroll;
+
+            if (canScroll)
+            {
+                _btnNavScrollLeft.Enabled = _navScrollOffset > 0;
+                _btnNavScrollLeft.ForeColor = _btnNavScrollLeft.Enabled ? AppTheme.Primary : Color.FromArgb(90, 88, 80);
+
+                _btnNavScrollRight.Enabled = _navScrollOffset < maxScroll;
+                _btnNavScrollRight.ForeColor = _btnNavScrollRight.Enabled ? AppTheme.Primary : Color.FromArgb(90, 88, 80);
+
+                float ratio = (float)_navScrollOffset / maxScroll;
+                int trackWidth = Math.Max(1, _pnlNavSliderTrack.Width);
+                int thumbWidth = Math.Max(40, (int)((float)_pnlTabsViewport.Width / _pnlTabsTrack.Width * trackWidth));
+                int thumbX = (int)(ratio * (trackWidth - thumbWidth));
+                _pnlNavSliderThumb.Width = thumbWidth;
+                _pnlNavSliderThumb.Location = new Point(thumbX, 0);
+            }
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            if (_notificationFlyout != null)
+            {
+                _notificationFlyout.Location = new Point(Width - 410, 54);
+            }
+            UpdateNavScrollState();
         }
 
         private void BtnNavBackup_Click(object? sender, EventArgs e)
@@ -481,18 +826,18 @@ namespace ERP.winforms
 
             if (!string.IsNullOrEmpty(customMsg))
             {
-                _lblBottomRight.Text = $"{customMsg}  |  [F2 New Sale]  [F3 Catalog]";
+                _lblBottomRight.Text = customMsg;
             }
             else if (online)
             {
                 _lblBottomRight.ForeColor = AppTheme.BottomBarText;
-                _lblBottomRight.Text = $"Latency: 14ms  |  ☁️ MonsterASP Cloud ({companyDb}) Connected  |  [F2 New Sale]  [F3 Catalog]";
+                _lblBottomRight.Text = $"Latency: 14ms  |  ☁️ Cloud Database ({companyDb}) Connected  |  Store Operations Online";
             }
             else
             {
                 _lblBottomRight.ForeColor = Color.FromArgb(243, 156, 18);
                 string syncText = pending > 0 ? $"({pending} queued for sync)" : "(Local Cache Active)";
-                _lblBottomRight.Text = $"📶 Offline Mode {syncText}  |  [F2 New Sale]  [F3 Catalog]";
+                _lblBottomRight.Text = $"📶 Offline Mode {syncText}  |  Local Storage Active";
             }
         }
     }

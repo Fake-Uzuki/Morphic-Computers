@@ -16,11 +16,21 @@ namespace ERP.winforms
                 Services.DataService.Instance.SaveAllToDisk();
             };
 
-            // UC-01: Micro Company User Authentication Form
-            using var loginForm = new LoginForm();
-            if (loginForm.ShowDialog() == DialogResult.OK)
+            // Re-authentication session loop supporting Logout
+            bool relogin = true;
+            while (relogin)
             {
-                Application.Run(new Form1(loginForm.AuthenticatedUser, loginForm.AuthenticatedRole, loginForm.SelectedCompany));
+                relogin = false;
+                using var loginForm = new LoginForm();
+                if (loginForm.ShowDialog() == DialogResult.OK)
+                {
+                    using var mainForm = new Form1(loginForm.AuthenticatedUser, loginForm.AuthenticatedRole, loginForm.SelectedCompany);
+                    Application.Run(mainForm);
+                    if (mainForm.IsLoggedOut)
+                    {
+                        relogin = true;
+                    }
+                }
             }
         }
     }
