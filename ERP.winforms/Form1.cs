@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
+using System.Text.Json;
 using System.Windows.Forms;
 using ERP.domain.entities;
 using ERP.winforms.Services;
@@ -70,6 +73,7 @@ namespace ERP.winforms
         private PoliciesView _policiesView = null!;
 
         private readonly HashSet<string> _dismissedAlertKeys = new();
+        private readonly HashSet<string> _readAlertKeys = new();
 
         public Form1(string userName = "Cirunay", string userRole = "Store Administrator", Company? company = null)
         {
@@ -81,7 +85,11 @@ namespace ERP.winforms
             }
 
             InitializeComponent();
-            FormClosing += (s, e) => _dataService.SaveAllToDisk();
+            FormClosing += (s, e) =>
+            {
+                SaveNotificationState();
+                _dataService.SaveAllToDisk();
+            };
 
             SetupCustomLayout();
 
@@ -90,6 +98,7 @@ namespace ERP.winforms
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            SaveNotificationState();
             _dataService.SaveAllToDisk();
             base.OnFormClosing(e);
         }
@@ -450,6 +459,7 @@ namespace ERP.winforms
 
             _pnlTabsTrack.Width = tabX + 20;
             UpdateNavScrollState();
+            LoadNotificationState();
             UpdateNotificationCenter();
 
             // ========================================================
@@ -605,6 +615,28 @@ namespace ERP.winforms
                 UpdateNotificationCenter();
                 _notificationFlyout.Location = new Point(Width - 410, 54);
                 _notificationFlyout.BringToFront();
+                MarkActiveAlertsAsViewed();
+            }
+        }
+
+        private void MarkActiveAlertsAsViewed()
+        {
+            if (_notificationFlyout == null) return;
+            bool changed = false;
+            foreach (var item in _notificationFlyout.Notifications)
+            {
+                if (!string.IsNullOrEmpty(item.Key) && !_readAlertKeys.Contains(item.Key))
+                {
+                    _readAlertKeys.Add(item.Key);
+                    item.IsRead = true;
+                    changed = true;
+                }
+            }
+            if (changed)
+            {
+                _notificationFlyout.RefreshUI();
+                UpdateNotificationBadge();
+                SaveNotificationState();
             }
         }
 
@@ -628,6 +660,7 @@ namespace ERP.winforms
                     Title = p.StockQuantity == 0 ? $"Out of Stock: {p.Name}" : $"Low Stock Alert: {p.Name}",
                     Message = p.StockQuantity == 0 ? "Inventory exhausted. Order replenishment immediately." : $"Only {p.StockQuantity} units remaining in stock.",
                     ActionText = "Review Stock →",
+                    IsRead = _readAlertKeys.Contains(key),
                     OnClickAction = () =>
                     {
                         SwitchView(_productsView, _btnNavProducts);
@@ -636,6 +669,7 @@ namespace ERP.winforms
                     OnDismiss = () =>
                     {
                         _dismissedAlertKeys.Add(key);
+                        SaveNotificationState();
                         UpdateNotificationBadge();
                     }
                 });
@@ -655,6 +689,7 @@ namespace ERP.winforms
                     Title = $"Pending Approval: {app.RequestType}",
                     Message = $"Requester: {app.RequestedBy} - {app.ReasonDescription}",
                     ActionText = "Open Approvals →",
+                    IsRead = _readAlertKeys.Contains(key),
                     OnClickAction = () =>
                     {
                         if (_btnNavApprovals != null) SwitchView(_approvalsView, _btnNavApprovals);
@@ -662,6 +697,7 @@ namespace ERP.winforms
                     OnDismiss = () =>
                     {
                         _dismissedAlertKeys.Add(key);
+                        SaveNotificationState();
                         UpdateNotificationBadge();
                     }
                 });
@@ -681,6 +717,7 @@ namespace ERP.winforms
                     Title = $"Repair Job: #{rep.TicketNumber}",
                     Message = $"{rep.CustomerName} - {rep.DeviceBrandModel} ({rep.Status})",
                     ActionText = "View Repairs →",
+                    IsRead = _readAlertKeys.Contains(key),
                     OnClickAction = () =>
                     {
                         if (_btnNavRepairs != null) SwitchView(_repairsView, _btnNavRepairs);
@@ -688,6 +725,7 @@ namespace ERP.winforms
                     OnDismiss = () =>
                     {
                         _dismissedAlertKeys.Add(key);
+                        SaveNotificationState();
                         UpdateNotificationBadge();
                     }
                 });
@@ -705,6 +743,68 @@ namespace ERP.winforms
             _lblNotificationBadge.Visible = count > 0;
         }
 
+        private string GetNotificationStateFilePath()
+        {
+            string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LocalData");
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            return Path.Combine(dir, $"tenant_{_dataService.ActiveCompanyId}_notifications.json");
+        }
+
+        private void LoadNotificationState()
+        {
+            try
+            {
+                string filePath = GetNotificationStateFilePath();
+                if (File.Exists(filePath))
+                {
+                    string json = File.ReadAllText(filePath);
+                    var data = JsonSerializer.Deserialize<NotificationStateData>(json);
+                    if (data != null)
+                    {
+                        _dismissedAlertKeys.Clear();
+                        if (data.DismissedKeys != null)
+                        {
+                            foreach (var k in data.DismissedKeys) _dismissedAlertKeys.Add(k);
+                        }
+                        _readAlertKeys.Clear();
+                        if (data.ReadKeys != null)
+                        {
+                            foreach (var k in data.ReadKeys) _readAlertKeys.Add(k);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Notifications] Error loading state: {ex.Message}");
+            }
+        }
+
+        private void SaveNotificationState()
+        {
+            try
+            {
+                string filePath = GetNotificationStateFilePath();
+                var data = new NotificationStateData
+                {
+                    DismissedKeys = _dismissedAlertKeys.ToList(),
+                    ReadKeys = _readAlertKeys.ToList()
+                };
+                string json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(filePath, json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Notifications] Error saving state: {ex.Message}");
+            }
+        }
+
+        private class NotificationStateData
+        {
+            public List<string> DismissedKeys { get; set; } = new();
+            public List<string> ReadKeys { get; set; } = new();
+        }
+
         private void BtnLogout_Click(object? sender, EventArgs e)
         {
             var result = MessageBox.Show(
@@ -716,6 +816,7 @@ namespace ERP.winforms
             if (result == DialogResult.Yes)
             {
                 IsLoggedOut = true;
+                SaveNotificationState();
                 _dataService.SaveAllToDisk();
                 Close();
             }

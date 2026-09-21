@@ -37,6 +37,7 @@ namespace ERP.winforms.UI.Components
         public Action? OnRequestClose;
 
         public int UnreadCount => _items.Count(i => !i.IsRead);
+        public IReadOnlyList<NotificationItem> Notifications => _items;
 
         public NotificationFlyout()
         {
