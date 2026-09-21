@@ -19,8 +19,11 @@ namespace ERP.winforms.UI.Views
         private TextBox _txtFormSku = null!;
         private TextBox _txtFormName = null!;
         private ComboBox _cboFormCategory = null!;
-        private ComboBox _cboFormSupplier = null!;
+        private ComboBox? _cboFormSupplier;
+        private Label? _lblFormSupplier;
         private TextBox _txtFormPrice = null!;
+
+        private bool HasSupplierModule => _dataService.CurrentCompany != null && !string.Equals(_dataService.CurrentCompany.PlanName, "Micro", StringComparison.OrdinalIgnoreCase);
         private TextBox _txtFormCost = null!;
         private NumericUpDown _numFormStock = null!;
         private NumericUpDown _numFormMinStock = null!;
@@ -236,12 +239,15 @@ namespace ERP.winforms.UI.Views
             btnManageCat.Click += (s, e) => OpenManageCategoriesDialog();
             y += 32;
 
-            // Supplier / Distributor
-            Label lblSupplier = new Label { Text = "SUPPLIER / DISTRIBUTOR", Font = new Font("Segoe UI", 7.5F, FontStyle.Bold), ForeColor = AppTheme.TextMuted, Location = new Point(12, y), AutoSize = true };
-            y += 18;
-            _cboFormSupplier = new ComboBox { Font = new Font("Segoe UI", 9F), Location = new Point(12, y), Width = 298, DropDownStyle = ComboBoxStyle.DropDownList };
-            RefreshSuppliersInUI();
-            y += 32;
+            // Supplier / Distributor (Only available for Small Business or higher plans)
+            if (HasSupplierModule)
+            {
+                _lblFormSupplier = new Label { Text = "SUPPLIER / DISTRIBUTOR", Font = new Font("Segoe UI", 7.5F, FontStyle.Bold), ForeColor = AppTheme.TextMuted, Location = new Point(12, y), AutoSize = true };
+                y += 18;
+                _cboFormSupplier = new ComboBox { Font = new Font("Segoe UI", 9F), Location = new Point(12, y), Width = 298, DropDownStyle = ComboBoxStyle.DropDownList };
+                RefreshSuppliersInUI();
+                y += 32;
+            }
 
             // Price & Cost in a 2-column row
             Label lblPrice = new Label { Text = "RETAIL PRICE (₱) *", Font = new Font("Segoe UI", 7.5F, FontStyle.Bold), ForeColor = AppTheme.TextMuted, Location = new Point(12, y), AutoSize = true };
@@ -320,8 +326,11 @@ namespace ERP.winforms.UI.Views
             card.Controls.Add(_cboFormCategory);
             card.Controls.Add(btnAddCat);
             card.Controls.Add(btnManageCat);
-            card.Controls.Add(lblSupplier);
-            card.Controls.Add(_cboFormSupplier);
+            if (HasSupplierModule && _lblFormSupplier != null && _cboFormSupplier != null)
+            {
+                card.Controls.Add(_lblFormSupplier);
+                card.Controls.Add(_cboFormSupplier);
+            }
             card.Controls.Add(lblPrice);
             card.Controls.Add(lblCost);
             card.Controls.Add(_txtFormPrice);
@@ -486,9 +495,9 @@ namespace ERP.winforms.UI.Views
             };
 
             _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ID / SKU", FillWeight = 11, Name = "ColId" });
-            _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PRODUCT NAME", FillWeight = 25, Name = "ColName" });
-            _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CATEGORY", FillWeight = 14, Name = "ColCat" });
-            _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "SUPPLIER", FillWeight = 15, Name = "ColSupplier" });
+            _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PRODUCT NAME", FillWeight = HasSupplierModule ? 25 : 32, Name = "ColName" });
+            _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CATEGORY", FillWeight = HasSupplierModule ? 14 : 18, Name = "ColCat" });
+            _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "SUPPLIER", FillWeight = 15, Name = "ColSupplier", Visible = HasSupplierModule });
             _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PRICE (PHP)", FillWeight = 12, Name = "ColPrice" });
             _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "COST (PHP)", FillWeight = 11, Name = "ColCost" });
             _gridProducts.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STOCK", FillWeight = 9, Name = "ColStock" });
@@ -619,16 +628,19 @@ namespace ERP.winforms.UI.Views
                     _cboFormCategory.SelectedIndex = 0;
                 }
 
-                string supName = string.IsNullOrWhiteSpace(p.SupplierName) ? "Direct Distribution" : p.SupplierName;
-                int supIdx = _cboFormSupplier.FindStringExact(supName);
-                if (supIdx >= 0)
+                if (HasSupplierModule && _cboFormSupplier != null)
                 {
-                    _cboFormSupplier.SelectedIndex = supIdx;
-                }
-                else
-                {
-                    _cboFormSupplier.Items.Add(supName);
-                    _cboFormSupplier.SelectedItem = supName;
+                    string supName = string.IsNullOrWhiteSpace(p.SupplierName) ? "Direct Distribution" : p.SupplierName;
+                    int supIdx = _cboFormSupplier.FindStringExact(supName);
+                    if (supIdx >= 0)
+                    {
+                        _cboFormSupplier.SelectedIndex = supIdx;
+                    }
+                    else
+                    {
+                        _cboFormSupplier.Items.Add(supName);
+                        _cboFormSupplier.SelectedItem = supName;
+                    }
                 }
 
                 if (_btnArchiveRestore != null)
@@ -715,7 +727,9 @@ namespace ERP.winforms.UI.Views
             }
 
             string cat = _cboFormCategory.SelectedItem?.ToString() ?? "Graphics Cards (GPU)";
-            string sup = _cboFormSupplier?.SelectedItem?.ToString() ?? "Direct Distribution";
+            string sup = (HasSupplierModule && _cboFormSupplier != null)
+                ? (_cboFormSupplier.SelectedItem?.ToString() ?? "Direct Distribution")
+                : "Direct Distribution";
 
             Product newProd = new Product
             {
@@ -768,12 +782,10 @@ namespace ERP.winforms.UI.Views
             }
 
             string cat = _cboFormCategory.SelectedItem?.ToString() ?? "Graphics Cards (GPU)";
-            string sup = _cboFormSupplier?.SelectedItem?.ToString() ?? "Direct Distribution";
-
-            _selectedProduct.ProductName = name;
-            _selectedProduct.ProductCode = skuText;
-            _selectedProduct.CategoryName = cat;
-            _selectedProduct.SupplierName = sup;
+            if (HasSupplierModule && _cboFormSupplier != null)
+            {
+                _selectedProduct.SupplierName = _cboFormSupplier.SelectedItem?.ToString() ?? "Direct Distribution";
+            }
             _selectedProduct.UnitPrice = price;
             _selectedProduct.StockQuantity = (int)_numFormStock.Value;
             _selectedProduct.Description = _txtFormDesc.Text.Trim();
@@ -906,6 +918,10 @@ namespace ERP.winforms.UI.Views
         public void ApplyFilters()
         {
             if (_gridProducts == null) return;
+            if (_gridProducts.Columns["ColSupplier"] != null)
+            {
+                _gridProducts.Columns["ColSupplier"]!.Visible = HasSupplierModule;
+            }
             _gridProducts.Rows.Clear();
 
             var list = _dataService.Products.AsEnumerable();

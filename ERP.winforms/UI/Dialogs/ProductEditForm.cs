@@ -17,7 +17,7 @@ namespace ERP.winforms.UI.Dialogs
         private TextBox _txtCode = null!;
         private TextBox _txtName = null!;
         private ComboBox _cboCategory = null!;
-        private ComboBox _cboSupplier = null!;
+        private ComboBox? _cboSupplier;
         private NumericUpDown _numPrice = null!;
         private NumericUpDown _numStock = null!;
         private TextBox _txtDescription = null!;
@@ -46,7 +46,7 @@ namespace ERP.winforms.UI.Dialogs
                 if (cIdx >= 0) _cboCategory.SelectedIndex = cIdx;
                 else if (_cboCategory.Items.Count > 0) _cboCategory.SelectedIndex = 0;
 
-                if (!string.IsNullOrEmpty(_targetProduct.SupplierName))
+                if (_cboSupplier != null && !string.IsNullOrEmpty(_targetProduct.SupplierName))
                 {
                     int sIdx = _cboSupplier.FindStringExact(_targetProduct.SupplierName);
                     if (sIdx >= 0) _cboSupplier.SelectedIndex = sIdx;
@@ -156,17 +156,22 @@ namespace ERP.winforms.UI.Dialogs
             };
             y += 48;
 
-            // Supplier / Vendor
-            Label lblSupplier = new Label { Text = "Supplier / Vendor:", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(20, y), AutoSize = true };
-            _cboSupplier = new ComboBox { Font = AppTheme.BodyFont, Location = new Point(20, y + 18), Width = 404, DropDownStyle = ComboBoxStyle.DropDownList };
-            _cboSupplier.Items.Add("Direct Distribution");
-            foreach (var sup in _dataService.Suppliers)
+            // Supplier / Vendor (Only for Small Business or higher plans)
+            bool hasSupplierModule = _dataService.CurrentCompany != null && !string.Equals(_dataService.CurrentCompany.PlanName, "Micro", StringComparison.OrdinalIgnoreCase);
+            Label? lblSupplier = null;
+            if (hasSupplierModule)
             {
-                if (!_cboSupplier.Items.Contains(sup.SupplierName))
-                    _cboSupplier.Items.Add(sup.SupplierName);
+                lblSupplier = new Label { Text = "Supplier / Vendor:", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(20, y), AutoSize = true };
+                _cboSupplier = new ComboBox { Font = AppTheme.BodyFont, Location = new Point(20, y + 18), Width = 404, DropDownStyle = ComboBoxStyle.DropDownList };
+                _cboSupplier.Items.Add("Direct Distribution");
+                foreach (var sup in _dataService.Suppliers)
+                {
+                    if (!_cboSupplier.Items.Contains(sup.SupplierName))
+                        _cboSupplier.Items.Add(sup.SupplierName);
+                }
+                _cboSupplier.SelectedIndex = 0;
+                y += 48;
             }
-            _cboSupplier.SelectedIndex = 0;
-            y += 48;
 
             // Price & Stock
             Label lblPrice = new Label { Text = "Unit Price (₱):", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(20, y), AutoSize = true };
@@ -216,9 +221,11 @@ namespace ERP.winforms.UI.Dialogs
             Controls.Add(lblCategory);
             Controls.Add(_cboCategory);
             Controls.Add(btnAddCat);
-            Controls.Add(btnManageCat);
-            Controls.Add(lblSupplier);
-            Controls.Add(_cboSupplier);
+            if (hasSupplierModule && lblSupplier != null && _cboSupplier != null)
+            {
+                Controls.Add(lblSupplier);
+                Controls.Add(_cboSupplier);
+            }
             Controls.Add(lblPrice);
             Controls.Add(_numPrice);
             Controls.Add(lblStock);
@@ -227,6 +234,8 @@ namespace ERP.winforms.UI.Dialogs
             Controls.Add(_txtDescription);
             Controls.Add(_btnSave);
             Controls.Add(_btnCancel);
+
+            ClientSize = new Size(444, y + 64);
         }
 
         private void PopulateFields(Product prod)
@@ -249,7 +258,7 @@ namespace ERP.winforms.UI.Dialogs
 
             string code = string.IsNullOrWhiteSpace(_txtCode.Text) ? $"PRD{DateTime.Now:fff}" : _txtCode.Text.Trim();
             string cat = _cboCategory.SelectedItem?.ToString() ?? "Graphics Cards (GPU)";
-            string sup = _cboSupplier.SelectedItem?.ToString() ?? "Direct Distribution";
+            string sup = (_cboSupplier != null) ? (_cboSupplier.SelectedItem?.ToString() ?? "Direct Distribution") : "Direct Distribution";
 
             if (_targetProduct == null)
             {
