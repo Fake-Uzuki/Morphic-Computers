@@ -325,52 +325,173 @@ namespace ERP.winforms.Services
 
             Orders = new List<Order>
             {
+                // Today Orders
                 new Order
                 {
-                    Id = "ORD-20260915-001",
+                    Id = "ORD-20260921-001",
+                    CompanyId = ActiveCompanyId,
+                    CustomerName = "Carlos Mendoza",
+                    CreatedAt = DateTime.Now.AddHours(-1).AddMinutes(-15),
+                    PaymentMethod = "Cash",
+                    Subtotal = 329.99m,
+                    Tax = 39.60m,
+                    TotalAmount = 369.59m,
+                    Status = "Completed",
+                    Items = new List<CartItem>
+                    {
+                        new CartItem { ProductId = 1, ProductName = "NVIDIA GeForce RTX 4060 8GB", Quantity = 1, UnitPrice = 329.99m }
+                    }
+                },
+                new Order
+                {
+                    Id = "ORD-20260921-002",
+                    CompanyId = ActiveCompanyId,
+                    CustomerName = "Apex Studio PH",
+                    CreatedAt = DateTime.Now.AddHours(-4),
+                    PaymentMethod = "Bank Transfer",
+                    Subtotal = 15600.00m,
+                    Tax = 1872.00m,
+                    TotalAmount = 17472.00m,
+                    Status = "Completed",
+                    Items = new List<CartItem>
+                    {
+                        new CartItem { ProductId = 2, ProductName = "Intel Core i5-13400 Processor", Quantity = 2, UnitPrice = 5600.00m },
+                        new CartItem { ProductId = 4, ProductName = "Samsung 980 Pro 1TB NVMe SSD", Quantity = 1, UnitPrice = 4400.00m }
+                    }
+                },
+                new Order
+                {
+                    Id = "ORD-20260921-003",
+                    CompanyId = ActiveCompanyId,
+                    CustomerName = "Walk-in Gamer",
+                    CreatedAt = DateTime.Now.AddHours(-6),
+                    PaymentMethod = "GCash / E-Wallet",
+                    Subtotal = 2104.99m,
+                    Tax = 252.60m,
+                    TotalAmount = 2357.59m,
+                    Status = "Completed",
+                    Items = new List<CartItem>
+                    {
+                        new CartItem { ProductId = 20, ProductName = "AULA F75 Mechanical Keyboard", Quantity = 1, UnitPrice = 2015.00m },
+                        new CartItem { ProductId = 7, ProductName = "Mechanical Gaming Keyboard RGB", Quantity = 1, UnitPrice = 89.99m }
+                    }
+                },
+
+                // Yesterday Orders (This Week)
+                new Order
+                {
+                    Id = "ORD-20260920-004",
                     CompanyId = ActiveCompanyId,
                     CustomerName = "Juan Dela Cruz",
-                    CreatedAt = DateTime.Now.AddDays(-2),
+                    CreatedAt = DateTime.Now.AddDays(-1).AddHours(-2),
                     PaymentMethod = "Cash",
-                    Subtotal = 34776.79m,
-                    Tax = 4173.21m,
-                    TotalAmount = 38950.00m,
+                    Subtotal = 11400.00m,
+                    Tax = 1368.00m,
+                    TotalAmount = 12768.00m,
                     Status = "Completed",
                     Items = new List<CartItem>
                     {
-                        new CartItem { ProductId = 1, ProductName = "ASUS Dual GeForce RTX 4070 OC 12GB", Quantity = 1, UnitPrice = 34776.79m }
+                        new CartItem { ProductId = 16, ProductName = "AMD Ryzen 5 5600", Quantity = 2, UnitPrice = 5700.00m }
                     }
                 },
                 new Order
                 {
-                    Id = "ORD-20260916-002",
+                    Id = "ORD-20260920-005",
                     CompanyId = ActiveCompanyId,
                     CustomerName = "Maria Santos",
-                    CreatedAt = DateTime.Now.AddDays(-1),
+                    CreatedAt = DateTime.Now.AddDays(-1).AddHours(-5),
                     PaymentMethod = "Card / Terminal",
-                    Subtotal = 4866.07m,
-                    Tax = 583.93m,
-                    TotalAmount = 5450.00m,
+                    Subtotal = 8000.00m,
+                    Tax = 960.00m,
+                    TotalAmount = 8960.00m,
                     Status = "Completed",
                     Items = new List<CartItem>
                     {
-                        new CartItem { ProductId = 3, ProductName = "Kingston FURY Beast 32GB (2x16GB) DDR5-6000", Quantity = 1, UnitPrice = 4866.07m }
+                        new CartItem { ProductId = 3, ProductName = "Corsair Vengeance 16GB DDR4 RAM", Quantity = 1, UnitPrice = 8000.00m }
+                    }
+                },
+
+                // Earlier This Week
+                new Order
+                {
+                    Id = "ORD-20260918-006",
+                    CompanyId = ActiveCompanyId,
+                    CustomerName = "TechCorp Solutions PH",
+                    CreatedAt = DateTime.Now.AddDays(-3),
+                    PaymentMethod = "Bank Transfer",
+                    Subtotal = 21000.00m,
+                    Tax = 2520.00m,
+                    TotalAmount = 23520.00m,
+                    Status = "Completed",
+                    Items = new List<CartItem>
+                    {
+                        new CartItem { ProductId = 21, ProductName = "NVDIA GeForce RTX 3080 8GB", Quantity = 7, UnitPrice = 3000.00m }
                     }
                 },
                 new Order
                 {
-                    Id = "ORD-20260917-003",
+                    Id = "ORD-20260917-007",
                     CompanyId = ActiveCompanyId,
-                    CustomerName = "TechCorp Solutions PH",
-                    CreatedAt = DateTime.Now.AddHours(-3),
-                    PaymentMethod = "Bank Transfer",
-                    Subtotal = 23660.71m,
-                    Tax = 2839.29m,
-                    TotalAmount = 26500.00m,
+                    CustomerName = "Prime Rig Builders",
+                    CreatedAt = DateTime.Now.AddDays(-4),
+                    PaymentMethod = "Cash",
+                    Subtotal = 16500.00m,
+                    Tax = 1980.00m,
+                    TotalAmount = 18480.00m,
                     Status = "Completed",
                     Items = new List<CartItem>
                     {
-                        new CartItem { ProductId = 2, ProductName = "AMD Ryzen 7 7800X3D 8-Core Processor", Quantity = 1, UnitPrice = 23660.71m }
+                        new CartItem { ProductId = 15, ProductName = "MSI B550M PRO-VDH WIFI", Quantity = 3, UnitPrice = 5500.00m }
+                    }
+                },
+
+                // Earlier This Month
+                new Order
+                {
+                    Id = "ORD-20260912-008",
+                    CompanyId = ActiveCompanyId,
+                    CustomerName = "Cebu Esports Hub",
+                    CreatedAt = DateTime.Now.AddDays(-9),
+                    PaymentMethod = "Card / Terminal",
+                    Subtotal = 18000.00m,
+                    Tax = 2160.00m,
+                    TotalAmount = 20160.00m,
+                    Status = "Completed",
+                    Items = new List<CartItem>
+                    {
+                        new CartItem { ProductId = 17, ProductName = "Kingston Fury Beast 8GB DDR4", Quantity = 10, UnitPrice = 1800.00m }
+                    }
+                },
+                new Order
+                {
+                    Id = "ORD-20260908-009",
+                    CompanyId = ActiveCompanyId,
+                    CustomerName = "DevOps Enterprise",
+                    CreatedAt = DateTime.Now.AddDays(-13),
+                    PaymentMethod = "Bank Transfer",
+                    Subtotal = 30000.00m,
+                    Tax = 3600.00m,
+                    TotalAmount = 33600.00m,
+                    Status = "Completed",
+                    Items = new List<CartItem>
+                    {
+                        new CartItem { ProductId = 4, ProductName = "Samsung 980 Pro 1TB NVMe SSD", Quantity = 3, UnitPrice = 10000.00m }
+                    }
+                },
+                new Order
+                {
+                    Id = "ORD-20260904-010",
+                    CompanyId = ActiveCompanyId,
+                    CustomerName = "Aegis Cyber Cafe",
+                    CreatedAt = DateTime.Now.AddDays(-17),
+                    PaymentMethod = "Cash",
+                    Subtotal = 21600.00m,
+                    Tax = 2592.00m,
+                    TotalAmount = 24192.00m,
+                    Status = "Completed",
+                    Items = new List<CartItem>
+                    {
+                        new CartItem { ProductId = 14, ProductName = "NVDIA GeForce RTX 4050 6GB", Quantity = 9, UnitPrice = 2400.00m }
                     }
                 }
             };
@@ -2342,5 +2463,257 @@ Customers may request a copy or deletion of their contact profile at any time by
                 }
             }
         }
+
+        #region Business Intelligence Analytics
+        public List<Order> GetOrdersForTimeRange(BiTimeRange range)
+        {
+            var now = DateTime.Now;
+            return range switch
+            {
+                BiTimeRange.Today => Orders.Where(o => o.CreatedAt.Date == now.Date).ToList(),
+                BiTimeRange.ThisWeek => Orders.Where(o => o.CreatedAt.Date >= now.Date.AddDays(-6)).ToList(),
+                BiTimeRange.ThisMonth => Orders.Where(o => o.CreatedAt.Year == now.Year && o.CreatedAt.Month == now.Month).ToList(),
+                _ => Orders.ToList()
+            };
+        }
+
+        public BiSalesMetrics GetBiSalesMetrics(BiTimeRange range)
+        {
+            var orders = GetOrdersForTimeRange(range);
+            decimal revenue = orders.Sum(o => o.TotalAmount);
+            int count = orders.Count;
+            int itemsSold = orders.SelectMany(o => o.Items).Sum(i => i.Quantity);
+
+            // Estimate profit margin at ~28.5% typical for PC hardware retail
+            decimal grossProfit = revenue * 0.285m;
+
+            // Calculate growth compared to prior equivalent period
+            decimal priorRevenue = 0m;
+            var now = DateTime.Now;
+            if (range == BiTimeRange.Today)
+            {
+                priorRevenue = Orders.Where(o => o.CreatedAt.Date == now.Date.AddDays(-1)).Sum(o => o.TotalAmount);
+            }
+            else if (range == BiTimeRange.ThisWeek)
+            {
+                priorRevenue = Orders.Where(o => o.CreatedAt.Date >= now.Date.AddDays(-13) && o.CreatedAt.Date < now.Date.AddDays(-6)).Sum(o => o.TotalAmount);
+            }
+            else if (range == BiTimeRange.ThisMonth)
+            {
+                var prevMonth = now.AddMonths(-1);
+                priorRevenue = Orders.Where(o => o.CreatedAt.Year == prevMonth.Year && o.CreatedAt.Month == prevMonth.Month).Sum(o => o.TotalAmount);
+            }
+
+            decimal growthRate = 0m;
+            if (priorRevenue > 0)
+            {
+                growthRate = ((revenue - priorRevenue) / priorRevenue) * 100m;
+            }
+            else if (revenue > 0)
+            {
+                growthRate = 100m;
+            }
+
+            return new BiSalesMetrics
+            {
+                TotalRevenue = revenue,
+                OrderCount = count,
+                TotalItemsSold = itemsSold,
+                GrossProfit = grossProfit,
+                GrowthRate = growthRate
+            };
+        }
+
+        public List<BiCategoryShare> GetBiCategoryDistribution(BiTimeRange range)
+        {
+            var orders = GetOrdersForTimeRange(range);
+            var categoryMap = Products.ToDictionary(p => p.ProductId, p => p.CategoryName);
+
+            var list = new Dictionary<string, (decimal Revenue, int Units)>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var o in orders)
+            {
+                foreach (var item in o.Items)
+                {
+                    string cat = "Peripherals";
+                    if (categoryMap.TryGetValue(item.ProductId, out var mappedCat) && !string.IsNullOrWhiteSpace(mappedCat))
+                    {
+                        cat = mappedCat;
+                    }
+                    else
+                    {
+                        var prod = Products.FirstOrDefault(p => p.Name.Equals(item.ProductName, StringComparison.OrdinalIgnoreCase));
+                        if (prod != null && !string.IsNullOrWhiteSpace(prod.CategoryName))
+                        {
+                            cat = prod.CategoryName;
+                        }
+                    }
+
+                    cat = cat.Trim();
+                    (decimal Revenue, int Units) cur = list.TryGetValue(cat, out var existing) ? existing : (0m, 0);
+                    list[cat] = (cur.Revenue + item.TotalPrice, cur.Units + item.Quantity);
+                }
+            }
+
+            decimal totalRevenue = list.Values.Sum(v => v.Revenue);
+            if (totalRevenue == 0m) totalRevenue = 1m;
+
+            return list
+                .Select(kvp => new BiCategoryShare
+                {
+                    CategoryName = kvp.Key,
+                    Revenue = kvp.Value.Revenue,
+                    UnitsSold = kvp.Value.Units,
+                    Percentage = Math.Round((kvp.Value.Revenue / totalRevenue) * 100m, 1)
+                })
+                .OrderByDescending(c => c.Revenue)
+                .ToList();
+        }
+
+        public List<BiProductPerformance> GetBiBestSellers(BiTimeRange range, int topN = 5)
+        {
+            var orders = GetOrdersForTimeRange(range);
+            var grouped = orders
+                .SelectMany(o => o.Items)
+                .GroupBy(i => i.ProductId > 0 ? i.ProductId.ToString() : i.ProductName)
+                .Select(g =>
+                {
+                    var first = g.First();
+                    var prod = Products.FirstOrDefault(p => p.ProductId == first.ProductId || p.Name.Equals(first.ProductName, StringComparison.OrdinalIgnoreCase));
+                    decimal rev = g.Sum(x => x.TotalPrice);
+                    int qty = g.Sum(x => x.Quantity);
+                    return new BiProductPerformance
+                    {
+                        ProductId = prod?.ProductId ?? first.ProductId,
+                        ProductName = prod?.Name ?? first.ProductName,
+                        CategoryName = prod?.CategoryName ?? "Hardware",
+                        Revenue = rev,
+                        UnitsSold = qty,
+                        CurrentStock = prod?.StockQuantity ?? 0,
+                        UnitPrice = prod?.Price ?? first.UnitPrice
+                    };
+                })
+                .OrderByDescending(x => x.Revenue)
+                .Take(topN)
+                .ToList();
+
+            return grouped;
+        }
+
+        public BiStockTrends GetBiStockTrends()
+        {
+            int totalItems = Products.Count;
+            int totalStock = Products.Sum(p => p.StockQuantity);
+            decimal valuation = Products.Sum(p => p.StockQuantity * p.Price);
+
+            int healthy = Products.Count(p => p.StockQuantity > 5);
+            int low = Products.Count(p => p.StockQuantity > 0 && p.StockQuantity <= 5);
+            int outOfStock = Products.Count(p => p.StockQuantity == 0);
+
+            var bestSellersAll = GetBiBestSellers(BiTimeRange.AllTime, 5);
+            var slowMoving = Products
+                .Where(p => p.StockQuantity > 5 && !bestSellersAll.Any(b => b.ProductId == p.ProductId))
+                .Take(5)
+                .ToList();
+
+            return new BiStockTrends
+            {
+                TotalCatalogItems = totalItems,
+                TotalStockUnits = totalStock,
+                TotalAssetValuation = valuation,
+                HealthyStockCount = healthy,
+                LowStockCount = low,
+                OutOfStockCount = outOfStock,
+                FastMovingProducts = bestSellersAll,
+                SlowMovingProducts = slowMoving
+            };
+        }
+
+        public BiEarningsSummary GetBiEarningsSummary()
+        {
+            var now = DateTime.Now;
+            var monthOrders = Orders.Where(o => o.CreatedAt.Year == now.Year && o.CreatedAt.Month == now.Month).ToList();
+            decimal grossRevenue = monthOrders.Sum(o => o.TotalAmount);
+            decimal estimatedCogs = grossRevenue * 0.715m;
+            decimal grossProfit = grossRevenue - estimatedCogs;
+            decimal marginPercent = grossRevenue > 0 ? (grossProfit / grossRevenue) * 100m : 28.5m;
+
+            int dayOfMonth = Math.Max(1, now.Day);
+            int daysInMonth = DateTime.DaysInMonth(now.Year, now.Month);
+            decimal dailyRunRate = grossRevenue / dayOfMonth;
+            decimal projected = dailyRunRate * daysInMonth;
+
+            return new BiEarningsSummary
+            {
+                GrossRevenue = grossRevenue,
+                EstimatedCogs = estimatedCogs,
+                GrossProfit = grossProfit,
+                MarginPercent = marginPercent,
+                ProjectedMonthEnd = projected,
+                TotalTransactions = monthOrders.Count
+            };
+        }
+        #endregion
+    }
+
+    public enum BiTimeRange
+    {
+        Today,
+        ThisWeek,
+        ThisMonth,
+        AllTime
+    }
+
+    public class BiSalesMetrics
+    {
+        public decimal TotalRevenue { get; set; }
+        public int OrderCount { get; set; }
+        public decimal AverageOrderValue => OrderCount > 0 ? TotalRevenue / OrderCount : 0m;
+        public int TotalItemsSold { get; set; }
+        public decimal GrowthRate { get; set; }
+        public decimal GrossProfit { get; set; }
+        public decimal ProfitMargin => TotalRevenue > 0 ? (GrossProfit / TotalRevenue) * 100m : 0m;
+    }
+
+    public class BiCategoryShare
+    {
+        public string CategoryName { get; set; } = string.Empty;
+        public decimal Revenue { get; set; }
+        public int UnitsSold { get; set; }
+        public decimal Percentage { get; set; }
+    }
+
+    public class BiProductPerformance
+    {
+        public int ProductId { get; set; }
+        public string ProductName { get; set; } = string.Empty;
+        public string CategoryName { get; set; } = string.Empty;
+        public decimal Revenue { get; set; }
+        public int UnitsSold { get; set; }
+        public int CurrentStock { get; set; }
+        public decimal UnitPrice { get; set; }
+    }
+
+    public class BiStockTrends
+    {
+        public int TotalCatalogItems { get; set; }
+        public int TotalStockUnits { get; set; }
+        public decimal TotalAssetValuation { get; set; }
+        public int HealthyStockCount { get; set; }
+        public int LowStockCount { get; set; }
+        public int OutOfStockCount { get; set; }
+        public decimal InStockRate => TotalCatalogItems > 0 ? (decimal)(HealthyStockCount + LowStockCount) / TotalCatalogItems * 100m : 100m;
+        public List<BiProductPerformance> FastMovingProducts { get; set; } = new();
+        public List<Product> SlowMovingProducts { get; set; } = new();
+    }
+
+    public class BiEarningsSummary
+    {
+        public decimal GrossRevenue { get; set; }
+        public decimal EstimatedCogs { get; set; }
+        public decimal GrossProfit { get; set; }
+        public decimal MarginPercent { get; set; }
+        public decimal ProjectedMonthEnd { get; set; }
+        public int TotalTransactions { get; set; }
     }
 }
