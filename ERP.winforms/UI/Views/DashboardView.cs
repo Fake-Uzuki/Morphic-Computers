@@ -44,6 +44,7 @@ namespace ERP.winforms.UI.Views
         private Panel _pnlTimeframeBar = null!;
 
         // Containers
+        private Panel _pnlTopCommandBar = null!;
         private Panel _pnlMainContent = null!;
         private Panel _pnlBiScrollContainer = null!;
         private TableLayoutPanel _tlpOpsContainer = null!;
@@ -130,8 +131,8 @@ namespace ERP.winforms.UI.Views
             // ========================================================
             // TOP COMMAND BAR (Mode switch, Timeframe filters, Export)
             // ========================================================
-            Panel pnlTopBar = CreateTopCommandBar();
-            pnlTopBar.Dock = DockStyle.Top;
+            _pnlTopCommandBar = CreateTopCommandBar();
+            _pnlTopCommandBar.Dock = DockStyle.Top;
 
             // Main Content Display Container
             _pnlMainContent = new Panel
@@ -161,7 +162,7 @@ namespace ERP.winforms.UI.Views
             }
 
             Controls.Add(_pnlMainContent);
-            Controls.Add(pnlTopBar);
+            Controls.Add(_pnlTopCommandBar);
 
             UpdatePlanAccessUI();
 
@@ -330,18 +331,19 @@ namespace ERP.winforms.UI.Views
             bool isSmallBiz = IsSmallBusinessOrHigher;
             if (!isSmallBiz)
             {
-                _btnModeBI.Text = "🔒 Executive BI (Small Business)";
-                _btnModeBI.BackColor = Color.FromArgb(242, 238, 230);
-                _btnModeBI.ForeColor = Color.FromArgb(140, 125, 110);
+                if (_pnlTopCommandBar != null) _pnlTopCommandBar.Visible = false;
+                if (_pnlTimeframeBar != null) _pnlTimeframeBar.Visible = false;
 
-                _btnModeOps.Text = "⚡ Store Operations (Active)";
-                _btnModeOps.BackColor = AppTheme.Primary;
-                _btnModeOps.ForeColor = AppTheme.TextDark;
-
-                _pnlTimeframeBar.Visible = false;
+                if (_currentMode != DashboardMode.StoreOperations)
+                {
+                    _currentMode = DashboardMode.StoreOperations;
+                    _pnlMainContent.Controls.Clear();
+                    _pnlMainContent.Controls.Add(_tlpOpsContainer);
+                }
             }
             else
             {
+                if (_pnlTopCommandBar != null) _pnlTopCommandBar.Visible = true;
                 _btnModeBI.Text = "📊 Executive BI & Analytics";
                 _btnModeOps.Text = "⚡ Store Operations";
 
