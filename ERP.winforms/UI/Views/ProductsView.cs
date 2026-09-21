@@ -112,18 +112,7 @@ namespace ERP.winforms.UI.Views
                 AutoSize = true
             };
 
-            Label lblSync = new Label
-            {
-                Text = $"LAST REGISTRY RECONCILIATION   Today, {DateTime.Now:HH:mm:ss} EST",
-                Font = new Font("Segoe UI", 7.5F, FontStyle.Regular),
-                ForeColor = AppTheme.TextMuted,
-                Dock = DockStyle.Right,
-                TextAlign = ContentAlignment.MiddleRight,
-                AutoSize = true
-            };
-
             pnlHeader.Controls.Add(lblTitle);
-            pnlHeader.Controls.Add(lblSync);
 
             // ========================================================
             // 2. MAIN 2-COLUMN LAYOUT: Left Inputs Form | Right Table
@@ -689,12 +678,6 @@ namespace ERP.winforms.UI.Views
 
         private void BtnSaveProduct_Click(object? sender, EventArgs e)
         {
-            if (_selectedProduct != null)
-            {
-                BtnUpdateProduct_Click(sender, e);
-                return;
-            }
-
             string sku = _txtFormSku.Text.Trim();
             string name = _txtFormName.Text.Trim();
             if (string.IsNullOrEmpty(sku) || string.IsNullOrEmpty(name))
@@ -709,21 +692,12 @@ namespace ERP.winforms.UI.Views
                 return;
             }
 
-            // Check if SKU already exists
+            // Strictly disallow adding if a product with the same SKU already exists
             var existingProduct = _dataService.Products.FirstOrDefault(p => p.ProductCode.Equals(sku, StringComparison.OrdinalIgnoreCase));
             if (existingProduct != null)
             {
-                var ask = MessageBox.Show($"A product with SKU '{sku}' ({existingProduct.ProductName}) already exists.\n\nDo you want to update this existing product instead of creating a duplicate?", "Product SKU Already Exists", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-                if (ask == DialogResult.Yes)
-                {
-                    _selectedProduct = existingProduct;
-                    BtnUpdateProduct_Click(sender, e);
-                    return;
-                }
-                else
-                {
-                    return;
-                }
+                MessageBox.Show($"Cannot add product. A product with SKU / ID '{sku}' already exists ({existingProduct.ProductName}).\n\nDuplicate product IDs cannot be created. If you wish to modify an existing item, select it from the table and use 'Update Selected'.", "Duplicate Product ID", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
             }
 
             string cat = _cboFormCategory.SelectedItem?.ToString() ?? "Graphics Cards (GPU)";

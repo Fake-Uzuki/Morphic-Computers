@@ -262,6 +262,12 @@ namespace ERP.winforms.UI.Dialogs
 
             if (_targetProduct == null)
             {
+                if (_dataService.Products.Any(p => p.ProductCode.Equals(code, StringComparison.OrdinalIgnoreCase)))
+                {
+                    MessageBox.Show($"Cannot add product. A product with SKU / ID '{code}' already exists. Duplicate IDs are not allowed.", "Duplicate Product ID", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
                 Product newProd = new Product
                 {
                     ProductCode = code,
@@ -276,6 +282,12 @@ namespace ERP.winforms.UI.Dialogs
             }
             else
             {
+                if (_dataService.Products.Any(p => p.ProductId != _targetProduct.ProductId && p.ProductCode.Equals(code, StringComparison.OrdinalIgnoreCase)))
+                {
+                    MessageBox.Show($"Cannot update product. Another product with SKU / ID '{code}' already exists.", "Duplicate Product ID", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
                 _targetProduct.ProductCode = code;
                 _targetProduct.Name = _txtName.Text.Trim();
                 _targetProduct.CategoryName = cat;

@@ -856,13 +856,22 @@ namespace ERP.winforms.Services
             try
             {
                 // Check if already in memory
-                var existing = Products.FirstOrDefault(p =>
-                    (product.ProductId > 0 && p.ProductId == product.ProductId) ||
-                    p.ProductCode.Equals(product.ProductCode, StringComparison.OrdinalIgnoreCase));
-
-                if (existing != null)
+                if (product.ProductId > 0)
                 {
-                    return UpdateProduct(product);
+                    var existing = Products.FirstOrDefault(p => p.ProductId == product.ProductId);
+                    if (existing != null)
+                    {
+                        return UpdateProduct(product);
+                    }
+                }
+                else
+                {
+                    // New product: reject if SKU already in use to prevent overwriting
+                    if (Products.Any(p => p.ProductCode.Equals(product.ProductCode, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        System.Diagnostics.Debug.WriteLine($"SaveProduct: duplicate SKU '{product.ProductCode}' rejected.");
+                        return false;
+                    }
                 }
 
                 // Send to ERP.api safely off UI thread only if network is available

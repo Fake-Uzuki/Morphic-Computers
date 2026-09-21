@@ -183,12 +183,12 @@ namespace ERP.winforms.UI.Views
                 e.Graphics.DrawRectangle(pen, 0, 0, pnlCustomer.Width - 1, pnlCustomer.Height - 1);
             };
 
-            Label lblCustPrompt = new Label { Text = "👤 Client:", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = AppTheme.TextMuted, Location = new Point(8, 10), AutoSize = true };
+            Label lblCustPrompt = new Label { Text = "Client:", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = AppTheme.TextMuted, Location = new Point(8, 10), AutoSize = true };
 
             _cboCustomer = new ComboBox
             {
-                Location = new Point(65, 8),
-                Width = cardCart.Width - 85,
+                Location = new Point(70, 7),
+                Width = cardCart.Width - 95,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Font = new Font("Segoe UI", 8.5F),
                 DropDownStyle = ComboBoxStyle.DropDownList
