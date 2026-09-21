@@ -99,7 +99,7 @@ namespace ERP.winforms.UI.Views
             // ========================================================
             // 1. TOP HEADER (Title + Subtitle + Right Date Filters)
             // ========================================================
-            Panel pnlTitle = new Panel { Dock = DockStyle.Top, Height = 52, BackColor = Color.Transparent };
+            Panel pnlTitle = new Panel { Dock = DockStyle.Top, Height = 36, BackColor = Color.Transparent };
 
             // Date Filters on Right
             _pnlDateFilters = new Panel
@@ -119,7 +119,7 @@ namespace ERP.winforms.UI.Views
                     Text = d,
                     Width = btnW,
                     Height = 28,
-                    Location = new Point(dx, 6),
+                    Location = new Point(dx, 3),
                     FlatStyle = FlatStyle.Flat,
                     Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
                     BackColor = d == _selectedDateFilter ? AppTheme.Primary : Color.White,
@@ -154,21 +154,11 @@ namespace ERP.winforms.UI.Views
                 Text = "Sales Transactions Reports",
                 Font = new Font("Segoe UI", 13F, FontStyle.Bold),
                 ForeColor = AppTheme.TextDark,
-                Location = new Point(0, 2),
-                AutoSize = true
-            };
-
-            Label lblSubtitle = new Label
-            {
-                Text = "Real-time transaction log, till audits, and fiscal settlement reports for Micro Company retail operations.",
-                Font = new Font("Segoe UI", 8F, FontStyle.Regular),
-                ForeColor = AppTheme.TextMuted,
-                Location = new Point(0, 26),
+                Location = new Point(0, 4),
                 AutoSize = true
             };
 
             pnlTitleText.Controls.Add(lblHeading);
-            pnlTitleText.Controls.Add(lblSubtitle);
 
             pnlTitle.Controls.Add(pnlTitleText);
             pnlTitle.Controls.Add(_pnlDateFilters);
@@ -207,7 +197,7 @@ namespace ERP.winforms.UI.Views
             Panel pnlActions = new Panel
             {
                 Dock = DockStyle.Right,
-                Width = 445,
+                Width = 390,
                 Height = 36,
                 BackColor = Color.Transparent
             };
@@ -217,7 +207,7 @@ namespace ERP.winforms.UI.Views
                 Text = "📄 View Receipt",
                 IsPrimary = true,
                 Location = new Point(0, 3),
-                Size = new Size(115, 30),
+                Size = new Size(105, 30),
                 Font = new Font("Segoe UI", 7.5F, FontStyle.Bold)
             };
             btnReprint.Click += (s, e) => ViewSelectedReceipt();
@@ -226,8 +216,8 @@ namespace ERP.winforms.UI.Views
             {
                 Text = "⟳ Refresh",
                 IsPrimary = false,
-                Location = new Point(121, 3),
-                Size = new Size(85, 30),
+                Location = new Point(110, 3),
+                Size = new Size(78, 30),
                 Font = new Font("Segoe UI", 7.5F, FontStyle.Bold)
             };
             btnRefresh.Click += (s, e) => RefreshData();
@@ -236,8 +226,8 @@ namespace ERP.winforms.UI.Views
             {
                 Text = "⬇ Export",
                 IsPrimary = false,
-                Location = new Point(212, 3),
-                Size = new Size(85, 30),
+                Location = new Point(193, 3),
+                Size = new Size(78, 30),
                 Font = new Font("Segoe UI", 7.5F, FontStyle.Bold)
             };
             btnExport.Click += (s, e) => MessageBox.Show("Sales transactions exported to CSV spreadsheet.", "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -247,8 +237,8 @@ namespace ERP.winforms.UI.Views
                 Text = "📦 Void Order",
                 IsPrimary = false,
                 CustomTextColor = Color.FromArgb(184, 50, 38),
-                Location = new Point(303, 3),
-                Size = new Size(125, 30),
+                Location = new Point(276, 3),
+                Size = new Size(110, 30),
                 Font = new Font("Segoe UI", 7.5F, FontStyle.Bold)
             };
             _btnVoid.Click += (s, e) => VoidSelectedOrder();
@@ -258,20 +248,27 @@ namespace ERP.winforms.UI.Views
             pnlActions.Controls.Add(btnExport);
             pnlActions.Controls.Add(_btnVoid);
 
+            Panel pnlFiltersLeft = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Height = 36,
+                BackColor = Color.Transparent
+            };
+
             _txtSearch = new TextBox
             {
-                PlaceholderText = "Search by Order ID, Customer, or Receipt #...",
+                PlaceholderText = "Search Order, Customer, Receipt...",
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
                 Location = new Point(0, 5),
-                Width = 210
+                Width = 180
             };
             _txtSearch.TextChanged += (s, e) => { _currentPage = 1; ApplyFilters(); };
 
             _cboStatusFilter = new ComboBox
             {
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
-                Location = new Point(216, 6),
-                Width = 160,
+                Location = new Point(186, 6),
+                Width = 135,
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
             _cboStatusFilter.Items.AddRange(new object[] { "All Statuses", "Active Completed", "📦 Archived / Voided" });
@@ -281,8 +278,8 @@ namespace ERP.winforms.UI.Views
             // Method pills
             _flpMethods = new FlowLayoutPanel
             {
-                Location = new Point(382, 3),
-                Size = new Size(300, 34),
+                Location = new Point(327, 3),
+                Size = new Size(260, 34),
                 WrapContents = false,
                 BackColor = Color.Transparent
             };
@@ -316,9 +313,11 @@ namespace ERP.winforms.UI.Views
                 _flpMethods.Controls.Add(btnM);
             }
 
-            pnlFilterBar.Controls.Add(_txtSearch);
-            pnlFilterBar.Controls.Add(_cboStatusFilter);
-            pnlFilterBar.Controls.Add(_flpMethods);
+            pnlFiltersLeft.Controls.Add(_txtSearch);
+            pnlFiltersLeft.Controls.Add(_cboStatusFilter);
+            pnlFiltersLeft.Controls.Add(_flpMethods);
+
+            pnlFilterBar.Controls.Add(pnlFiltersLeft);
             pnlFilterBar.Controls.Add(pnlActions);
 
             // ========================================================
@@ -571,14 +570,14 @@ namespace ERP.winforms.UI.Views
             {
                 query = query.Where(t => t.PaymentMethod.Contains("Cash", StringComparison.OrdinalIgnoreCase));
             }
-            else if (_selectedMethodFilter == "Card / Terminal")
+            else if (_selectedMethodFilter == "Card" || _selectedMethodFilter == "Card / Terminal")
             {
                 query = query.Where(t => t.PaymentMethod.Contains("Card", StringComparison.OrdinalIgnoreCase) ||
                                          t.PaymentMethod.Contains("Visa", StringComparison.OrdinalIgnoreCase) ||
                                          t.PaymentMethod.Contains("Master", StringComparison.OrdinalIgnoreCase) ||
                                          t.PaymentMethod.Contains("AMEX", StringComparison.OrdinalIgnoreCase));
             }
-            else if (_selectedMethodFilter == "Bank Transfer")
+            else if (_selectedMethodFilter == "Transfer" || _selectedMethodFilter == "Bank Transfer")
             {
                 query = query.Where(t => t.PaymentMethod.Contains("Transfer", StringComparison.OrdinalIgnoreCase) ||
                                          t.PaymentMethod.Contains("Invoice", StringComparison.OrdinalIgnoreCase));
