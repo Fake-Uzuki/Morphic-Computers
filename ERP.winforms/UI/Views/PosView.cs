@@ -22,10 +22,16 @@ namespace ERP.winforms.UI.Views
         private FlowLayoutPanel _flpCategories = null!;
         private DataGridView _gridCart = null!;
         private Label _lblSubtotal = null!;
+        private Label _lblDiscount = null!;
         private Label _lblTax = null!;
         private Label _lblGrandTotal = null!;
         private Label _lblCartSummary = null!;
         private SunshineButton _btnCheckout = null!;
+
+        private ComboBox _cboCustomer = null!;
+        private Customer? _selectedCustomer;
+        private decimal _appliedDiscount = 0;
+        private string _discountReason = "";
 
         private string _selectedCategory = "All";
         private string _searchQuery = "";
@@ -47,6 +53,21 @@ namespace ERP.winforms.UI.Views
                     else
                     {
                         PopulateCategoryTabs();
+                    }
+                }
+            };
+
+            _dataService.CustomersChanged += () =>
+            {
+                if (IsHandleCreated && !IsDisposed)
+                {
+                    if (InvokeRequired)
+                    {
+                        BeginInvoke(new Action(() => PopulatePosCustomers()));
+                    }
+                    else
+                    {
+                        PopulatePosCustomers();
                     }
                 }
             };
@@ -154,19 +175,41 @@ namespace ERP.winforms.UI.Views
             pnlCartHeader.Controls.Add(lblCartTitle);
             pnlCartHeader.Controls.Add(pnlTrans);
 
-            // 2. Customer Box (Clean: Removed "No customer account assigned", F4, and + buttons)
-            Panel pnlCustomer = new Panel { Dock = DockStyle.Top, Height = 34, BackColor = Color.FromArgb(254, 252, 245), Margin = new Padding(0, 4, 0, 6) };
+            // 2. Customer Selection Bar
+            Panel pnlCustomer = new Panel { Dock = DockStyle.Top, Height = 40, BackColor = Color.FromArgb(254, 252, 245), Margin = new Padding(0, 4, 0, 6) };
             pnlCustomer.Paint += (s, e) =>
             {
                 using Pen pen = new Pen(Color.FromArgb(235, 230, 218), 1);
                 e.Graphics.DrawRectangle(pen, 0, 0, pnlCustomer.Width - 1, pnlCustomer.Height - 1);
             };
 
-            Label lblCustName = new Label { Text = "Walk-in Customer", Font = new Font("Segoe UI", 8.5F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Location = new Point(10, 8), AutoSize = true };
-            Label lblCustPill = new Label { Text = "Standard", Font = new Font("Segoe UI", 7F, FontStyle.Bold), ForeColor = Color.White, BackColor = Color.FromArgb(20, 21, 17), Location = new Point(148, 7), Size = new Size(62, 18), TextAlign = ContentAlignment.MiddleCenter };
+            Label lblCustPrompt = new Label { Text = "👤 Client:", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = AppTheme.TextMuted, Location = new Point(8, 10), AutoSize = true };
 
-            pnlCustomer.Controls.Add(lblCustName);
-            pnlCustomer.Controls.Add(lblCustPill);
+            _cboCustomer = new ComboBox
+            {
+                Location = new Point(65, 8),
+                Width = cardCart.Width - 85,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                Font = new Font("Segoe UI", 8.5F),
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            PopulatePosCustomers();
+            _cboCustomer.SelectedIndexChanged += (s, e) =>
+            {
+                string sel = _cboCustomer.SelectedItem?.ToString() ?? "";
+                if (sel.StartsWith("Walk-in", StringComparison.OrdinalIgnoreCase))
+                {
+                    _selectedCustomer = null;
+                }
+                else
+                {
+                    _selectedCustomer = _dataService.Customers.FirstOrDefault(c =>
+                        sel.StartsWith(c.CustomerName, StringComparison.OrdinalIgnoreCase));
+                }
+            };
+
+            pnlCustomer.Controls.Add(lblCustPrompt);
+            pnlCustomer.Controls.Add(_cboCustomer);
 
             // 3. Cart DataGridView
             _gridCart = new DataGridView
@@ -254,23 +297,41 @@ namespace ERP.winforms.UI.Views
             pnlNote.Controls.Add(_lblCartSummary);
             pnlNote.Controls.Add(btnClearCart);
 
-            // 5. Financial Summary & Totals in PHP (Removed Discount option & Split button)
-            Panel pnlTotals = new Panel { Dock = DockStyle.Bottom, Height = 145 };
+            // 5. Financial Summary & Totals in PHP with Manager-Authorized Discount
+            Panel pnlTotals = new Panel { Dock = DockStyle.Bottom, Height = 175 };
 
-            Label lblSubtotalTxt = new Label { Text = "Subtotal", Font = new Font("Segoe UI", 8.5F, FontStyle.Regular), ForeColor = AppTheme.TextMuted, Location = new Point(0, 8), AutoSize = true };
-            _lblSubtotal = new Label { Text = "₱0.00", Font = new Font("Segoe UI", 9F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(cardCart.Width - 140, 8), Size = new Size(130, 18), TextAlign = ContentAlignment.MiddleRight };
+            Label lblSubtotalTxt = new Label { Text = "Subtotal", Font = new Font("Segoe UI", 8.5F, FontStyle.Regular), ForeColor = AppTheme.TextMuted, Location = new Point(0, 6), AutoSize = true };
+            _lblSubtotal = new Label { Text = "₱0.00", Font = new Font("Segoe UI", 9F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(cardCart.Width - 140, 6), Size = new Size(130, 18), TextAlign = ContentAlignment.MiddleRight };
 
-            Label lblTaxTxt = new Label { Text = "Tax (12% VAT)", Font = new Font("Segoe UI", 8.5F, FontStyle.Regular), ForeColor = AppTheme.TextMuted, Location = new Point(0, 30), AutoSize = true };
-            _lblTax = new Label { Text = "₱0.00", Font = new Font("Segoe UI", 9F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(cardCart.Width - 140, 30), Size = new Size(130, 18), TextAlign = ContentAlignment.MiddleRight };
+            Label lblDiscountTxt = new Label { Text = "Discount", Font = new Font("Segoe UI", 8.5F, FontStyle.Regular), ForeColor = Color.FromArgb(184, 50, 38), Location = new Point(0, 28), AutoSize = true };
 
-            Panel pnlLine = new Panel { Location = new Point(0, 56), Size = new Size(cardCart.Width - 20, 1), BackColor = Color.FromArgb(225, 220, 208), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            Button btnDiscountAction = new Button
+            {
+                Text = "🏷️ Apply Discount",
+                Font = new Font("Segoe UI", 7F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(160, 110, 10),
+                BackColor = Color.FromArgb(254, 250, 238),
+                FlatStyle = FlatStyle.Flat,
+                Location = new Point(62, 26),
+                Size = new Size(116, 22),
+                Cursor = Cursors.Hand
+            };
+            btnDiscountAction.FlatAppearance.BorderColor = Color.FromArgb(235, 215, 170);
+            btnDiscountAction.Click += (s, e) => OpenDiscountDialog();
 
-            Label lblPayable = new Label { Text = "AMOUNT PAYABLE", Font = new Font("Segoe UI", 7F, FontStyle.Bold), ForeColor = AppTheme.TextMuted, Location = new Point(0, 64), AutoSize = true };
-            Label lblTotalTxt = new Label { Text = "TOTAL:", Font = new Font("Segoe UI", 13F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Location = new Point(0, 80), AutoSize = true };
-            _lblGrandTotal = new Label { Text = "₱0.00", Font = new Font("Segoe UI", 20F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(cardCart.Width - 220, 74), Size = new Size(210, 36), TextAlign = ContentAlignment.MiddleRight };
+            _lblDiscount = new Label { Text = "-₱0.00", Font = new Font("Segoe UI", 9F, FontStyle.Bold), ForeColor = Color.FromArgb(184, 50, 38), Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(cardCart.Width - 140, 28), Size = new Size(130, 18), TextAlign = ContentAlignment.MiddleRight };
 
-            // Quick payment method pills: Cash & Card (POS) - No Split button
-            Panel pnlQuickPay = new Panel { Location = new Point(0, 114), Size = new Size(cardCart.Width - 20, 30), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            Label lblTaxTxt = new Label { Text = "Tax (12% VAT)", Font = new Font("Segoe UI", 8.5F, FontStyle.Regular), ForeColor = AppTheme.TextMuted, Location = new Point(0, 50), AutoSize = true };
+            _lblTax = new Label { Text = "₱0.00", Font = new Font("Segoe UI", 9F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(cardCart.Width - 140, 50), Size = new Size(130, 18), TextAlign = ContentAlignment.MiddleRight };
+
+            Panel pnlLine = new Panel { Location = new Point(0, 74), Size = new Size(cardCart.Width - 20, 1), BackColor = Color.FromArgb(225, 220, 208), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+
+            Label lblPayable = new Label { Text = "AMOUNT PAYABLE", Font = new Font("Segoe UI", 7F, FontStyle.Bold), ForeColor = AppTheme.TextMuted, Location = new Point(0, 80), AutoSize = true };
+            Label lblTotalTxt = new Label { Text = "TOTAL:", Font = new Font("Segoe UI", 13F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Location = new Point(0, 94), AutoSize = true };
+            _lblGrandTotal = new Label { Text = "₱0.00", Font = new Font("Segoe UI", 20F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(cardCart.Width - 220, 88), Size = new Size(210, 36), TextAlign = ContentAlignment.MiddleRight };
+
+            // Quick payment method pills: Cash & Card (POS)
+            Panel pnlQuickPay = new Panel { Location = new Point(0, 134), Size = new Size(cardCart.Width - 20, 30), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
             string[] payOpts = { "Cash", "Card (POS)" };
             int qx = 0;
             int qWidth = (cardCart.Width - 36) / 2;
@@ -285,6 +346,9 @@ namespace ERP.winforms.UI.Views
 
             pnlTotals.Controls.Add(lblSubtotalTxt);
             pnlTotals.Controls.Add(_lblSubtotal);
+            pnlTotals.Controls.Add(lblDiscountTxt);
+            pnlTotals.Controls.Add(btnDiscountAction);
+            pnlTotals.Controls.Add(_lblDiscount);
             pnlTotals.Controls.Add(lblTaxTxt);
             pnlTotals.Controls.Add(_lblTax);
             pnlTotals.Controls.Add(pnlLine);
@@ -322,7 +386,7 @@ namespace ERP.winforms.UI.Views
 
             _btnCheckout = new SunshineButton
             {
-                Text = "Checkout / Pay (F12)",
+                Text = "Checkout / Pay",
                 IsPrimary = true,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Location = new Point(180, 6),
@@ -546,13 +610,51 @@ namespace ERP.winforms.UI.Views
                 r.Cells["ColRemove"].Style.Font = new Font("Segoe UI", 7.5F, FontStyle.Bold);
             }
 
-            decimal tax = subtotal * 0.12m;
-            decimal total = subtotal + tax; // No discount
+            if (_appliedDiscount > subtotal) _appliedDiscount = subtotal;
+
+            decimal netSubtotal = Math.Max(0, subtotal - _appliedDiscount);
+            decimal tax = Math.Round(netSubtotal * 0.12m, 2);
+            decimal total = netSubtotal + tax;
 
             _lblSubtotal.Text = $"₱{subtotal:N2}";
+            if (_lblDiscount != null) _lblDiscount.Text = $"-₱{_appliedDiscount:N2}";
             _lblTax.Text = $"₱{tax:N2}";
             _lblGrandTotal.Text = $"₱{total:N2}";
             _lblCartSummary.Text = $"Cart Items: {_cart.Count} lines ({totalUnits} units)";
+        }
+
+        private void OpenDiscountDialog()
+        {
+            decimal subtotal = _cart.Sum(c => c.TotalPrice);
+            if (subtotal <= 0)
+            {
+                MessageBox.Show("Please add hardware items to the cart before applying a discount.", "Cart Empty", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using var dlg = new ApplyDiscountDialog(subtotal, _appliedDiscount);
+            if (dlg.ShowDialog(this) == DialogResult.OK)
+            {
+                _appliedDiscount = dlg.DiscountAmount;
+                _discountReason = dlg.DiscountReason;
+                UpdateCartTotals();
+                MessageBox.Show($"Discount of ₱{_appliedDiscount:N2} ({_discountReason}) authorized by manager and applied to current cart!", "Discount Authorized", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+
+        private void PopulatePosCustomers()
+        {
+            if (_cboCustomer == null) return;
+            string current = _cboCustomer.SelectedItem?.ToString() ?? "Walk-in Customer (Standard)";
+            _cboCustomer.Items.Clear();
+            _cboCustomer.Items.Add("Walk-in Customer (Standard)");
+            foreach (var c in _dataService.Customers.Where(cust => cust.IsActive))
+            {
+                string display = string.IsNullOrWhiteSpace(c.CustomerCode) ? c.CustomerName : $"{c.CustomerName} ({c.CustomerCode})";
+                _cboCustomer.Items.Add(display);
+            }
+            int idx = _cboCustomer.FindStringExact(current);
+            _cboCustomer.SelectedIndex = idx >= 0 ? idx : 0;
         }
 
         private void Checkout(string paymentMethod)
@@ -564,18 +666,21 @@ namespace ERP.winforms.UI.Views
             }
 
             decimal subtotal = _cart.Sum(c => c.TotalPrice);
-            decimal tax = subtotal * 0.12m;
-            decimal total = subtotal + tax;
+            decimal netSubtotal = Math.Max(0, subtotal - _appliedDiscount);
+            decimal tax = Math.Round(netSubtotal * 0.12m, 2);
+            decimal total = netSubtotal + tax;
+
+            string custName = _selectedCustomer != null ? _selectedCustomer.CustomerName : "Walk-in Customer";
 
             Order order = new Order
             {
                 CompanyId = _dataService.ActiveCompanyId,
-                CustomerName = "Walk-in Customer",
+                CustomerName = custName,
                 CreatedAt = DateTime.Now,
                 Items = new List<CartItem>(_cart),
                 Subtotal = subtotal,
                 Tax = tax,
-                Discount = 0,
+                Discount = _appliedDiscount,
                 TotalAmount = total,
                 PaymentMethod = paymentMethod
             };
@@ -585,6 +690,8 @@ namespace ERP.winforms.UI.Views
             {
                 _dataService.ProcessOrder(order);
                 _cart.Clear();
+                _appliedDiscount = 0;
+                _discountReason = "";
                 UpdateCartTotals();
                 PopulateCatalog();
                 OnOrderCompleted?.Invoke();
