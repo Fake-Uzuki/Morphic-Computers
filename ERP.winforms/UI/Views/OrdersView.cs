@@ -21,6 +21,8 @@ namespace ERP.winforms.UI.Views
         private Panel _pnlPagin = null!;
         private FlowLayoutPanel _flpMethods = null!;
         private Panel _pnlDateFilters = null!;
+        private ComboBox _cboStatusFilter = null!;
+        private SunshineButton _btnVoid = null!;
 
         private Label _lblMetricTotalTrans = null!;
         private Label _lblMetricGrossRevenue = null!;
@@ -239,7 +241,7 @@ namespace ERP.winforms.UI.Views
             };
             btnExport.Click += (s, e) => MessageBox.Show("Sales transactions exported to CSV spreadsheet.", "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-            SunshineButton btnVoid = new SunshineButton
+            _btnVoid = new SunshineButton
             {
                 Text = "📦 Void Order",
                 IsPrimary = false,
@@ -248,27 +250,38 @@ namespace ERP.winforms.UI.Views
                 Size = new Size(125, 30),
                 Font = new Font("Segoe UI", 7.5F, FontStyle.Bold)
             };
-            btnVoid.Click += (s, e) => VoidSelectedOrder();
+            _btnVoid.Click += (s, e) => VoidSelectedOrder();
 
             pnlActions.Controls.Add(btnReprint);
             pnlActions.Controls.Add(btnRefresh);
             pnlActions.Controls.Add(btnExport);
-            pnlActions.Controls.Add(btnVoid);
+            pnlActions.Controls.Add(_btnVoid);
 
             _txtSearch = new TextBox
             {
                 PlaceholderText = "Search by Order ID, Customer, or Receipt #...",
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
                 Location = new Point(0, 5),
-                Width = 240
+                Width = 210
             };
             _txtSearch.TextChanged += (s, e) => { _currentPage = 1; ApplyFilters(); };
+
+            _cboStatusFilter = new ComboBox
+            {
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                Location = new Point(216, 6),
+                Width = 160,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            _cboStatusFilter.Items.AddRange(new object[] { "All Statuses", "Active Completed", "📦 Archived / Voided" });
+            _cboStatusFilter.SelectedIndex = 0;
+            _cboStatusFilter.SelectedIndexChanged += (s, e) => { _currentPage = 1; ApplyFilters(); };
 
             // Method pills
             _flpMethods = new FlowLayoutPanel
             {
-                Location = new Point(246, 3),
-                Size = new Size(330, 34),
+                Location = new Point(382, 3),
+                Size = new Size(300, 34),
                 WrapContents = false,
                 BackColor = Color.Transparent
             };
@@ -303,6 +316,7 @@ namespace ERP.winforms.UI.Views
             }
 
             pnlFilterBar.Controls.Add(_txtSearch);
+            pnlFilterBar.Controls.Add(_cboStatusFilter);
             pnlFilterBar.Controls.Add(_flpMethods);
             pnlFilterBar.Controls.Add(pnlActions);
 
@@ -408,6 +422,23 @@ namespace ERP.winforms.UI.Views
             _gridOrders.ContextMenuStrip = ctxOrders;
 
             _gridOrders.Resize += (s, e) => ApplyFilters();
+            _gridOrders.SelectionChanged += (s, e) =>
+            {
+                if (_btnVoid == null) return;
+                if (_gridOrders.SelectedRows.Count > 0 && _gridOrders.SelectedRows[0].Tag is SalesRecord rec)
+                {
+                    if (rec.Status == "Voided")
+                    {
+                        _btnVoid.Text = "♻️ Restore";
+                        _btnVoid.CustomTextColor = Color.FromArgb(27, 122, 79);
+                    }
+                    else
+                    {
+                        _btnVoid.Text = "📦 Void Order";
+                        _btnVoid.CustomTextColor = Color.FromArgb(184, 50, 38);
+                    }
+                }
+            };
 
             cardGrid.Controls.Add(_gridOrders);
 
@@ -507,6 +538,17 @@ namespace ERP.winforms.UI.Views
             _gridOrders.Rows.Clear();
 
             var query = _allTransactions.AsEnumerable();
+
+            // 0. Status filter (Active vs Archived / Voided)
+            string statusFilter = _cboStatusFilter?.SelectedItem?.ToString() ?? "All Statuses";
+            if (statusFilter == "Active Completed")
+            {
+                query = query.Where(t => t.Status != "Voided");
+            }
+            else if (statusFilter == "📦 Archived / Voided")
+            {
+                query = query.Where(t => t.Status == "Voided");
+            }
 
             // 1. Date filter
             if (_selectedDateFilter == "Today")
