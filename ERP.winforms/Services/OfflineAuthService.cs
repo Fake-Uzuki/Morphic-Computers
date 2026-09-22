@@ -324,6 +324,44 @@ namespace ERP.winforms.Services
         }
 
         /// <summary>
+        /// Registers or updates an employee's password in the DPAPI-encrypted offline credential vault.
+        /// Allows employees created/updated in the Staff Team module to log into the ERP terminal immediately.
+        /// </summary>
+        public void RegisterOrUpdateStaffPassword(int companyId, string companyCode, string companyName, string planName, string username, string displayName, string role, string password)
+        {
+            if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password)) return;
+
+            try
+            {
+                HashPassword(password, out string salt, out string hash);
+                var vault = ReadVault();
+                vault.RemoveAll(c => c.CompanyId == companyId && c.Username.Equals(username, StringComparison.OrdinalIgnoreCase));
+                vault.Add(new CachedUserCredential
+                {
+                    CompanyId = companyId,
+                    CompanyCode = companyCode,
+                    CompanyName = companyName,
+                    PlanName = planName,
+                    Username = username,
+                    DisplayName = displayName,
+                    Role = role,
+                    SaltBase64 = salt,
+                    HashBase64 = hash,
+                    LastLoginUtc = DateTime.UtcNow,
+                    IsPOSAllowed = true,
+                    IsInventoryAllowed = true,
+                    IsRepairAllowed = role.Contains("Tech", StringComparison.OrdinalIgnoreCase) || role.Contains("Manager", StringComparison.OrdinalIgnoreCase) || role.Contains("Admin", StringComparison.OrdinalIgnoreCase),
+                    IsSupplierAllowed = role.Contains("Admin", StringComparison.OrdinalIgnoreCase) || role.Contains("Manager", StringComparison.OrdinalIgnoreCase)
+                });
+                WriteVault(vault);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"RegisterOrUpdateStaffPassword error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Validates offline login against the machine's DPAPI-encrypted salted hash vault.
         /// Does not require server or internet connectivity.
         /// </summary>

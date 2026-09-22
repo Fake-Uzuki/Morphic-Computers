@@ -15,6 +15,7 @@ namespace ERP.winforms.UI.Dialogs
 
         private TextBox _txtName = null!;
         private TextBox _txtUsername = null!;
+        private TextBox _txtPassword = null!;
         private ComboBox _cboRole = null!;
         private TextBox _txtPosition = null!;
         private TextBox _txtEmail = null!;
@@ -29,7 +30,7 @@ namespace ERP.winforms.UI.Dialogs
             _targetStaff = staff;
 
             Text = _targetStaff == null ? "Register Employee / Staff Member" : $"Edit Staff - {_targetStaff.FullName}";
-            Size = new Size(520, 570);
+            Size = new Size(520, 630);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -42,12 +43,17 @@ namespace ERP.winforms.UI.Dialogs
             {
                 _txtName.Text = _targetStaff.FullName;
                 _txtUsername.Text = _targetStaff.Username;
+                _txtPassword.Text = string.IsNullOrEmpty(_targetStaff.InitialPassword) ? "staff123" : _targetStaff.InitialPassword;
                 _cboRole.SelectedItem = _targetStaff.Role;
                 _txtPosition.Text = _targetStaff.PositionTitle;
                 _txtEmail.Text = _targetStaff.Email ?? "";
                 _txtPhone.Text = _targetStaff.PhoneNumber ?? "";
                 _numHourlyRate.Value = Math.Min(_targetStaff.HourlyRate, _numHourlyRate.Maximum);
                 _numMonthlySalary.Value = Math.Min(_targetStaff.MonthlySalary, _numMonthlySalary.Maximum);
+            }
+            else
+            {
+                _txtPassword.Text = "staff123";
             }
         }
 
@@ -106,14 +112,15 @@ namespace ERP.winforms.UI.Dialogs
             card.Controls.Add(_txtUsername);
             y += 35;
 
-            // Role & Position Title
-            card.Controls.Add(CreateLabel("SYSTEM ROLE *", 15, y));
-            card.Controls.Add(CreateLabel("JOB POSITION TITLE *", 240, y));
+            // Password & Role
+            card.Controls.Add(CreateLabel("LOGIN PASSWORD * (Used to Sign In)", 15, y));
+            card.Controls.Add(CreateLabel("SYSTEM ROLE *", 240, y));
             y += 20;
 
+            _txtPassword = new TextBox { Location = new Point(15, y), Width = 210, Font = AppTheme.BodyFont };
             _cboRole = new ComboBox
             {
-                Location = new Point(15, y),
+                Location = new Point(240, y),
                 Width = 210,
                 Font = AppTheme.BodyFont,
                 DropDownStyle = ComboBoxStyle.DropDownList
@@ -121,7 +128,17 @@ namespace ERP.winforms.UI.Dialogs
             _cboRole.Items.AddRange(new object[] { "Store Administrator", "Store Manager", "Hardware Technician", "Cashier Operations" });
             _cboRole.SelectedIndex = 2; // Default Hardware Tech
 
-            _txtPosition = new TextBox { Location = new Point(240, y), Width = 210, Font = AppTheme.BodyFont, Text = "Hardware Technician" };
+            card.Controls.Add(_txtPassword);
+            card.Controls.Add(_cboRole);
+            y += 35;
+
+            // Position & Phone
+            card.Controls.Add(CreateLabel("JOB POSITION TITLE *", 15, y));
+            card.Controls.Add(CreateLabel("PHONE NUMBER", 240, y));
+            y += 20;
+
+            _txtPosition = new TextBox { Location = new Point(15, y), Width = 210, Font = AppTheme.BodyFont, Text = "Hardware Technician" };
+            _txtPhone = new TextBox { Location = new Point(240, y), Width = 210, Font = AppTheme.BodyFont };
             _cboRole.SelectedIndexChanged += (s, e) =>
             {
                 if (_targetStaff == null)
@@ -130,30 +147,36 @@ namespace ERP.winforms.UI.Dialogs
                 }
             };
 
-            card.Controls.Add(_cboRole);
             card.Controls.Add(_txtPosition);
-            y += 35;
-
-            // Phone & Email
-            card.Controls.Add(CreateLabel("PHONE NUMBER", 15, y));
-            card.Controls.Add(CreateLabel("EMAIL ADDRESS", 240, y));
-            y += 20;
-
-            _txtPhone = new TextBox { Location = new Point(15, y), Width = 210, Font = AppTheme.BodyFont };
-            _txtEmail = new TextBox { Location = new Point(240, y), Width = 210, Font = AppTheme.BodyFont };
             card.Controls.Add(_txtPhone);
-            card.Controls.Add(_txtEmail);
             y += 35;
 
-            // Hourly Rate & Monthly Salary
-            card.Controls.Add(CreateLabel("HOURLY RATE (₱)", 15, y));
+            // Email & Monthly Salary
+            card.Controls.Add(CreateLabel("EMAIL ADDRESS", 15, y));
             card.Controls.Add(CreateLabel("MONTHLY SALARY BASE (₱)", 240, y));
             y += 20;
 
-            _numHourlyRate = new NumericUpDown { Location = new Point(15, y), Width = 210, DecimalPlaces = 2, Maximum = 10000, Font = AppTheme.BodyFont, Value = 150 };
+            _txtEmail = new TextBox { Location = new Point(15, y), Width = 210, Font = AppTheme.BodyFont };
             _numMonthlySalary = new NumericUpDown { Location = new Point(240, y), Width = 210, DecimalPlaces = 2, Maximum = 500000, Font = AppTheme.BodyFont, Value = 25000 };
-            card.Controls.Add(_numHourlyRate);
+            card.Controls.Add(_txtEmail);
             card.Controls.Add(_numMonthlySalary);
+            y += 35;
+
+            // Hourly Rate & Password Hint
+            card.Controls.Add(CreateLabel("HOURLY RATE (₱)", 15, y));
+            y += 20;
+            _numHourlyRate = new NumericUpDown { Location = new Point(15, y), Width = 210, DecimalPlaces = 2, Maximum = 10000, Font = AppTheme.BodyFont, Value = 150 };
+            card.Controls.Add(_numHourlyRate);
+
+            Label lblPwdHint = new Label
+            {
+                Text = "💡 Staff sign in at the login screen using their assigned Username and Password.",
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Italic),
+                ForeColor = Color.FromArgb(140, 110, 20),
+                Location = new Point(15, y + 26),
+                Size = new Size(435, 18)
+            };
+            card.Controls.Add(lblPwdHint);
 
             // Bottom Buttons
             SunshineButton btnSave = new SunshineButton
@@ -197,6 +220,7 @@ namespace ERP.winforms.UI.Dialogs
         {
             string name = _txtName.Text.Trim();
             string username = _txtUsername.Text.Trim();
+            string password = _txtPassword.Text.Trim();
             string role = _cboRole.SelectedItem?.ToString() ?? "Hardware Technician";
             string pos = _txtPosition.Text.Trim();
 
@@ -214,12 +238,18 @@ namespace ERP.winforms.UI.Dialogs
                 return;
             }
 
+            if (string.IsNullOrEmpty(password))
+            {
+                password = "staff123";
+            }
+
             if (_targetStaff == null)
             {
                 var newStaff = new StaffMember
                 {
                     FullName = name,
                     Username = username,
+                    InitialPassword = password,
                     Role = role,
                     PositionTitle = pos,
                     PhoneNumber = _txtPhone.Text.Trim(),
@@ -237,6 +267,7 @@ namespace ERP.winforms.UI.Dialogs
             {
                 _targetStaff.FullName = name;
                 _targetStaff.Username = username;
+                _targetStaff.InitialPassword = password;
                 _targetStaff.Role = role;
                 _targetStaff.PositionTitle = pos;
                 _targetStaff.PhoneNumber = _txtPhone.Text.Trim();

@@ -172,6 +172,7 @@ namespace ERP.winforms.UI.Views
             _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STAFF ID", FillWeight = 11, MinimumWidth = 75, Name = "ColCode" });
             _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "FULL NAME", FillWeight = 18, MinimumWidth = 120, Name = "ColName" });
             _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "USERNAME", FillWeight = 12, MinimumWidth = 85, Name = "ColUser" });
+            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "LOGIN PASSWORD", FillWeight = 12, MinimumWidth = 90, Name = "ColPwd" });
             _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ROLE", FillWeight = 16, MinimumWidth = 110, Name = "ColRole" });
             _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "POSITION TITLE", FillWeight = 18, MinimumWidth = 120, Name = "ColPos" });
             _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CONTACT NUMBER", FillWeight = 14, MinimumWidth = 95, Name = "ColPhone" });
@@ -291,10 +292,12 @@ namespace ERP.winforms.UI.Views
             foreach (var s in filtered)
             {
                 string displayName = s.IsActive ? s.FullName : $"[ARCHIVED] {s.FullName}";
+                string pwdDisplay = string.IsNullOrWhiteSpace(s.InitialPassword) ? "staff123" : s.InitialPassword;
                 int rowIdx = _gridStaff.Rows.Add(
                     s.StaffCode,
                     displayName,
                     s.Username,
+                    pwdDisplay,
                     s.Role,
                     s.PositionTitle,
                     s.PhoneNumber ?? "N/A",

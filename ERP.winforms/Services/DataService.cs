@@ -1736,6 +1736,20 @@ namespace ERP.winforms.Services
             SaveStaffToLocalCache();
             StaffMembersChanged?.Invoke();
 
+            if (!string.IsNullOrWhiteSpace(staff.InitialPassword))
+            {
+                OfflineAuthService.Instance.RegisterOrUpdateStaffPassword(
+                    ActiveCompanyId,
+                    CurrentCompany.CompanyCode,
+                    CurrentCompany.CompanyName,
+                    CurrentCompany.PlanName,
+                    staff.Username,
+                    staff.FullName,
+                    staff.Role,
+                    staff.InitialPassword
+                );
+            }
+
             if (NetworkInterface.GetIsNetworkAvailable())
             {
                 Task.Run(() => _apiClient.CreateStaffAsync(ActiveCompanyId, staff));
@@ -1755,6 +1769,21 @@ namespace ERP.winforms.Services
                 existing.PhoneNumber = staff.PhoneNumber;
                 existing.HourlyRate = staff.HourlyRate;
                 existing.MonthlySalary = staff.MonthlySalary;
+
+                if (!string.IsNullOrWhiteSpace(staff.InitialPassword))
+                {
+                    existing.InitialPassword = staff.InitialPassword;
+                    OfflineAuthService.Instance.RegisterOrUpdateStaffPassword(
+                        ActiveCompanyId,
+                        CurrentCompany.CompanyCode,
+                        CurrentCompany.CompanyName,
+                        CurrentCompany.PlanName,
+                        existing.Username,
+                        existing.FullName,
+                        existing.Role,
+                        staff.InitialPassword
+                    );
+                }
 
                 SaveStaffToLocalCache();
                 StaffMembersChanged?.Invoke();
