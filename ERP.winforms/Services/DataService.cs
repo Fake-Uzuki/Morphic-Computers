@@ -45,6 +45,7 @@ namespace ERP.winforms.Services
         public Action? PayrollRecordsChanged;
         public Action? StorePoliciesChanged;
         public Action? ExpensesChanged;
+        public Action? OrdersChanged;
         public Action<bool>? ConnectionStatusChanged;
 
         private int _activeCompanyId = 1;
@@ -287,6 +288,7 @@ namespace ERP.winforms.Services
                 string path = GetLocalOrdersFilePath();
                 string json = JsonSerializer.Serialize(Orders, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(path, json);
+                OrdersChanged?.Invoke();
             }
             catch (Exception ex)
             {
@@ -2958,12 +2960,12 @@ Customers may request a copy or deletion of their contact profile at any time by
 
         public decimal GetTotalRepairServicesRevenue()
         {
-            return RepairTickets.Where(t => string.Equals(t.Status, "Completed", StringComparison.OrdinalIgnoreCase) || string.Equals(t.Status, "Released", StringComparison.OrdinalIgnoreCase)).Sum(t => t.EstimatedCost);
+            return RepairTickets.Where(t => string.Equals(t.Status, "Completed", StringComparison.OrdinalIgnoreCase) || string.Equals(t.Status, "Released", StringComparison.OrdinalIgnoreCase)).Sum(t => t.TotalAmount);
         }
 
         public decimal GetTotalPayrollExpense()
         {
-            return PayrollRecords.Sum(p => p.NetSalary);
+            return PayrollRecords.Sum(p => p.NetPay);
         }
 
         public decimal GetTotalOperatingExpenses()
