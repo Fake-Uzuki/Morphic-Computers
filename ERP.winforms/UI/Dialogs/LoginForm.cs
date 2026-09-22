@@ -63,20 +63,10 @@ namespace ERP.winforms.UI.Dialogs
                 TextAlign = ContentAlignment.MiddleCenter
             };
 
-            Label lblSubtitle = new Label
-            {
-                Text = "Multi-Tenant Enterprise Portal  •  Sign In",
-                Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
-                ForeColor = Color.FromArgb(170, 168, 158),
-                Location = new Point(20, 108),
-                Size = new Size(414, 20),
-                TextAlign = ContentAlignment.MiddleCenter
-            };
-
             // Card Container for Input Fields
             SunshineCard card = new SunshineCard
             {
-                Location = new Point(36, 138),
+                Location = new Point(36, 120),
                 Size = new Size(382, 360),
                 Padding = new Padding(22),
                 BorderRadius = 4,
@@ -181,7 +171,6 @@ namespace ERP.winforms.UI.Dialogs
 
             Controls.Add(lblLogo);
             Controls.Add(lblTitle);
-            Controls.Add(lblSubtitle);
             Controls.Add(card);
 
             AcceptButton = _btnLogin;

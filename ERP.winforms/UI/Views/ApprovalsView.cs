@@ -467,8 +467,8 @@ namespace ERP.winforms.UI.Views
                 BackColor = Color.White
             };
             Label lblText = new Label { Left = 20, Top = 16, Width = 370, Height = 40, Text = prompt, Font = new Font("Segoe UI", 9F) };
-            TextBox txtInput = new TextBox { Left = 20, Top = 64, Width = 365, PasswordChar = '●', Font = new Font("Segoe UI", 11F) };
-            Label lblHint = new Label { Left = 20, Top = 96, Width = 370, Text = "💡 Passwords: 09092121 (Admin), admin123, or manager123", Font = new Font("Segoe UI", 7.5F, FontStyle.Italic), ForeColor = Color.FromArgb(130, 95, 10) };
+            TextBox txtInput = new TextBox { Left = 20, Top = 64, Width = 365, PasswordChar = '●', UseSystemPasswordChar = true, Font = new Font("Segoe UI", 11F) };
+            Label lblHint = new Label { Left = 20, Top = 96, Width = 370, Text = "Authorized Manager or Administrator password required.", Font = new Font("Segoe UI", 7.5F, FontStyle.Italic), ForeColor = Color.FromArgb(130, 95, 10) };
             Button btnOk = new Button { Text = "Authorize", Left = 180, Width = 100, Top = 125, Height = 32, DialogResult = DialogResult.OK, BackColor = AppTheme.Primary, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 8.5F, FontStyle.Bold) };
             Button btnCancel = new Button { Text = "Cancel", Left = 290, Width = 95, Top = 125, Height = 32, DialogResult = DialogResult.Cancel, FlatStyle = FlatStyle.Flat };
             promptForm.Controls.AddRange(new Control[] { lblText, txtInput, lblHint, btnOk, btnCancel });

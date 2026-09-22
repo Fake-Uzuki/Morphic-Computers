@@ -53,7 +53,7 @@ namespace ERP.winforms.UI.Dialogs
             Panel pnlHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 60,
+                Height = 44,
                 BackColor = AppTheme.HeaderBg
             };
 
@@ -62,25 +62,16 @@ namespace ERP.winforms.UI.Dialogs
                 Text = _targetSupplier == null ? "🚚 NEW SUPPLIER REGISTRATION" : "🚚 EDIT SUPPLIER DETAILS",
                 Font = new Font("Segoe UI", 12F, FontStyle.Bold),
                 ForeColor = AppTheme.HeaderBrandGold,
-                Location = new Point(20, 10),
+                Location = new Point(20, 12),
                 AutoSize = true
             };
 
-            Label lblSub = new Label
-            {
-                Text = "Manage hardware component vendors, distributors and contact accounts",
-                Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
-                ForeColor = Color.FromArgb(170, 168, 158),
-                Location = new Point(20, 32),
-                AutoSize = true
-            };
             pnlHeader.Controls.Add(lblTitle);
-            pnlHeader.Controls.Add(lblSub);
 
             // Card Body
             SunshineCard card = new SunshineCard
             {
-                Location = new Point(20, 75),
+                Location = new Point(20, 58),
                 Size = new Size(445, 340),
                 Padding = new Padding(18),
                 CustomBgColor = Color.White,

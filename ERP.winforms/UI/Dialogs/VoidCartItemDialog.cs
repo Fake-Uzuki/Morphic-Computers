@@ -46,7 +46,7 @@ namespace ERP.winforms.UI.Dialogs
             Panel pnlHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 62,
+                Height = 44,
                 BackColor = Color.FromArgb(28, 20, 20)
             };
 
@@ -55,21 +55,11 @@ namespace ERP.winforms.UI.Dialogs
                 Text = "⛔ VOID LINE ITEM AUTHORIZATION",
                 Font = new Font("Segoe UI", 11F, FontStyle.Bold),
                 ForeColor = Color.FromArgb(239, 68, 68),
-                Location = new Point(20, 10),
-                AutoSize = true
-            };
-
-            Label lblSub = new Label
-            {
-                Text = "Anti-theft protocol: Removing scanned merchandise requires manager oversight.",
-                Font = new Font("Segoe UI", 8F, FontStyle.Regular),
-                ForeColor = Color.FromArgb(170, 168, 158),
-                Location = new Point(20, 34),
+                Location = new Point(20, 12),
                 AutoSize = true
             };
 
             pnlHeader.Controls.Add(lblTitle);
-            pnlHeader.Controls.Add(lblSub);
 
             // 2. Main Content Card
             Panel pnlBody = new Panel
@@ -258,6 +248,7 @@ namespace ERP.winforms.UI.Dialogs
                 Location = new Point(20, y),
                 Size = new Size(460, 30),
                 PasswordChar = '●',
+                UseSystemPasswordChar = true,
                 Font = new Font("Segoe UI", 11F, FontStyle.Bold),
                 Enabled = preApproved == null
             };
@@ -274,7 +265,7 @@ namespace ERP.winforms.UI.Dialogs
             {
                 Text = preApproved != null 
                     ? "✓ Manager has already authorized this void in the Approvals module."
-                    : "💡 Manager Passwords: 09092121 (Admin), admin123, or manager123",
+                    : "Enter authorized Manager or Admin password to confirm void.",
                 Font = new Font("Segoe UI", 8F, FontStyle.Italic),
                 ForeColor = preApproved != null ? Color.FromArgb(22, 101, 52) : Color.FromArgb(130, 95, 10),
                 Location = new Point(20, y),

@@ -53,31 +53,21 @@ namespace ERP.winforms.UI.Views
             Panel pnlHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 58,
+                Height = 44,
                 Padding = new Padding(20, 10, 20, 8),
                 BackColor = Color.FromArgb(24, 25, 20)
             };
 
             Label lblBannerTitle = new Label
             {
-                Text = "📜 STORE POLICIES, TERMS & LEGAL AGREEMENTS",
-                Font = new Font("Segoe UI", 11F, FontStyle.Bold),
+                Text = "Policies and Terms",
+                Font = new Font("Segoe UI", 12F, FontStyle.Bold),
                 ForeColor = AppTheme.HeaderBrandGold,
-                Location = new Point(20, 8),
-                AutoSize = true
-            };
-
-            Label lblBannerSub = new Label
-            {
-                Text = "Manage store customer disclosures, hardware warranty stipulations, diagnostic liability releases, and statutory compliance. Changes save directly to company operations.",
-                Font = new Font("Segoe UI", 8F, FontStyle.Regular),
-                ForeColor = Color.FromArgb(180, 178, 168),
-                Location = new Point(20, 30),
+                Location = new Point(20, 10),
                 AutoSize = true
             };
 
             pnlHeader.Controls.Add(lblBannerTitle);
-            pnlHeader.Controls.Add(lblBannerSub);
 
             // ========================================================
             // 2. MAIN SPLIT WORKBENCH (Left Selector + Right Editor)

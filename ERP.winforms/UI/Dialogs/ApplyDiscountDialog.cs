@@ -48,7 +48,7 @@ namespace ERP.winforms.UI.Dialogs
             Panel pnlHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 62,
+                Height = 44,
                 BackColor = AppTheme.HeaderBg
             };
 
@@ -57,21 +57,11 @@ namespace ERP.winforms.UI.Dialogs
                 Text = "🏷️ MANAGER DISCOUNT AUTHORIZATION",
                 Font = new Font("Segoe UI", 11F, FontStyle.Bold),
                 ForeColor = AppTheme.HeaderBrandGold,
-                Location = new Point(20, 10),
-                AutoSize = true
-            };
-
-            Label lblSub = new Label
-            {
-                Text = "Discounts and promotional rate overrides require manager credential verification.",
-                Font = new Font("Segoe UI", 8F, FontStyle.Regular),
-                ForeColor = Color.FromArgb(170, 168, 158),
-                Location = new Point(20, 34),
+                Location = new Point(20, 12),
                 AutoSize = true
             };
 
             pnlHeader.Controls.Add(lblTitle);
-            pnlHeader.Controls.Add(lblSub);
 
             // 2. Main Content Card
             Panel pnlBody = new Panel
@@ -250,6 +240,7 @@ namespace ERP.winforms.UI.Dialogs
                 Location = new Point(28, y),
                 Width = 424,
                 Font = new Font("Segoe UI", 10F),
+                PasswordChar = '●',
                 UseSystemPasswordChar = true,
                 PlaceholderText = "Input manager password for override confirmation..."
             };
@@ -258,7 +249,7 @@ namespace ERP.winforms.UI.Dialogs
 
             Label lblPwHelp = new Label
             {
-                Text = "💡 Authorized manager passwords: 09092121 (Admin), admin123, or manager123",
+                Text = "Enter authorized Manager or Administrator password to proceed.",
                 Font = new Font("Segoe UI", 7.5F, FontStyle.Italic),
                 ForeColor = Color.FromArgb(130, 95, 10),
                 Location = new Point(28, y),

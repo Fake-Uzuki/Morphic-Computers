@@ -45,16 +45,6 @@ namespace ERP.winforms.UI.Dialogs
             };
             y += 30;
 
-            Label lblSub = new Label
-            {
-                Text = "STORE PAYROLL & COMPENSATION SLIP",
-                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
-                ForeColor = Color.FromArgb(160, 110, 10),
-                Location = new Point(20, y),
-                Size = new Size(500, 18),
-                TextAlign = ContentAlignment.MiddleCenter
-            };
-            y += 24;
 
             Label lblPeriodBadge = new Label
             {
@@ -260,7 +250,6 @@ namespace ERP.winforms.UI.Dialogs
             btnClose.Click += (s, e) => Close();
 
             Controls.Add(lblCompany);
-            Controls.Add(lblSub);
             Controls.Add(lblPeriodBadge);
             Controls.Add(btnPrint);
             Controls.Add(btnClose);

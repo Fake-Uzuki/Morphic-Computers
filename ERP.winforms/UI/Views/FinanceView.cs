@@ -81,42 +81,32 @@ namespace ERP.winforms.UI.Views
             Panel pnlHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 58,
+                Height = 44,
                 Padding = new Padding(20, 10, 20, 8),
                 BackColor = Color.FromArgb(24, 25, 20)
             };
 
             Label lblBannerTitle = new Label
             {
-                Text = "💰 STORE FINANCE & ACCOUNTING WORKBENCH",
-                Font = new Font("Segoe UI", 11F, FontStyle.Bold),
+                Text = "Store Finance",
+                Font = new Font("Segoe UI", 12F, FontStyle.Bold),
                 ForeColor = AppTheme.HeaderBrandGold,
-                Location = new Point(20, 8),
-                AutoSize = true
-            };
-
-            Label lblBannerSub = new Label
-            {
-                Text = "Central financial controller for Store Profit & Loss (P&L), operating overhead ledger, payroll labor liabilities, and 12% statutory tax compliance.",
-                Font = new Font("Segoe UI", 8F, FontStyle.Regular),
-                ForeColor = Color.FromArgb(180, 178, 168),
-                Location = new Point(20, 30),
+                Location = new Point(20, 10),
                 AutoSize = true
             };
 
             pnlHeader.Controls.Add(lblBannerTitle);
-            pnlHeader.Controls.Add(lblBannerSub);
 
             // ========================================================
-            // 2. FINANCIAL KPI CARDS ROW (Height: 96px)
+            // 2. FINANCIAL KPI CARDS ROW (Height: 78px)
             // ========================================================
             TableLayoutPanel tlpKpis = new TableLayoutPanel
             {
                 Dock = DockStyle.Top,
-                Height = 94,
+                Height = 78,
                 ColumnCount = 4,
                 RowCount = 1,
-                Padding = new Padding(20, 10, 20, 6),
+                Padding = new Padding(20, 8, 20, 4),
                 BackColor = Color.Transparent
             };
             tlpKpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
@@ -125,19 +115,19 @@ namespace ERP.winforms.UI.Views
             tlpKpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
 
             // Card 1: Gross Inflow
-            var (card1, val1) = CreateKpiCard("TOTAL STORE REVENUE", "₱0.00", "POS Sales + Repair bench revenue", Color.FromArgb(27, 122, 79));
+            var (card1, val1) = CreateKpiCard("TOTAL STORE REVENUE", "₱0.00", Color.FromArgb(27, 122, 79));
             _lblKpiGrossRevenue = val1;
 
             // Card 2: Operating Expenses
-            var (card2, val2) = CreateKpiCard("OPERATING OVERHEAD", "₱0.00", "Rent, utilities, bench consumables", Color.FromArgb(184, 50, 38));
+            var (card2, val2) = CreateKpiCard("OPERATING OVERHEAD", "₱0.00", Color.FromArgb(184, 50, 38));
             _lblKpiTotalExpenses = val2;
 
             // Card 3: Net Operating Profit
-            var (card3, val3) = CreateKpiCard("NET STORE PROFIT", "₱0.00", "Gross Revenue minus all expenses", Color.FromArgb(20, 21, 17), true);
+            var (card3, val3) = CreateKpiCard("NET STORE PROFIT", "₱0.00", Color.FromArgb(20, 21, 17), true);
             _lblKpiNetProfit = val3;
 
             // Card 4: 12% VAT
-            var (card4, val4) = CreateKpiCard("12% STATUTORY VAT", "₱0.00", "Output tax collected for BIR remittance", Color.FromArgb(140, 100, 10));
+            var (card4, val4) = CreateKpiCard("12% STATUTORY VAT", "₱0.00", Color.FromArgb(140, 100, 10));
             _lblKpiTaxVat = val4;
 
             tlpKpis.Controls.Add(card1, 0, 0);
@@ -194,14 +184,15 @@ namespace ERP.winforms.UI.Views
             _flpFilterPills = new FlowLayoutPanel
             {
                 Location = new Point(236, 6),
-                Size = new Size(340, 32),
+                Size = new Size(420, 32),
                 BackColor = Color.Transparent,
                 WrapContents = false
             };
-            AddFilterPill("All", "All Expenses");
+            AddFilterPill("All", "All Active");
             AddFilterPill("Store Commercial Rent", "Rent");
             AddFilterPill("Electricity & Power", "Utilities");
             AddFilterPill("Repair Bench Supplies", "Supplies");
+            AddFilterPill("Archived", "Archived");
 
             SunshineButton btnAddExpense = new SunshineButton
             {
@@ -282,10 +273,17 @@ namespace ERP.winforms.UI.Views
                 if (e.RowIndex >= 0 && _gridExpenses.Columns["ColAction"] != null && e.ColumnIndex == _gridExpenses.Columns["ColAction"]!.Index)
                 {
                     int expId = Convert.ToInt32(_gridExpenses.Rows[e.RowIndex].Tag);
-                    var res = MessageBox.Show("Remove this expense record from the ledger?", "Confirm Deletion", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                    var exp = _dataService.ExpenseRecords.FirstOrDefault(x => x.ExpenseId == expId);
+                    if (exp == null) return;
+
+                    string prompt = exp.IsActive
+                        ? $"Archive expense record '{exp.ExpenseNumber}' ({exp.PaidTo} - ₱{exp.Amount:N2})?\n\nArchived expenses are excluded from active Operating Overhead and Store Profit calculations."
+                        : $"Restore expense record '{exp.ExpenseNumber}' ({exp.PaidTo} - ₱{exp.Amount:N2}) back to active status?";
+
+                    var res = MessageBox.Show(prompt, exp.IsActive ? "Confirm Archive Expense" : "Confirm Restore Expense", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
                     if (res == DialogResult.Yes)
                     {
-                        _dataService.DeleteExpense(expId);
+                        _dataService.ToggleExpenseArchive(expId);
                         RefreshData();
                     }
                 }
@@ -307,11 +305,9 @@ namespace ERP.winforms.UI.Views
                 CustomBorderColor = AppTheme.CardBorder
             };
 
-            Panel pnlPlHeader = new Panel { Dock = DockStyle.Top, Height = 42 };
-            Label lblPlTitle = new Label { Text = "STORE INCOME STATEMENT (P&L)", Font = new Font("Segoe UI", 10.5F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Location = new Point(0, 2), AutoSize = true };
-            Label lblPlSub = new Label { Text = "Real-time cash flow & gross margin reconciliation", Font = new Font("Segoe UI", 7.5F, FontStyle.Regular), ForeColor = AppTheme.TextMuted, Location = new Point(0, 22), AutoSize = true };
+            Panel pnlPlHeader = new Panel { Dock = DockStyle.Top, Height = 32 };
+            Label lblPlTitle = new Label { Text = "STORE INCOME STATEMENT (P&L)", Font = new Font("Segoe UI", 10.5F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Location = new Point(0, 4), AutoSize = true };
             pnlPlHeader.Controls.Add(lblPlTitle);
-            pnlPlHeader.Controls.Add(lblPlSub);
 
             Panel pnlPlBody = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(0, 8, 0, 0) };
 
@@ -373,14 +369,14 @@ namespace ERP.winforms.UI.Views
             Controls.Add(pnlHeader);
         }
 
-        private (Panel Card, Label ValLabel) CreateKpiCard(string title, string value, string sub, Color accent, bool isDark = false)
+        private (Panel Card, Label ValLabel) CreateKpiCard(string title, string value, Color accent, bool isDark = false)
         {
             Panel pnl = new Panel
             {
                 Dock = DockStyle.Fill,
                 Margin = new Padding(4),
                 BackColor = isDark ? Color.FromArgb(20, 21, 17) : Color.White,
-                Padding = new Padding(12, 10, 12, 8)
+                Padding = new Padding(14, 12, 14, 10)
             };
             pnl.Paint += (s, e) =>
             {
@@ -388,11 +384,9 @@ namespace ERP.winforms.UI.Views
                 e.Graphics.DrawRectangle(pen, 0, 0, pnl.Width - 1, pnl.Height - 1);
             };
 
-            Label lblT = new Label { Text = title, Font = new Font("Segoe UI", 7.5F, FontStyle.Bold), ForeColor = isDark ? AppTheme.HeaderBrandGold : AppTheme.TextMuted, Dock = DockStyle.Top, Height = 16 };
-            Label lblV = new Label { Text = value, Font = new Font("Segoe UI", 14F, FontStyle.Bold), ForeColor = isDark ? Color.White : accent, Dock = DockStyle.Top, Height = 30 };
-            Label lblS = new Label { Text = sub, Font = new Font("Segoe UI", 7F, FontStyle.Regular), ForeColor = isDark ? Color.FromArgb(170, 168, 158) : Color.FromArgb(130, 125, 115), Dock = DockStyle.Bottom, Height = 16 };
+            Label lblT = new Label { Text = title, Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = isDark ? AppTheme.HeaderBrandGold : AppTheme.TextMuted, Dock = DockStyle.Top, Height = 18 };
+            Label lblV = new Label { Text = value, Font = new Font("Segoe UI", 14F, FontStyle.Bold), ForeColor = isDark ? Color.White : accent, Dock = DockStyle.Top, Height = 32 };
 
-            pnl.Controls.Add(lblS);
             pnl.Controls.Add(lblV);
             pnl.Controls.Add(lblT);
 
@@ -504,9 +498,17 @@ namespace ERP.winforms.UI.Views
             string q = _txtSearch.Text.Trim().ToLowerInvariant();
             var filtered = _dataService.ExpenseRecords.AsEnumerable();
 
-            if (_currentCategoryFilter != "All")
+            if (_currentCategoryFilter == "Archived")
             {
-                filtered = filtered.Where(e => e.Category.Contains(_currentCategoryFilter, StringComparison.OrdinalIgnoreCase));
+                filtered = filtered.Where(e => !e.IsActive);
+            }
+            else
+            {
+                filtered = filtered.Where(e => e.IsActive);
+                if (_currentCategoryFilter != "All")
+                {
+                    filtered = filtered.Where(e => e.Category.Contains(_currentCategoryFilter, StringComparison.OrdinalIgnoreCase));
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(q))
@@ -521,17 +523,18 @@ namespace ERP.winforms.UI.Views
             _gridExpenses.Rows.Clear();
             foreach (var exp in filtered.OrderByDescending(e => e.ExpenseDate))
             {
+                string actionText = exp.IsActive ? "📁 Archive" : "♻️ Restore";
                 int rIdx = _gridExpenses.Rows.Add(
                     exp.ExpenseNumber,
                     exp.ExpenseDate.ToLocalTime().ToString("MMM dd, yyyy"),
                     exp.Category,
                     exp.PaidTo,
                     $"₱{exp.Amount:N2}",
-                    "🗑️ Delete"
+                    actionText
                 );
                 _gridExpenses.Rows[rIdx].Tag = exp.ExpenseId;
-                _gridExpenses.Rows[rIdx].Cells["ColAction"].Style.ForeColor = Color.FromArgb(184, 50, 38);
-                _gridExpenses.Rows[rIdx].Cells["ColAction"].Style.Font = new Font("Segoe UI", 7F, FontStyle.Bold);
+                _gridExpenses.Rows[rIdx].Cells["ColAction"].Style.ForeColor = exp.IsActive ? Color.FromArgb(184, 50, 38) : Color.FromArgb(27, 122, 79);
+                _gridExpenses.Rows[rIdx].Cells["ColAction"].Style.Font = new Font("Segoe UI", 7.5F, FontStyle.Bold);
             }
         }
 

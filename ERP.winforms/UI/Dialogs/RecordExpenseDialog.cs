@@ -43,7 +43,7 @@ namespace ERP.winforms.UI.Dialogs
             Panel pnlHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 62,
+                Height = 44,
                 BackColor = Color.FromArgb(24, 25, 20)
             };
 
@@ -52,21 +52,11 @@ namespace ERP.winforms.UI.Dialogs
                 Text = "💸 RECORD STORE OPERATING EXPENSE",
                 Font = new Font("Segoe UI", 11F, FontStyle.Bold),
                 ForeColor = AppTheme.HeaderBrandGold,
-                Location = new Point(20, 10),
-                AutoSize = true
-            };
-
-            Label lblSub = new Label
-            {
-                Text = $"Recorded by: {_currentUser}  •  Deducted from Store Gross Margin in Monthly P&L",
-                Font = new Font("Segoe UI", 8F, FontStyle.Regular),
-                ForeColor = Color.FromArgb(170, 168, 158),
-                Location = new Point(20, 34),
+                Location = new Point(20, 12),
                 AutoSize = true
             };
 
             pnlHeader.Controls.Add(lblTitle);
-            pnlHeader.Controls.Add(lblSub);
 
             // 2. Form Body
             Panel pnlBody = new Panel

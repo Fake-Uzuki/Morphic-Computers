@@ -44,16 +44,6 @@ namespace ERP.winforms.UI.Dialogs
             };
             y += 28;
 
-            Label lblSub = new Label
-            {
-                Text = "TECHNICAL SERVICES & REPAIR DIVISION",
-                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
-                ForeColor = Color.FromArgb(160, 110, 10),
-                Location = new Point(20, y),
-                Size = new Size(440, 18),
-                TextAlign = ContentAlignment.MiddleCenter
-            };
-            y += 24;
 
             Label lblTicketBadge = new Label
             {
@@ -134,7 +124,6 @@ namespace ERP.winforms.UI.Dialogs
             btnClose.Click += (s, e) => Close();
 
             Controls.Add(lblCompany);
-            Controls.Add(lblSub);
             Controls.Add(lblTicketBadge);
             Controls.Add(pnlLine1);
             Controls.Add(pnlDetails);

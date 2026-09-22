@@ -44,8 +44,8 @@ namespace ERP.winforms.UI.Dialogs
             Panel pnlHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 65,
-                Padding = new Padding(20, 14, 20, 0)
+                Height = 44,
+                Padding = new Padding(20, 10, 20, 0)
             };
 
             Label lblTitle = new Label
@@ -57,17 +57,7 @@ namespace ERP.winforms.UI.Dialogs
                 AutoSize = true
             };
 
-            Label lblSub = new Label
-            {
-                Text = "Manage product categories. Default system presets are protected and cannot be deleted.",
-                Font = new Font("Segoe UI", 8.25F, FontStyle.Regular),
-                ForeColor = AppTheme.TextMuted,
-                Location = new Point(20, 36),
-                AutoSize = true
-            };
-
             pnlHeader.Controls.Add(lblTitle);
-            pnlHeader.Controls.Add(lblSub);
 
             // Bottom Actions Panel
             Panel pnlBottom = new Panel

@@ -52,15 +52,6 @@ namespace ERP.winforms.UI.Dialogs
             };
             y += 28;
 
-            Label lblSub = new Label
-            {
-                Text = "Computes regular base pay, overtime, performance commission, and tax/statutory deductions.",
-                Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
-                ForeColor = Color.FromArgb(120, 115, 105),
-                Location = new Point(24, y),
-                Size = new Size(470, 20)
-            };
-            y += 28;
 
             Panel pnlDivider = new Panel { Location = new Point(24, y), Size = new Size(470, 1), BackColor = Color.FromArgb(230, 226, 216) };
             Controls.Add(pnlDivider);
@@ -274,7 +265,6 @@ namespace ERP.winforms.UI.Dialogs
             btnCancel.Click += (s, e) => DialogResult = DialogResult.Cancel;
 
             Controls.Add(lblTitle);
-            Controls.Add(lblSub);
             Controls.Add(btnSave);
             Controls.Add(btnCancel);
 

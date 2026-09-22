@@ -51,7 +51,7 @@ namespace ERP.winforms.UI.Dialogs
             Panel pnlHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 60,
+                Height = 44,
                 BackColor = AppTheme.HeaderBg
             };
 
@@ -60,20 +60,11 @@ namespace ERP.winforms.UI.Dialogs
                 Text = _targetCustomer == null ? "👤 NEW CUSTOMER PROFILE" : "👤 EDIT CUSTOMER PROFILE",
                 Font = new Font("Segoe UI", 12F, FontStyle.Bold),
                 ForeColor = AppTheme.HeaderBrandGold,
-                Location = new Point(20, 10),
+                Location = new Point(20, 12),
                 AutoSize = true
             };
 
-            Label lblSub = new Label
-            {
-                Text = "Register retail clients, corporate accounts and repair contacts",
-                Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
-                ForeColor = Color.FromArgb(170, 168, 158),
-                Location = new Point(20, 32),
-                AutoSize = true
-            };
             pnlHeader.Controls.Add(lblTitle);
-            pnlHeader.Controls.Add(lblSub);
 
             // Card Body
             SunshineCard card = new SunshineCard

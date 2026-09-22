@@ -16,5 +16,6 @@ namespace ERP.domain.entities
         public string RecordedBy { get; set; } = "Admin";
         public string? ReceiptRef { get; set; }
         public bool IsTaxDeductible { get; set; } = true;
+        public bool IsActive { get; set; } = true;
     }
 }

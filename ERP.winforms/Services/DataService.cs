@@ -2942,15 +2942,20 @@ Customers may request a copy or deletion of their contact profile at any time by
             ExpensesChanged?.Invoke();
         }
 
-        public void DeleteExpense(int expenseId)
+        public void ToggleExpenseArchive(int expenseId)
         {
             var exp = ExpenseRecords.FirstOrDefault(e => e.ExpenseId == expenseId);
             if (exp != null)
             {
-                ExpenseRecords.Remove(exp);
+                exp.IsActive = !exp.IsActive;
                 SaveExpensesToLocalCache();
                 ExpensesChanged?.Invoke();
             }
+        }
+
+        public void DeleteExpense(int expenseId)
+        {
+            ToggleExpenseArchive(expenseId);
         }
 
         public decimal GetTotalRetailSalesRevenue()
@@ -2970,7 +2975,7 @@ Customers may request a copy or deletion of their contact profile at any time by
 
         public decimal GetTotalOperatingExpenses()
         {
-            return ExpenseRecords.Sum(e => e.Amount);
+            return ExpenseRecords.Where(e => e.IsActive).Sum(e => e.Amount);
         }
 
         public decimal GetTotalVatCollected()
