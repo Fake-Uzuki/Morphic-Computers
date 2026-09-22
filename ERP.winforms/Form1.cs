@@ -55,6 +55,7 @@ namespace ERP.winforms
         private Button? _btnNavApprovals;
         private Button? _btnNavCustomers;
         private Button? _btnNavPayroll;
+        private Button? _btnNavFinance;
         private Button? _btnNavPolicies;
         private Button? _activeNavButton;
         private Label _lblBottomRight = null!;
@@ -70,6 +71,7 @@ namespace ERP.winforms
         private ApprovalsView _approvalsView = null!;
         private CustomersView _customersView = null!;
         private PayrollView _payrollView = null!;
+        private FinanceView _financeView = null!;
         private PoliciesView _policiesView = null!;
 
         private readonly HashSet<string> _dismissedAlertKeys = new();
@@ -448,7 +450,16 @@ namespace ERP.winforms
                 tabX += 132;
             }
 
-            // 7. Terms & Policies (Admin per architecture diagram)
+            // 7. Finance & Accounting (Manager, Admin per architecture diagram)
+            if (isSmallBusinessOrHigher && (isAdmin || isManager))
+            {
+                _btnNavFinance = CreateEnterpriseTab("Finance & Accounting", tabX, 160);
+                _btnNavFinance.Click += (s, e) => SwitchView(_financeView, _btnNavFinance);
+                _pnlTabsTrack.Controls.Add(_btnNavFinance);
+                tabX += 162;
+            }
+
+            // 8. Terms & Policies (Admin per architecture diagram)
             if (isSmallBusinessOrHigher && isAdmin)
             {
                 _btnNavPolicies = CreateEnterpriseTab("Policies & Terms", tabX, 140);
@@ -525,6 +536,7 @@ namespace ERP.winforms
             _approvalsView = new ApprovalsView(_currentUser, _currentRole);
             _customersView = new CustomersView();
             _payrollView = new PayrollView();
+            _financeView = new FinanceView(_currentUser, _currentRole);
             _policiesView = new PoliciesView();
 
             // Wire inter-view navigation events
@@ -540,6 +552,7 @@ namespace ERP.winforms
             {
                 _dashboardView.RefreshMetrics();
                 _ordersView.RefreshData();
+                _financeView.RefreshData();
             };
 
             _productsView.OnProductsChanged = () =>

@@ -49,8 +49,11 @@ namespace ERP.winforms.UI.Views
             InitializeLayout();
             _dataService.ApprovalRequestsChanged += () =>
             {
-                if (InvokeRequired) Invoke(new Action(RefreshData));
-                else RefreshData();
+                if (IsHandleCreated && !IsDisposed)
+                {
+                    if (InvokeRequired) BeginInvoke(new Action(RefreshData));
+                    else RefreshData();
+                }
             };
 
             RefreshData();
@@ -243,12 +246,16 @@ namespace ERP.winforms.UI.Views
 
             _gridRequests.SelectionChanged += (s, e) =>
             {
-                if (_gridRequests.SelectedRows.Count > 0)
+                if (_gridRequests.SelectedRows.Count > 0 && _gridRequests.SelectedRows[0].Tag != null)
                 {
                     int reqId = Convert.ToInt32(_gridRequests.SelectedRows[0].Tag);
                     _selectedRequest = _dataService.ApprovalRequests.FirstOrDefault(r => r.RequestId == reqId);
-                    UpdateDetailPanel();
                 }
+                else
+                {
+                    _selectedRequest = null;
+                }
+                UpdateDetailPanel();
             };
 
             cardGrid.Controls.Add(_gridRequests);
@@ -395,7 +402,15 @@ namespace ERP.winforms.UI.Views
 
         private void ResolveSelected(bool approve)
         {
-            if (_selectedRequest == null) return;
+            var targetReq = _selectedRequest;
+            if (targetReq == null)
+            {
+                MessageBox.Show("Please select an approval request from the table to review.", "No Request Selected", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            int reqId = targetReq.RequestId;
+            string reqNumber = targetReq.RequestNumber;
 
             bool canAuthorize = _currentRole.Contains("Admin", StringComparison.OrdinalIgnoreCase) || 
                                 _currentRole.Contains("Manager", StringComparison.OrdinalIgnoreCase);
@@ -433,8 +448,8 @@ namespace ERP.winforms.UI.Views
                 notes = approve ? "Authorized by Store Manager / Admin." : "Rejected by Store Manager / Admin.";
             }
 
-            _dataService.ResolveApprovalRequest(_selectedRequest.RequestId, status, authorizer, notes);
-            MessageBox.Show($"Request {_selectedRequest.RequestNumber} marked as {status} by {authorizer}.", "Decision Recorded", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            _dataService.ResolveApprovalRequest(reqId, status, authorizer, notes);
+            MessageBox.Show($"Request {reqNumber} marked as {status} by {authorizer}.", "Decision Recorded", MessageBoxButtons.OK, MessageBoxIcon.Information);
             RefreshData();
         }
 
@@ -539,10 +554,28 @@ namespace ERP.winforms.UI.Views
                 _gridRequests.Rows[rowIdx].Tag = r.RequestId;
             }
 
-            if (_selectedRequest == null && _gridRequests.Rows.Count > 0)
+            if (_gridRequests.Rows.Count > 0)
             {
-                _gridRequests.Rows[0].Selected = true;
+                var matchingRow = _gridRequests.Rows.Cast<DataGridViewRow>()
+                    .FirstOrDefault(r => r.Tag != null && _selectedRequest != null && (int)r.Tag == _selectedRequest.RequestId);
+
+                if (matchingRow != null)
+                {
+                    matchingRow.Selected = true;
+                }
+                else
+                {
+                    _gridRequests.Rows[0].Selected = true;
+                    int reqId = Convert.ToInt32(_gridRequests.Rows[0].Tag);
+                    _selectedRequest = _dataService.ApprovalRequests.FirstOrDefault(r => r.RequestId == reqId);
+                }
             }
+            else
+            {
+                _selectedRequest = null;
+            }
+
+            UpdateDetailPanel();
         }
     }
 }

@@ -15,7 +15,7 @@ namespace ERP.winforms.Services
     /// Data Access Service connecting ERP.winforms UI to ERP.api over HTTPS.
     /// Communicates with backend REST API using internal security authentication without exposing raw database credentials.
     /// </summary>
-    public class DataService
+    public partial class DataService
     {
         private static DataService? _instance;
         public static DataService Instance => _instance ??= new DataService();
@@ -33,6 +33,7 @@ namespace ERP.winforms.Services
         public List<Customer> Customers { get; private set; } = new();
         public List<PayrollRecord> PayrollRecords { get; private set; } = new();
         public List<StorePolicy> StorePolicies { get; private set; } = new();
+        public List<ExpenseRecord> ExpenseRecords { get; private set; } = new();
 
         public Action? CategoriesChanged;
         public Action? ProductsChanged;
@@ -43,6 +44,7 @@ namespace ERP.winforms.Services
         public Action? CustomersChanged;
         public Action? PayrollRecordsChanged;
         public Action? StorePoliciesChanged;
+        public Action? ExpensesChanged;
         public Action<bool>? ConnectionStatusChanged;
 
         private int _activeCompanyId = 1;
@@ -86,6 +88,7 @@ namespace ERP.winforms.Services
             Customers.Clear();
             PayrollRecords.Clear();
             StorePolicies.Clear();
+            ExpenseRecords.Clear();
 
             LoadCategoriesFromLocalCache();
             LoadProductsToLocalCache();
@@ -98,6 +101,7 @@ namespace ERP.winforms.Services
             LoadCustomersFromLocalCache();
             LoadPayrollFromLocalCache();
             LoadPoliciesFromLocalCache();
+            LoadExpensesFromLocalCache();
 
             CategoriesChanged?.Invoke();
             ProductsChanged?.Invoke();
@@ -108,6 +112,7 @@ namespace ERP.winforms.Services
             CustomersChanged?.Invoke();
             PayrollRecordsChanged?.Invoke();
             StorePoliciesChanged?.Invoke();
+            ExpensesChanged?.Invoke();
 
             if (NetworkInterface.GetIsNetworkAvailable())
             {
@@ -2783,5 +2788,192 @@ Customers may request a copy or deletion of their contact profile at any time by
         public decimal MarginPercent { get; set; }
         public decimal ProjectedMonthEnd { get; set; }
         public int TotalTransactions { get; set; }
+    }
+
+    public partial class DataService
+    {
+        // =========================================================================
+        // TENANT B: FINANCE & ACCOUNTING / EXPENSES CACHING & CRUD
+        // =========================================================================
+        private string GetLocalExpensesFilePath()
+        {
+            string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LocalData");
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            return Path.Combine(dir, $"tenant_{ActiveCompanyId}_expenses.json");
+        }
+
+        public void SaveExpensesToLocalCache()
+        {
+            try
+            {
+                string path = GetLocalExpensesFilePath();
+                string json = JsonSerializer.Serialize(ExpenseRecords, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(path, json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"SaveExpensesToLocalCache error: {ex.Message}");
+            }
+        }
+
+        public void LoadExpensesFromLocalCache()
+        {
+            try
+            {
+                string path = GetLocalExpensesFilePath();
+                if (File.Exists(path))
+                {
+                    string json = File.ReadAllText(path);
+                    var cached = JsonSerializer.Deserialize<List<ExpenseRecord>>(json);
+                    if (cached != null && cached.Count > 0)
+                    {
+                        ExpenseRecords = cached;
+                        return;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"LoadExpensesFromLocalCache error: {ex.Message}");
+            }
+
+            SeedDefaultExpensesIfEmpty();
+        }
+
+        private void SeedDefaultExpensesIfEmpty()
+        {
+            if (ExpenseRecords.Count > 0) return;
+
+            ExpenseRecords = new List<ExpenseRecord>
+            {
+                new ExpenseRecord
+                {
+                    ExpenseId = 1,
+                    CompanyId = ActiveCompanyId,
+                    ExpenseNumber = "EXP-2026-001",
+                    ExpenseDate = DateTime.UtcNow.AddDays(-18),
+                    Category = "Store Commercial Rent",
+                    Description = "Monthly retail space lease - Bajada Commercial Complex, Unit 4B",
+                    Amount = 25000.00m,
+                    PaidTo = "Bajada Commercial Realty Corp.",
+                    PaymentMethod = "Bank Transfer",
+                    RecordedBy = "Cirunay",
+                    ReceiptRef = "OR-88219"
+                },
+                new ExpenseRecord
+                {
+                    ExpenseId = 2,
+                    CompanyId = ActiveCompanyId,
+                    ExpenseNumber = "EXP-2026-002",
+                    ExpenseDate = DateTime.UtcNow.AddDays(-12),
+                    Category = "Electricity & Power",
+                    Description = "Store HVAC, bench test rigs, and showcase lighting",
+                    Amount = 8450.00m,
+                    PaidTo = "Davao Light & Power Co.",
+                    PaymentMethod = "Online Banking",
+                    RecordedBy = "Marcus Vance",
+                    ReceiptRef = "DLPC-99412"
+                },
+                new ExpenseRecord
+                {
+                    ExpenseId = 3,
+                    CompanyId = ActiveCompanyId,
+                    ExpenseNumber = "EXP-2026-003",
+                    ExpenseDate = DateTime.UtcNow.AddDays(-9),
+                    Category = "Internet & Telecom",
+                    Description = "PLDT Enterprise Fiber Biz Plan 300Mbps (POS, Cloud ERP & Bench)",
+                    Amount = 3500.00m,
+                    PaidTo = "PLDT Enterprise",
+                    PaymentMethod = "Auto-Debit",
+                    RecordedBy = "Marcus Vance",
+                    ReceiptRef = "PLDT-55120"
+                },
+                new ExpenseRecord
+                {
+                    ExpenseId = 4,
+                    CompanyId = ActiveCompanyId,
+                    ExpenseNumber = "EXP-2026-004",
+                    ExpenseDate = DateTime.UtcNow.AddDays(-5),
+                    Category = "Repair Bench Supplies",
+                    Description = "Thermal paste (Noctua NT-H2), solder wire, kapton tape, isopropyl alcohol 99%",
+                    Amount = 4200.00m,
+                    PaidTo = "Davao Electronics & Tools Supply",
+                    PaymentMethod = "Cash",
+                    RecordedBy = "Alex Rodriguez",
+                    ReceiptRef = "INV-3310"
+                },
+                new ExpenseRecord
+                {
+                    ExpenseId = 5,
+                    CompanyId = ActiveCompanyId,
+                    ExpenseNumber = "EXP-2026-005",
+                    ExpenseDate = DateTime.UtcNow.AddDays(-2),
+                    Category = "Store Packaging & Supplies",
+                    Description = "Anti-static bubble wrap, receipt thermal paper rolls (50 rolls), packing tape",
+                    Amount = 1850.00m,
+                    PaidTo = "Mindanao Packaging Depot",
+                    PaymentMethod = "Cash",
+                    RecordedBy = "Camille Dizon",
+                    ReceiptRef = "RCP-7741"
+                }
+            };
+
+            SaveExpensesToLocalCache();
+        }
+
+        public void AddExpense(ExpenseRecord expense)
+        {
+            if (expense == null) return;
+            expense.ExpenseId = (ExpenseRecords.Count > 0 ? ExpenseRecords.Max(e => e.ExpenseId) : 0) + 1;
+            expense.CompanyId = ActiveCompanyId;
+            if (string.IsNullOrWhiteSpace(expense.ExpenseNumber))
+            {
+                expense.ExpenseNumber = $"EXP-{DateTime.UtcNow:yyyyMMdd}-{new Random().Next(100, 999)}";
+            }
+            if (expense.ExpenseDate == default)
+            {
+                expense.ExpenseDate = DateTime.UtcNow;
+            }
+
+            ExpenseRecords.Insert(0, expense);
+            SaveExpensesToLocalCache();
+            ExpensesChanged?.Invoke();
+        }
+
+        public void DeleteExpense(int expenseId)
+        {
+            var exp = ExpenseRecords.FirstOrDefault(e => e.ExpenseId == expenseId);
+            if (exp != null)
+            {
+                ExpenseRecords.Remove(exp);
+                SaveExpensesToLocalCache();
+                ExpensesChanged?.Invoke();
+            }
+        }
+
+        public decimal GetTotalRetailSalesRevenue()
+        {
+            return Orders.Where(o => !string.Equals(o.Status, "Voided", StringComparison.OrdinalIgnoreCase)).Sum(o => o.TotalAmount);
+        }
+
+        public decimal GetTotalRepairServicesRevenue()
+        {
+            return RepairTickets.Where(t => string.Equals(t.Status, "Completed", StringComparison.OrdinalIgnoreCase) || string.Equals(t.Status, "Released", StringComparison.OrdinalIgnoreCase)).Sum(t => t.EstimatedCost);
+        }
+
+        public decimal GetTotalPayrollExpense()
+        {
+            return PayrollRecords.Sum(p => p.NetSalary);
+        }
+
+        public decimal GetTotalOperatingExpenses()
+        {
+            return ExpenseRecords.Sum(e => e.Amount);
+        }
+
+        public decimal GetTotalVatCollected()
+        {
+            return Orders.Where(o => !string.Equals(o.Status, "Voided", StringComparison.OrdinalIgnoreCase)).Sum(o => o.Tax);
+        }
     }
 }
