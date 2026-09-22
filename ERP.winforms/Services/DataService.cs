@@ -1980,7 +1980,23 @@ namespace ERP.winforms.Services
                     var cached = JsonSerializer.Deserialize<List<Customer>>(json);
                     if (cached != null && cached.Count > 0)
                     {
+                        foreach (var c in cached)
+                        {
+                            if (string.IsNullOrWhiteSpace(c.Address) || !c.Address.Contains("Davao", StringComparison.OrdinalIgnoreCase))
+                            {
+                                c.Address = c.CustomerId switch
+                                {
+                                    1 => "J.P. Laurel Ave, Bajada, Davao City",
+                                    2 => "McArthur Highway, Matina, Davao City",
+                                    3 => "Lanang Business Park, Lanang, Davao City",
+                                    4 => "Quimpo Blvd, Ecoland, Davao City",
+                                    5 => "Roxas Ave, Poblacion District, Davao City",
+                                    _ => string.IsNullOrWhiteSpace(c.Address) ? "Poblacion District, Davao City" : $"{c.Address}, Davao City"
+                                };
+                            }
+                        }
                         Customers = cached;
+                        SaveCustomersToLocalCache();
                         return;
                     }
                 }
@@ -2006,7 +2022,7 @@ namespace ERP.winforms.Services
                     CustomerName = "Marco Valderrama",
                     ContactNumber = "0917-555-8912",
                     EmailAddress = "marco.v@gmail.com",
-                    Address = "Kapitolyo, Pasig City",
+                    Address = "J.P. Laurel Ave, Bajada, Davao City",
                     IsActive = true,
                     TotalOrders = 3,
                     TotalSpent = 142500.00m
@@ -2018,7 +2034,7 @@ namespace ERP.winforms.Services
                     CustomerName = "Sarah Jenkins",
                     ContactNumber = "0928-771-3344",
                     EmailAddress = "sarah.j@techhub.ph",
-                    Address = "Ortigas Center, Pasig City",
+                    Address = "McArthur Highway, Matina, Davao City",
                     IsActive = true,
                     TotalOrders = 2,
                     TotalSpent = 78900.00m
@@ -2030,7 +2046,7 @@ namespace ERP.winforms.Services
                     CustomerName = "David Lim",
                     ContactNumber = "0918-333-7890",
                     EmailAddress = "david.lim@outlook.com",
-                    Address = "Greenhills, San Juan",
+                    Address = "Lanang Business Park, Lanang, Davao City",
                     IsActive = true,
                     TotalOrders = 5,
                     TotalSpent = 310200.00m
@@ -2042,7 +2058,7 @@ namespace ERP.winforms.Services
                     CustomerName = "Patricia Santos",
                     ContactNumber = "0905-224-8899",
                     EmailAddress = "patricia.s@bpo-center.com",
-                    Address = "Eastwood City, Quezon City",
+                    Address = "Quimpo Blvd, Ecoland, Davao City",
                     IsActive = true,
                     TotalOrders = 1,
                     TotalSpent = 34500.00m
@@ -2054,7 +2070,7 @@ namespace ERP.winforms.Services
                     CustomerName = "Ateneo Robotics Lab",
                     ContactNumber = "0919-888-4422",
                     EmailAddress = "robotics@ateneo.edu",
-                    Address = "Loyola Heights, Quezon City",
+                    Address = "Roxas Ave, Poblacion District, Davao City",
                     IsActive = true,
                     TotalOrders = 4,
                     TotalSpent = 265000.00m

@@ -104,8 +104,8 @@ namespace ERP.winforms.UI.Dialogs
             card.Controls.Add(_txtEmail);
             y += 35;
 
-            // Address
-            card.Controls.Add(CreateLabel("DELIVERY / BILLING ADDRESS", 15, y));
+            // Address (Davao City Only)
+            card.Controls.Add(CreateLabel("DELIVERY / BILLING ADDRESS (DAVAO CITY ONLY) *", 15, y));
             y += 20;
             _txtAddress = new TextBox
             {
@@ -114,7 +114,8 @@ namespace ERP.winforms.UI.Dialogs
                 Height = 65,
                 Multiline = true,
                 Font = AppTheme.BodyFont,
-                ScrollBars = ScrollBars.Vertical
+                ScrollBars = ScrollBars.Vertical,
+                PlaceholderText = "e.g., Door 3, Bajada, Davao City"
             };
             card.Controls.Add(_txtAddress);
 
@@ -160,12 +161,22 @@ namespace ERP.winforms.UI.Dialogs
         {
             string name = _txtName.Text.Trim();
             string phone = _txtPhone.Text.Trim();
+            string address = _txtAddress.Text.Trim();
 
             if (string.IsNullOrEmpty(name))
             {
                 MessageBox.Show("Please enter the customer name.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 _txtName.Focus();
                 return;
+            }
+
+            if (string.IsNullOrEmpty(address))
+            {
+                address = "Poblacion District, Davao City";
+            }
+            else if (!address.Contains("Davao", StringComparison.OrdinalIgnoreCase))
+            {
+                address = $"{address}, Davao City";
             }
 
             if (_targetCustomer == null)
@@ -175,7 +186,7 @@ namespace ERP.winforms.UI.Dialogs
                     CustomerName = name,
                     ContactNumber = phone,
                     EmailAddress = _txtEmail.Text.Trim(),
-                    Address = _txtAddress.Text.Trim(),
+                    Address = address,
                     IsActive = true,
                     CreatedAt = DateTime.UtcNow
                 };
@@ -188,8 +199,7 @@ namespace ERP.winforms.UI.Dialogs
                 _targetCustomer.CustomerName = name;
                 _targetCustomer.ContactNumber = phone;
                 _targetCustomer.EmailAddress = _txtEmail.Text.Trim();
-                _targetCustomer.Address = _txtAddress.Text.Trim();
-
+                _targetCustomer.Address = address;
                 _dataService.UpdateCustomer(_targetCustomer);
                 ResultCustomer = _targetCustomer;
             }
