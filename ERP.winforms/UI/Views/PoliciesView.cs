@@ -30,7 +30,7 @@ namespace ERP.winforms.UI.Views
         {
             Dock = DockStyle.Fill;
             BackColor = AppTheme.AppBackground;
-            AutoScroll = true;
+            AutoScroll = false;
 
             InitializeLayout();
             _dataService.StorePoliciesChanged += () =>
@@ -47,7 +47,37 @@ namespace ERP.winforms.UI.Views
         {
             Controls.Clear();
 
+            // ========================================================
+            // 1. TOP EXPLANATION BANNER
+            // ========================================================
+            Panel pnlHeader = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 58,
+                Padding = new Padding(20, 10, 20, 8),
+                BackColor = Color.FromArgb(24, 25, 20)
+            };
 
+            Label lblBannerTitle = new Label
+            {
+                Text = "📜 STORE POLICIES, TERMS & LEGAL AGREEMENTS",
+                Font = new Font("Segoe UI", 11F, FontStyle.Bold),
+                ForeColor = AppTheme.HeaderBrandGold,
+                Location = new Point(20, 8),
+                AutoSize = true
+            };
+
+            Label lblBannerSub = new Label
+            {
+                Text = "Manage store customer disclosures, hardware warranty stipulations, diagnostic liability releases, and statutory compliance. Changes save directly to company operations.",
+                Font = new Font("Segoe UI", 8F, FontStyle.Regular),
+                ForeColor = Color.FromArgb(180, 178, 168),
+                Location = new Point(20, 30),
+                AutoSize = true
+            };
+
+            pnlHeader.Controls.Add(lblBannerTitle);
+            pnlHeader.Controls.Add(lblBannerSub);
 
             // ========================================================
             // 2. MAIN SPLIT WORKBENCH (Left Selector + Right Editor)
@@ -55,15 +85,15 @@ namespace ERP.winforms.UI.Views
             Panel pnlMain = new Panel
             {
                 Dock = DockStyle.Fill,
-                Padding = new Padding(20, 8, 20, 14),
+                Padding = new Padding(20, 12, 20, 14),
                 BackColor = Color.Transparent
             };
 
-            // Left Navigation Card (Width: 280px)
+            // Left Navigation Card (Width: 310px)
             SunshineCard cardLeft = new SunshineCard
             {
                 Dock = DockStyle.Left,
-                Width = 300,
+                Width = 310,
                 Padding = new Padding(12),
                 CustomBgColor = Color.White,
                 CustomBorderColor = AppTheme.CardBorder
@@ -75,7 +105,7 @@ namespace ERP.winforms.UI.Views
                 Font = new Font("Segoe UI", 8F, FontStyle.Bold),
                 ForeColor = Color.FromArgb(140, 135, 125),
                 Dock = DockStyle.Top,
-                Height = 26
+                Height = 28
             };
 
             _btnPolWaiver = CreatePolicyNavButton("Repair Diagnostic & Liability Waiver", "RepairLiabilityWaiver");
@@ -84,6 +114,7 @@ namespace ERP.winforms.UI.Views
             _btnPolPrivacy = CreatePolicyNavButton("Customer Data Privacy Notice", "DataPrivacyNotice");
 
             Panel pnlNavButtons = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+            // Add in reverse dock order so Waiver is on top, then Warranty, Returns, Privacy
             pnlNavButtons.Controls.Add(_btnPolPrivacy);
             pnlNavButtons.Controls.Add(_btnPolReturns);
             pnlNavButtons.Controls.Add(_btnPolWarranty);
@@ -101,11 +132,56 @@ namespace ERP.winforms.UI.Views
                 CustomBorderColor = AppTheme.CardBorder
             };
 
+            // Header of Editor: Titles on Left, Actions on Right
             Panel pnlRightHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 60,
+                Height = 58,
                 BackColor = Color.Transparent
+            };
+
+            FlowLayoutPanel pnlActions = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Right,
+                Width = 360,
+                Height = 54,
+                FlowDirection = FlowDirection.RightToLeft,
+                BackColor = Color.Transparent,
+                Padding = new Padding(0, 4, 0, 0)
+            };
+
+            SunshineButton btnSave = new SunshineButton
+            {
+                Text = "💾 Save & Publish Policy",
+                IsPrimary = true,
+                Size = new Size(185, 38),
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                Margin = new Padding(6, 0, 0, 0)
+            };
+            btnSave.Click += OnSavePolicy;
+
+            Button btnPrint = new Button
+            {
+                Text = "🖨️ Print Agreement",
+                Size = new Size(145, 38),
+                FlatStyle = FlatStyle.Flat,
+                Font = AppTheme.BodyFont,
+                BackColor = Color.FromArgb(244, 242, 235),
+                ForeColor = AppTheme.TextDark,
+                Margin = new Padding(6, 0, 0, 0),
+                Cursor = Cursors.Hand
+            };
+            btnPrint.FlatAppearance.BorderColor = Color.FromArgb(220, 215, 205);
+            btnPrint.Click += OnPrintPolicy;
+
+            pnlActions.Controls.Add(btnSave);
+            pnlActions.Controls.Add(btnPrint);
+
+            Panel pnlTitles = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.Transparent,
+                Padding = new Padding(0, 4, 10, 0)
             };
 
             _lblPolicyTitle = new Label
@@ -113,48 +189,27 @@ namespace ERP.winforms.UI.Views
                 Text = "Service & Repair Diagnostic Waiver",
                 Font = new Font("Segoe UI", 13F, FontStyle.Bold),
                 ForeColor = AppTheme.TextDark,
-                Location = new Point(0, 4),
-                Size = new Size(500, 26)
+                Dock = DockStyle.Top,
+                Height = 28,
+                AutoEllipsis = true
             };
 
             _lblPolicyMeta = new Label
             {
-                Text = "Last updated by Admin (Cirunay) | Applicable to Tenant B Operations",
+                Text = "Last updated by Admin (Cirunay) | Applicable to Active Store Operations",
                 Font = new Font("Segoe UI", 8F, FontStyle.Regular),
                 ForeColor = Color.FromArgb(130, 125, 115),
-                Location = new Point(0, 32),
-                Size = new Size(500, 18)
+                Dock = DockStyle.Top,
+                Height = 20,
+                AutoEllipsis = true
             };
 
-            SunshineButton btnSave = new SunshineButton
-            {
-                Text = "💾 Save & Publish Policy",
-                IsPrimary = true,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(cardRight.Width - 210, 8),
-                Size = new Size(185, 36),
-                Font = new Font("Segoe UI", 9F, FontStyle.Bold)
-            };
-            btnSave.Click += OnSavePolicy;
+            pnlTitles.Controls.Add(_lblPolicyMeta);
+            pnlTitles.Controls.Add(_lblPolicyTitle);
+            _lblPolicyTitle.BringToFront();
 
-            Button btnPrint = new Button
-            {
-                Text = "🖨️ Print Agreement",
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                Location = new Point(cardRight.Width - 365, 8),
-                Size = new Size(145, 36),
-                FlatStyle = FlatStyle.Flat,
-                Font = AppTheme.BodyFont,
-                BackColor = Color.FromArgb(240, 238, 230),
-                ForeColor = AppTheme.TextDark
-            };
-            btnPrint.FlatAppearance.BorderSize = 0;
-            btnPrint.Click += OnPrintPolicy;
-
-            pnlRightHeader.Controls.Add(_lblPolicyTitle);
-            pnlRightHeader.Controls.Add(_lblPolicyMeta);
-            pnlRightHeader.Controls.Add(btnSave);
-            pnlRightHeader.Controls.Add(btnPrint);
+            pnlRightHeader.Controls.Add(pnlTitles);
+            pnlRightHeader.Controls.Add(pnlActions);
 
             // Editor Box
             Panel pnlEditorBorder = new Panel
@@ -192,6 +247,7 @@ namespace ERP.winforms.UI.Views
             pnlMain.Controls.Add(cardLeft);
 
             Controls.Add(pnlMain);
+            Controls.Add(pnlHeader);
         }
 
         private Button CreatePolicyNavButton(string text, string policyType)
@@ -206,7 +262,8 @@ namespace ERP.winforms.UI.Views
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
                 TextAlign = ContentAlignment.MiddleLeft,
                 Padding = new Padding(12, 0, 0, 0),
-                Cursor = Cursors.Hand
+                Cursor = Cursors.Hand,
+                Margin = new Padding(0, 0, 0, 4)
             };
             btn.FlatAppearance.BorderSize = 0;
             btn.Click += (s, e) => LoadSelectedPolicy(policyType);
@@ -222,7 +279,7 @@ namespace ERP.winforms.UI.Views
             if (policy != null)
             {
                 _lblPolicyTitle.Text = policy.Title;
-                _lblPolicyMeta.Text = $"Last updated: {policy.UpdatedAt.ToLocalTime():MMM dd, yyyy hh:mm tt} by {policy.LastUpdatedBy}  |  Applies to Tenant B Operations";
+                _lblPolicyMeta.Text = $"Last updated: {policy.UpdatedAt.ToLocalTime():MMM dd, yyyy hh:mm tt} by {policy.LastUpdatedBy}  |  Applies to Active Store Operations";
                 _txtPolicyContent.Text = policy.ContentText;
             }
             else
