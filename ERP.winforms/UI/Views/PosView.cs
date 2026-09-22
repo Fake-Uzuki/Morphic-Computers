@@ -28,6 +28,7 @@ namespace ERP.winforms.UI.Views
         private Label _lblCartSummary = null!;
         private SunshineButton _btnCheckout = null!;
 
+        private ComboBox _cboCashier = null!;
         private ComboBox _cboCustomer = null!;
         private Customer? _selectedCustomer;
         private decimal _appliedDiscount = 0;
@@ -68,6 +69,21 @@ namespace ERP.winforms.UI.Views
                     else
                     {
                         PopulatePosCustomers();
+                    }
+                }
+            };
+
+            _dataService.StaffMembersChanged += () =>
+            {
+                if (IsHandleCreated && !IsDisposed)
+                {
+                    if (InvokeRequired)
+                    {
+                        BeginInvoke(new Action(() => PopulateCashiers()));
+                    }
+                    else
+                    {
+                        PopulateCashiers();
                     }
                 }
             };
@@ -175,20 +191,30 @@ namespace ERP.winforms.UI.Views
             pnlCartHeader.Controls.Add(lblCartTitle);
             pnlCartHeader.Controls.Add(pnlTrans);
 
-            // 2. Customer Selection Bar
-            Panel pnlCustomer = new Panel { Dock = DockStyle.Top, Height = 40, BackColor = Color.FromArgb(254, 252, 245), Margin = new Padding(0, 4, 0, 6) };
+            // 2. Cashier & Customer Selection Bar (Stacked neatly)
+            Panel pnlCustomer = new Panel { Dock = DockStyle.Top, Height = 68, BackColor = Color.FromArgb(254, 252, 245), Margin = new Padding(0, 4, 0, 6) };
             pnlCustomer.Paint += (s, e) =>
             {
                 using Pen pen = new Pen(Color.FromArgb(235, 230, 218), 1);
                 e.Graphics.DrawRectangle(pen, 0, 0, pnlCustomer.Width - 1, pnlCustomer.Height - 1);
             };
 
-            Label lblCustPrompt = new Label { Text = "Client:", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = AppTheme.TextMuted, Location = new Point(8, 10), AutoSize = true };
+            Label lblCashierPrompt = new Label { Text = "Cashier:", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = AppTheme.TextMuted, Location = new Point(8, 8), AutoSize = true };
+            _cboCashier = new ComboBox
+            {
+                Location = new Point(66, 6),
+                Width = cardCart.Width - 90,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                Font = new Font("Segoe UI", 8.5F),
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            PopulateCashiers();
 
+            Label lblCustPrompt = new Label { Text = "Client:", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = AppTheme.TextMuted, Location = new Point(8, 38), AutoSize = true };
             _cboCustomer = new ComboBox
             {
-                Location = new Point(70, 7),
-                Width = cardCart.Width - 95,
+                Location = new Point(66, 36),
+                Width = cardCart.Width - 90,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Font = new Font("Segoe UI", 8.5F),
                 DropDownStyle = ComboBoxStyle.DropDownList
@@ -208,6 +234,8 @@ namespace ERP.winforms.UI.Views
                 }
             };
 
+            pnlCustomer.Controls.Add(lblCashierPrompt);
+            pnlCustomer.Controls.Add(_cboCashier);
             pnlCustomer.Controls.Add(lblCustPrompt);
             pnlCustomer.Controls.Add(_cboCustomer);
 
@@ -252,7 +280,7 @@ namespace ERP.winforms.UI.Views
             _gridCart.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PRICE", FillWeight = 18, Name = "ColPrice" });
             _gridCart.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "QTY", FillWeight = 12, Name = "ColQty" });
             _gridCart.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TOTAL (PHP)", FillWeight = 18, Name = "ColTotal" });
-            _gridCart.Columns.Add(new DataGridViewButtonColumn { HeaderText = "ACTION", FillWeight = 14, Name = "ColRemove" });
+            _gridCart.Columns.Add(new DataGridViewButtonColumn { HeaderText = "ACTION", FillWeight = 16, Name = "ColRemove" });
 
             _gridCart.CellContentClick += (s, e) =>
             {
@@ -260,19 +288,27 @@ namespace ERP.winforms.UI.Views
                 {
                     if (e.RowIndex < _cart.Count)
                     {
-                        _cart.RemoveAt(e.RowIndex);
-                        UpdateCartTotals();
+                        var itemToVoid = _cart[e.RowIndex];
+                        string cashier = _cboCashier?.SelectedItem?.ToString() ?? "Alex M. (Cashier)";
+                        using var dlg = new VoidCartItemDialog(itemToVoid, cashier);
+                        var res = dlg.ShowDialog(this);
+                        if (res == DialogResult.OK && dlg.IsVoidApproved)
+                        {
+                            _cart.RemoveAt(e.RowIndex);
+                            UpdateCartTotals();
+                            MessageBox.Show($"Line item '{itemToVoid.ProductName}' has been successfully voided.\nReason: {dlg.VoidReason}\nApproval record recorded in Approvals module.", "Item Voided", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
                     }
                 }
             };
 
-            // 4. Cart Sub-note: Items count and Clear Cart button
+            // 4. Cart Sub-note: Items count and Void Entire Cart button
             Panel pnlNote = new Panel { Dock = DockStyle.Bottom, Height = 26 };
             _lblCartSummary = new Label { Text = "Cart Items: 0 lines (0 units)", Font = new Font("Segoe UI", 7.5F, FontStyle.Regular), ForeColor = AppTheme.TextMuted, Location = new Point(0, 4), AutoSize = true };
 
             Button btnClearCart = new Button
             {
-                Text = "🗑️ Clear Cart",
+                Text = "⛔ Void Cart",
                 Font = new Font("Segoe UI", 7F, FontStyle.Bold),
                 ForeColor = Color.FromArgb(184, 50, 38),
                 BackColor = Color.FromArgb(254, 242, 242),
@@ -283,16 +319,7 @@ namespace ERP.winforms.UI.Views
                 Cursor = Cursors.Hand
             };
             btnClearCart.FlatAppearance.BorderColor = Color.FromArgb(240, 200, 200);
-            btnClearCart.Click += (s, e) =>
-            {
-                if (_cart.Count == 0) return;
-                var res = MessageBox.Show("Remove all items from the current cart?", "Clear Cart", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-                if (res == DialogResult.Yes)
-                {
-                    _cart.Clear();
-                    UpdateCartTotals();
-                }
-            };
+            btnClearCart.Click += (s, e) => VoidEntireCart();
 
             pnlNote.Controls.Add(_lblCartSummary);
             pnlNote.Controls.Add(btnClearCart);
@@ -362,17 +389,13 @@ namespace ERP.winforms.UI.Views
 
             SunshineButton btnClear = new SunshineButton
             {
-                Text = "Clear Cart",
+                Text = "⛔ Void Cart",
                 IsPrimary = false,
                 Location = new Point(0, 6),
                 Size = new Size(95, 38),
                 Font = new Font("Segoe UI", 8F, FontStyle.Bold)
             };
-            btnClear.Click += (s, e) =>
-            {
-                _cart.Clear();
-                UpdateCartTotals();
-            };
+            btnClear.Click += (s, e) => VoidEntireCart();
 
             SunshineButton btnHold = new SunshineButton
             {
@@ -604,7 +627,7 @@ namespace ERP.winforms.UI.Views
             {
                 subtotal += item.TotalPrice;
                 totalUnits += item.Quantity;
-                int rIdx = _gridCart.Rows.Add(item.ProductName, $"₱{item.UnitPrice:N2}", item.Quantity, $"₱{item.TotalPrice:N2}", "❌ Remove");
+                int rIdx = _gridCart.Rows.Add(item.ProductName, $"₱{item.UnitPrice:N2}", item.Quantity, $"₱{item.TotalPrice:N2}", "⛔ Void");
                 var r = _gridCart.Rows[rIdx];
                 r.Cells["ColRemove"].Style.ForeColor = Color.FromArgb(184, 50, 38);
                 r.Cells["ColRemove"].Style.Font = new Font("Segoe UI", 7.5F, FontStyle.Bold);
@@ -671,11 +694,13 @@ namespace ERP.winforms.UI.Views
             decimal total = netSubtotal + tax;
 
             string custName = _selectedCustomer != null ? _selectedCustomer.CustomerName : "Walk-in Customer";
+            string cashier = _cboCashier?.SelectedItem?.ToString() ?? "Alex M. (Cashier)";
 
             Order order = new Order
             {
                 CompanyId = _dataService.ActiveCompanyId,
                 CustomerName = custName,
+                CashierName = cashier,
                 CreatedAt = DateTime.Now,
                 Items = new List<CartItem>(_cart),
                 Subtotal = subtotal,
@@ -696,6 +721,75 @@ namespace ERP.winforms.UI.Views
                 PopulateCatalog();
                 OnOrderCompleted?.Invoke();
             }
+        }
+
+        private void PopulateCashiers()
+        {
+            if (_cboCashier == null) return;
+            string current = _cboCashier.SelectedItem?.ToString() ?? "";
+            _cboCashier.Items.Clear();
+
+            var activeStaff = _dataService.StaffMembers.Where(s => s.IsActive).ToList();
+            if (activeStaff.Count > 0)
+            {
+                foreach (var s in activeStaff)
+                {
+                    _cboCashier.Items.Add($"{s.FullName} ({s.Role})");
+                }
+            }
+            else
+            {
+                _cboCashier.Items.Add("Alex M. (Cashier)");
+                _cboCashier.Items.Add("Elena Ramos (Senior Cashier)");
+                _cboCashier.Items.Add("Cirunay (Store Administrator)");
+            }
+
+            if (!string.IsNullOrEmpty(current) && _cboCashier.Items.Contains(current))
+            {
+                _cboCashier.SelectedItem = current;
+            }
+            else
+            {
+                _cboCashier.SelectedIndex = 0;
+            }
+        }
+
+        private void VoidEntireCart()
+        {
+            if (_cart.Count == 0) return;
+            decimal totalCart = _cart.Sum(c => c.TotalPrice);
+            var res = MessageBox.Show(
+                $"Void and cancel the entire active cart ({_cart.Count} lines, total ₱{totalCart:N2})?\n\nThis will abort the transaction and record an audit log in Approvals.",
+                "Confirm Void Entire Cart",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+
+            if (res != DialogResult.Yes) return;
+
+            string cashier = _cboCashier?.SelectedItem?.ToString() ?? "Alex M. (Cashier)";
+            _dataService.ApprovalRequests.Insert(0, new ApprovalRequest
+            {
+                RequestId = (_dataService.ApprovalRequests.Count > 0 ? _dataService.ApprovalRequests.Max(r => r.RequestId) : 0) + 1,
+                CompanyId = _dataService.ActiveCompanyId,
+                RequestNumber = $"VOID-CART-{DateTime.Now:yyMMdd}-{new Random().Next(100, 999)}",
+                RequestType = "POS Entire Cart Void",
+                Title = $"Cart Voided ({_cart.Count} items)",
+                RequestedAmount = totalCart,
+                RequestedBy = cashier,
+                ReviewedBy = "Counter Operator",
+                Status = "Approved",
+                ReasonDescription = $"Cashier {cashier} voided entire cart containing {_cart.Count} items totaling ₱{totalCart:N2}.",
+                ReviewNotes = "Active counter session cancelled and voided.",
+                CreatedAt = DateTime.UtcNow,
+                ResolvedAt = DateTime.UtcNow
+            });
+            _dataService.SaveApprovalsToLocalCache();
+
+            _cart.Clear();
+            _appliedDiscount = 0;
+            _discountReason = "";
+            UpdateCartTotals();
+            MessageBox.Show("Active cart has been voided. Audit entry recorded in the Approvals module.", "Cart Voided", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private void PopulateCategoryTabs()

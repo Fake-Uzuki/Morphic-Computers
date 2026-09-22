@@ -76,7 +76,7 @@ namespace ERP.winforms.UI.Views
                     Date = o.CreatedAt,
                     ItemsSummary = $"{o.Items.Count} items purchased",
                     PaymentMethod = o.PaymentMethod,
-                    Cashier = "Terminal 1",
+                    Cashier = string.IsNullOrWhiteSpace(o.CashierName) ? "Alex M. (Cashier)" : o.CashierName,
                     Tax = o.Tax,
                     Total = o.TotalAmount,
                     Status = string.IsNullOrWhiteSpace(o.Status) ? "Completed" : o.Status
@@ -373,7 +373,7 @@ namespace ERP.winforms.UI.Views
             _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "DATE & TIME", FillWeight = 11, MinimumWidth = 100, Name = "ColDate" });
             _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ITEMS", FillWeight = 12, MinimumWidth = 95, Name = "ColItems" });
             _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PAYMENT", FillWeight = 10, MinimumWidth = 85, Name = "ColPay" });
-            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "REGISTER", FillWeight = 9, MinimumWidth = 80, Name = "ColCashier" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CASHIER / OPERATOR", FillWeight = 12, MinimumWidth = 110, Name = "ColCashier" });
             _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TAX (12%)", FillWeight = 7, MinimumWidth = 70, Name = "ColTax" });
             _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TOTAL (PHP)", FillWeight = 11, MinimumWidth = 90, Name = "ColTotal" });
             _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STATUS", FillWeight = 8, MinimumWidth = 80, Name = "ColStatus" });

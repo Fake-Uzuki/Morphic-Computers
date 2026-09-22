@@ -67,11 +67,11 @@ namespace ERP.winforms.UI.Dialogs
 
             Label lblInfo = new Label
             {
-                Text = $"Order ID: {_order.Id}\nCustomer: {_order.CustomerName}\nDate: {_order.CreatedAt:g}\nPayment: {_order.PaymentMethod}",
+                Text = $"Order ID: {_order.Id}\nCustomer: {_order.CustomerName}\nCashier: {_order.CashierName}\nDate: {_order.CreatedAt:g}\nPayment: {_order.PaymentMethod}",
                 Font = AppTheme.BodyFont,
                 ForeColor = AppTheme.TextDark,
                 Location = new Point(24, 88),
-                Size = new Size(402, 70)
+                Size = new Size(402, 80)
             };
 
             ListBox lstItems = new ListBox

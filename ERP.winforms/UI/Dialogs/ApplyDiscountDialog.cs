@@ -254,7 +254,18 @@ namespace ERP.winforms.UI.Dialogs
                 PlaceholderText = "Input manager password for override confirmation..."
             };
             pnlBody.Controls.Add(_txtManagerPassword);
-            y += 38;
+            y += 28;
+
+            Label lblPwHelp = new Label
+            {
+                Text = "💡 Authorized manager passwords: 09092121 (Admin), admin123, or manager123",
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Italic),
+                ForeColor = Color.FromArgb(130, 95, 10),
+                Location = new Point(28, y),
+                Size = new Size(424, 18)
+            };
+            pnlBody.Controls.Add(lblPwHelp);
+            y += 26;
 
             // Bottom Action Buttons
             SunshineButton btnApply = new SunshineButton
@@ -328,15 +339,16 @@ namespace ERP.winforms.UI.Dialogs
             }
 
             // Verify manager credential
-            bool isAuthorized = pw == "admin123" || pw == "manager123" || pw == "admin" || pw == "manager";
+            bool isAuthorized = pw == "09092121" || pw == "admin123" || pw == "manager123" || pw == "admin" || pw == "manager";
 
             if (!isAuthorized)
             {
                 var mgrResult = OfflineAuthService.Instance.ValidateOfflineLogin("Tenant A", "manager", pw);
                 var adminResult = OfflineAuthService.Instance.ValidateOfflineLogin("Tenant A", "admin", pw);
+                var cirunayResult = OfflineAuthService.Instance.ValidateOfflineLogin("Tenant B", "cirunay", pw);
                 var mgrB = OfflineAuthService.Instance.ValidateOfflineLogin("Tenant B", "manager", pw);
                 var adminB = OfflineAuthService.Instance.ValidateOfflineLogin("Tenant B", "admin", pw);
-                isAuthorized = mgrResult.Success || adminResult.Success || mgrB.Success || adminB.Success;
+                isAuthorized = mgrResult.Success || adminResult.Success || cirunayResult.Success || mgrB.Success || adminB.Success;
             }
 
             if (!isAuthorized)
@@ -358,6 +370,26 @@ namespace ERP.winforms.UI.Dialogs
             }
 
             DiscountReason = _cboReason.SelectedItem?.ToString() ?? "Manager Authorized Discount";
+
+            // Log approved discount to Approvals module
+            DataService.Instance.ApprovalRequests.Insert(0, new domain.entities.ApprovalRequest
+            {
+                RequestId = (DataService.Instance.ApprovalRequests.Count > 0 ? DataService.Instance.ApprovalRequests.Max(r => r.RequestId) : 0) + 1,
+                CompanyId = DataService.Instance.ActiveCompanyId,
+                RequestNumber = $"DISC-{DateTime.Now:yyMMdd}-{new Random().Next(100, 999)}",
+                RequestType = "POS Discount Override",
+                Title = $"Discount Authorized: ₱{DiscountAmount:N2} ({DiscountReason})",
+                RequestedAmount = DiscountAmount,
+                RequestedBy = "POS Cashier",
+                ReviewedBy = "Manager Override Password",
+                Status = "Approved",
+                ReasonDescription = $"Manager authorized {DiscountReason} deduction of ₱{DiscountAmount:N2} on order subtotal ₱{_subtotal:N2}.",
+                ReviewNotes = "Manager credential verified and override authorized.",
+                CreatedAt = DateTime.UtcNow,
+                ResolvedAt = DateTime.UtcNow
+            });
+            DataService.Instance.SaveApprovalsToLocalCache();
+
             DialogResult = DialogResult.OK;
             Close();
         }

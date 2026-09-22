@@ -22,5 +22,6 @@ namespace ERP.domain.entities
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? ResolvedAt { get; set; }
+        public string? TargetReferenceId { get; set; }
     }
 }
