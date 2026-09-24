@@ -158,11 +158,6 @@ namespace ERP.winforms.Services
 
         public void LoadFromDatabase()
         {
-            // Ensure local cache is in memory immediately
-            if (Categories.Count == 0) LoadCategoriesFromLocalCache();
-            if (Products.Count == 0) LoadProductsToLocalCache();
-            if (Orders.Count == 0) LoadOrdersFromLocalCache();
-
             // Instant short-circuit if machine has no Wi-Fi / network connection
             if (!NetworkInterface.GetIsNetworkAvailable())
             {
@@ -171,21 +166,25 @@ namespace ERP.winforms.Services
                 return;
             }
 
+            bool anyApiSucceeded = false;
+
             try
             {
-                // 1. Fetch live categories for the active tenant
+                // 1. Fetch live categories for the active tenant via API
                 var liveCategories = Task.Run(() => _apiClient.GetCategoriesAsync(ActiveCompanyId)).GetAwaiter().GetResult();
-                if (liveCategories != null && liveCategories.Count > 0)
+                if (liveCategories != null)
                 {
+                    anyApiSucceeded = true;
                     Categories = liveCategories;
                     SaveCategoriesToLocalCache();
                     CategoriesChanged?.Invoke();
                 }
 
-                // 2. Fetch live products for the active tenant
+                // 2. Fetch live products for the active tenant via API
                 var liveProducts = Task.Run(() => _apiClient.GetProductsAsync(ActiveCompanyId)).GetAwaiter().GetResult();
-                if (liveProducts != null && liveProducts.Count > 0)
+                if (liveProducts != null)
                 {
+                    anyApiSucceeded = true;
                     Products = liveProducts
                         .GroupBy(p => p.ProductCode)
                         .Select(g => g.First())
@@ -213,15 +212,14 @@ namespace ERP.winforms.Services
                     }
 
                     SaveProductsToLocalCache();
-                    IsUsingLiveCloudDatabase = true;
                     ProductsChanged?.Invoke();
-                    ConnectionStatusChanged?.Invoke(true);
                 }
 
-                // 3. Fetch live orders for the active tenant through ERP.api / MonsterASP DB
+                // 3. Fetch live orders for the active tenant via API
                 var liveOrders = Task.Run(() => _apiClient.GetOrdersAsync(ActiveCompanyId)).GetAwaiter().GetResult();
-                if (liveOrders != null && liveOrders.Count > 0)
+                if (liveOrders != null)
                 {
+                    anyApiSucceeded = true;
                     Orders = liveOrders
                         .GroupBy(o => o.Id)
                         .Select(g => g.First())
@@ -229,7 +227,77 @@ namespace ERP.winforms.Services
                         .ToList();
 
                     SaveOrdersToLocalCache();
-                    return;
+                    OrdersChanged?.Invoke();
+                }
+
+                // 4. Fetch live repairs for the active tenant via API
+                var liveRepairs = Task.Run(() => _apiClient.GetRepairsAsync(ActiveCompanyId)).GetAwaiter().GetResult();
+                if (liveRepairs != null)
+                {
+                    anyApiSucceeded = true;
+                    RepairTickets = liveRepairs;
+                    SaveRepairsToLocalCache();
+                    RepairTicketsChanged?.Invoke();
+                }
+
+                // 5. Fetch live suppliers for the active tenant via API
+                var liveSuppliers = Task.Run(() => _apiClient.GetSuppliersAsync(ActiveCompanyId)).GetAwaiter().GetResult();
+                if (liveSuppliers != null)
+                {
+                    anyApiSucceeded = true;
+                    Suppliers = liveSuppliers;
+                    SaveSuppliersToLocalCache();
+                    SuppliersChanged?.Invoke();
+                }
+
+                // 6. Fetch live staff for the active tenant via API
+                var liveStaff = Task.Run(() => _apiClient.GetStaffAsync(ActiveCompanyId)).GetAwaiter().GetResult();
+                if (liveStaff != null)
+                {
+                    anyApiSucceeded = true;
+                    StaffMembers = liveStaff;
+                    SaveStaffToLocalCache();
+                    StaffMembersChanged?.Invoke();
+                }
+
+                // 7. Fetch live approvals for the active tenant via API
+                var liveApprovals = Task.Run(() => _apiClient.GetApprovalRequestsAsync(ActiveCompanyId)).GetAwaiter().GetResult();
+                if (liveApprovals != null)
+                {
+                    anyApiSucceeded = true;
+                    ApprovalRequests = liveApprovals;
+                    SaveApprovalsToLocalCache();
+                    ApprovalRequestsChanged?.Invoke();
+                }
+
+                // 8. Fetch live customers for the active tenant via API
+                var liveCustomers = Task.Run(() => _apiClient.GetCustomersAsync(ActiveCompanyId)).GetAwaiter().GetResult();
+                if (liveCustomers != null)
+                {
+                    anyApiSucceeded = true;
+                    Customers = liveCustomers;
+                    SaveCustomersToLocalCache();
+                    CustomersChanged?.Invoke();
+                }
+
+                // 9. Fetch live payroll for the active tenant via API
+                var livePayroll = Task.Run(() => _apiClient.GetPayrollAsync(ActiveCompanyId)).GetAwaiter().GetResult();
+                if (livePayroll != null)
+                {
+                    anyApiSucceeded = true;
+                    PayrollRecords = livePayroll;
+                    SavePayrollToLocalCache();
+                    PayrollRecordsChanged?.Invoke();
+                }
+
+                // 10. Fetch live policies for the active tenant via API
+                var livePolicies = Task.Run(() => _apiClient.GetPoliciesAsync(ActiveCompanyId)).GetAwaiter().GetResult();
+                if (livePolicies != null)
+                {
+                    anyApiSucceeded = true;
+                    StorePolicies = livePolicies;
+                    SavePoliciesToLocalCache();
+                    StorePoliciesChanged?.Invoke();
                 }
             }
             catch (Exception ex)
@@ -237,12 +305,28 @@ namespace ERP.winforms.Services
                 System.Diagnostics.Debug.WriteLine($"DataService.LoadFromDatabase note: {ex.Message}");
             }
 
-            // If empty after online attempt, ensure local cache is loaded
-            if (Categories.Count == 0) LoadCategoriesFromLocalCache();
-            if (Products.Count == 0) LoadProductsToLocalCache();
-            if (Orders.Count == 0) LoadOrdersFromLocalCache();
-            IsUsingLiveCloudDatabase = false;
-            ConnectionStatusChanged?.Invoke(false);
+            if (anyApiSucceeded)
+            {
+                IsUsingLiveCloudDatabase = true;
+                ConnectionStatusChanged?.Invoke(true);
+            }
+            else
+            {
+                // Only fall back to local cache when the API request actually failed/unavailable
+                if (Categories.Count == 0) LoadCategoriesFromLocalCache();
+                if (Products.Count == 0) LoadProductsToLocalCache();
+                if (Orders.Count == 0) LoadOrdersFromLocalCache();
+                if (RepairTickets.Count == 0) LoadRepairsFromLocalCache();
+                if (Suppliers.Count == 0) LoadSuppliersFromLocalCache();
+                if (StaffMembers.Count == 0) LoadStaffFromLocalCache();
+                if (ApprovalRequests.Count == 0) LoadApprovalsFromLocalCache();
+                if (Customers.Count == 0) LoadCustomersFromLocalCache();
+                if (PayrollRecords.Count == 0) LoadPayrollFromLocalCache();
+                if (StorePolicies.Count == 0) LoadPoliciesFromLocalCache();
+
+                IsUsingLiveCloudDatabase = false;
+                ConnectionStatusChanged?.Invoke(false);
+            }
         }
 
         private string GetLocalOrdersFilePath()

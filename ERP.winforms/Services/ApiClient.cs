@@ -312,7 +312,7 @@ namespace ERP.winforms.Services
         /// <summary>
         /// Retrieves all orders for the specified tenant from ERP.api / MonsterASP DB.
         /// </summary>
-        public async Task<List<Order>> GetOrdersAsync(int companyId)
+        public async Task<List<Order>?> GetOrdersAsync(int companyId)
         {
             try
             {
@@ -327,7 +327,7 @@ namespace ERP.winforms.Services
             {
                 System.Diagnostics.Debug.WriteLine($"ApiClient GetOrders error: {ex.Message}");
             }
-            return new List<Order>();
+            return null;
         }
 
         /// <summary>
@@ -367,7 +367,7 @@ namespace ERP.winforms.Services
         // ==========================================
         // SERVICE & REPAIR MANAGEMENT (Tenant B)
         // ==========================================
-        public async Task<List<RepairTicket>> GetRepairsAsync(int companyId)
+        public async Task<List<RepairTicket>?> GetRepairsAsync(int companyId)
         {
             try
             {
@@ -382,7 +382,7 @@ namespace ERP.winforms.Services
             {
                 System.Diagnostics.Debug.WriteLine($"ApiClient GetRepairs error: {ex.Message}");
             }
-            return new List<RepairTicket>();
+            return null;
         }
 
         public async Task<bool> CreateRepairTicketAsync(int companyId, RepairTicket ticket)
@@ -430,7 +430,7 @@ namespace ERP.winforms.Services
         // ==========================================
         // SUPPLIER MANAGEMENT (Tenant B)
         // ==========================================
-        public async Task<List<Supplier>> GetSuppliersAsync(int companyId)
+        public async Task<List<Supplier>?> GetSuppliersAsync(int companyId)
         {
             try
             {
@@ -445,7 +445,7 @@ namespace ERP.winforms.Services
             {
                 System.Diagnostics.Debug.WriteLine($"ApiClient GetSuppliers error: {ex.Message}");
             }
-            return new List<Supplier>();
+            return null;
         }
 
         public async Task<bool> CreateSupplierAsync(int companyId, Supplier supplier)
@@ -493,7 +493,7 @@ namespace ERP.winforms.Services
         // ==========================================
         // STAFF MANAGEMENT (Tenant B)
         // ==========================================
-        public async Task<List<StaffMember>> GetStaffAsync(int companyId)
+        public async Task<List<StaffMember>?> GetStaffAsync(int companyId)
         {
             try
             {
@@ -508,7 +508,7 @@ namespace ERP.winforms.Services
             {
                 System.Diagnostics.Debug.WriteLine($"ApiClient GetStaff error: {ex.Message}");
             }
-            return new List<StaffMember>();
+            return null;
         }
 
         public async Task<bool> CreateStaffAsync(int companyId, StaffMember staff)
@@ -556,7 +556,7 @@ namespace ERP.winforms.Services
         // ==========================================
         // WORKFLOW & APPROVAL SYSTEM (Tenant B)
         // ==========================================
-        public async Task<List<ApprovalRequest>> GetApprovalRequestsAsync(int companyId, string? status = null)
+        public async Task<List<ApprovalRequest>?> GetApprovalRequestsAsync(int companyId, string? status = null)
         {
             try
             {
@@ -572,7 +572,7 @@ namespace ERP.winforms.Services
             {
                 System.Diagnostics.Debug.WriteLine($"ApiClient GetApprovalRequests error: {ex.Message}");
             }
-            return new List<ApprovalRequest>();
+            return null;
         }
 
         public async Task<bool> CreateApprovalRequestAsync(int companyId, ApprovalRequest request)
@@ -606,7 +606,7 @@ namespace ERP.winforms.Services
         // ==========================================
         // CUSTOMER MANAGEMENT (Tenant B)
         // ==========================================
-        public async Task<List<Customer>> GetCustomersAsync(int companyId)
+        public async Task<List<Customer>?> GetCustomersAsync(int companyId)
         {
             try
             {
@@ -621,7 +621,7 @@ namespace ERP.winforms.Services
             {
                 System.Diagnostics.Debug.WriteLine($"ApiClient GetCustomers error: {ex.Message}");
             }
-            return new List<Customer>();
+            return null;
         }
 
         public async Task<bool> CreateCustomerAsync(int companyId, Customer customer)
@@ -669,7 +669,7 @@ namespace ERP.winforms.Services
         // ==========================================
         // STORE PAYROLL (Tenant B)
         // ==========================================
-        public async Task<List<PayrollRecord>> GetPayrollAsync(int companyId)
+        public async Task<List<PayrollRecord>?> GetPayrollAsync(int companyId)
         {
             try
             {
@@ -684,7 +684,7 @@ namespace ERP.winforms.Services
             {
                 System.Diagnostics.Debug.WriteLine($"ApiClient GetPayroll error: {ex.Message}");
             }
-            return new List<PayrollRecord>();
+            return null;
         }
 
         public async Task<bool> CreatePayrollRecordAsync(int companyId, PayrollRecord record)
@@ -704,7 +704,7 @@ namespace ERP.winforms.Services
         // ==========================================
         // TERMS, POLICIES & AGREEMENTS (Tenant B)
         // ==========================================
-        public async Task<List<StorePolicy>> GetPoliciesAsync(int companyId)
+        public async Task<List<StorePolicy>?> GetPoliciesAsync(int companyId)
         {
             try
             {
@@ -719,7 +719,7 @@ namespace ERP.winforms.Services
             {
                 System.Diagnostics.Debug.WriteLine($"ApiClient GetPolicies error: {ex.Message}");
             }
-            return new List<StorePolicy>();
+            return null;
         }
 
         public async Task<bool> UpdatePolicyAsync(int companyId, string policyType, string content, string updatedBy)
