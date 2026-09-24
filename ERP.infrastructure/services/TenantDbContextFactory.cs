@@ -23,28 +23,44 @@ namespace ERP.infrastructure.services
         {
             var databaseInfo = await _resolver.GetDatabaseInfoAsync(companyId);
 
-            var userId = _configuration[
-                $"TenantCredentials:{databaseInfo.CredentialKey}:UserId"];
-
-            var password = _configuration[
-                $"TenantCredentials:{databaseInfo.CredentialKey}:Password"];
-
-            if (string.IsNullOrWhiteSpace(userId) ||
-                string.IsNullOrWhiteSpace(password))
+            string connectionString;
+            if (string.Equals(databaseInfo.CredentialKey, "LocalTrusted", StringComparison.OrdinalIgnoreCase) ||
+                databaseInfo.ServerName.Contains("localdb", StringComparison.OrdinalIgnoreCase))
             {
-                throw new InvalidOperationException(
-                    $"Tenant credentials for '{databaseInfo.CredentialKey}' are not configured in application settings.");
+                connectionString =
+                    $"Server={databaseInfo.ServerName};" +
+                    $"Database={databaseInfo.DatabaseName};" +
+                    $"Trusted_Connection=True;" +
+                    $"Encrypt=False;" +
+                    $"TrustServerCertificate=True;" +
+                    $"MultipleActiveResultSets=True;" +
+                    $"Connect Timeout=5;";
             }
+            else
+            {
+                var userId = _configuration[
+                    $"TenantCredentials:{databaseInfo.CredentialKey}:UserId"];
 
-            var connectionString =
-                $"Server={databaseInfo.ServerName};" +
-                $"Database={databaseInfo.DatabaseName};" +
-                $"User Id={userId};" +
-                $"Password={password};" +
-                $"Encrypt=False;" +
-                $"TrustServerCertificate=True;" +
-                $"MultipleActiveResultSets=True;" +
-                $"Connect Timeout=5;";
+                var password = _configuration[
+                    $"TenantCredentials:{databaseInfo.CredentialKey}:Password"];
+
+                if (string.IsNullOrWhiteSpace(userId) ||
+                    string.IsNullOrWhiteSpace(password))
+                {
+                    throw new InvalidOperationException(
+                        $"Tenant credentials for '{databaseInfo.CredentialKey}' are not configured in application settings.");
+                }
+
+                connectionString =
+                    $"Server={databaseInfo.ServerName};" +
+                    $"Database={databaseInfo.DatabaseName};" +
+                    $"User Id={userId};" +
+                    $"Password={password};" +
+                    $"Encrypt=False;" +
+                    $"TrustServerCertificate=True;" +
+                    $"MultipleActiveResultSets=True;" +
+                    $"Connect Timeout=5;";
+            }
 
             var options = new DbContextOptionsBuilder<TenantErpDbContext>()
                 .UseSqlServer(connectionString)
