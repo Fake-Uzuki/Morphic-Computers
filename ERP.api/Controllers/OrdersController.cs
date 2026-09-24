@@ -74,6 +74,19 @@ END";
                     .AsNoTracking()
                     .Where(o => o.CompanyId == companyId)
                     .OrderByDescending(o => o.CreatedAt)
+                    .Select(o => new Order
+                    {
+                        Id = o.Id,
+                        CompanyId = o.CompanyId,
+                        CustomerName = o.CustomerName,
+                        CreatedAt = o.CreatedAt,
+                        ItemsJson = o.ItemsJson,
+                        Subtotal = o.Subtotal,
+                        Discount = o.Discount,
+                        Tax = o.Tax,
+                        TotalAmount = o.TotalAmount,
+                        PaymentMethod = o.PaymentMethod
+                    })
                     .ToListAsync();
 
                 foreach (var o in orders)
@@ -127,11 +140,14 @@ END";
                     order.ItemsJson = JsonSerializer.Serialize(order.Items);
                 }
 
-                // Persist order in MonsterASP cloud database
-                var existingOrder = await tenantDb.Orders.FirstOrDefaultAsync(o => o.Id == order.Id);
-                if (existingOrder == null)
+                // Persist order in MonsterASP cloud database (only existing cloud columns, omitting CashierName)
+                bool exists = await tenantDb.Orders.AnyAsync(o => o.Id == order.Id);
+                if (!exists)
                 {
-                    tenantDb.Orders.Add(order);
+                    await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
+                        INSERT INTO Orders (Id, CompanyId, CustomerName, CreatedAt, ItemsJson, Subtotal, Discount, Tax, TotalAmount, PaymentMethod)
+                        VALUES ({order.Id}, {order.CompanyId}, {order.CustomerName}, {order.CreatedAt}, {order.ItemsJson}, {order.Subtotal}, {order.Discount}, {order.Tax}, {order.TotalAmount}, {order.PaymentMethod});
+                    ");
                 }
 
                 // Deduct stock for purchased items

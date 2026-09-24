@@ -19,6 +19,7 @@ namespace ERP.winforms.Services
         public static DataService Instance => _instance ??= new DataService();
 
         private readonly ApiClient _apiClient = ApiClient.Instance;
+        private readonly LocalDatabaseService _localDb = LocalDatabaseService.Instance;
 
         public List<Company> Companies { get; private set; } = new();
         public List<Product> Products { get; private set; } = new();
@@ -112,10 +113,7 @@ namespace ERP.winforms.Services
             StorePoliciesChanged?.Invoke();
             ExpensesChanged?.Invoke();
 
-            if (NetworkInterface.GetIsNetworkAvailable())
-            {
-                Task.Run(() => LoadFromDatabase());
-            }
+            Task.Run(() => LoadFromDatabase());
         }
 
         private DataService()
@@ -148,184 +146,593 @@ namespace ERP.winforms.Services
             LoadPoliciesFromLocalCache();
             LoadExpensesFromLocalCache();
 
-            // Background / live cloud refresh (only if network is connected, off UI thread)
-            if (NetworkInterface.GetIsNetworkAvailable())
+            // Background / live cloud refresh (or local database fallback when offline)
+            Task.Run(() => LoadFromDatabase());
+        }
+
+        private static void NormalizeProductCategories(IEnumerable<Product> products)
+        {
+            foreach (var p in products)
             {
-                Task.Run(() => LoadFromDatabase());
+                if (string.IsNullOrWhiteSpace(p.CategoryName) || p.CategoryName.Equals("General", StringComparison.OrdinalIgnoreCase))
+                {
+                    string nameLower = (p.ProductName + " " + p.ProductCode).ToLowerInvariant();
+                    if (nameLower.Contains("cpu") || nameLower.Contains("ryzen") || nameLower.Contains("intel") || nameLower.Contains("processor"))
+                        p.CategoryName = "Processors (CPU)";
+                    else if (nameLower.Contains("ram") || nameLower.Contains("ddr") || nameLower.Contains("memory"))
+                        p.CategoryName = "Memory (RAM)";
+                    else if (nameLower.Contains("ssd") || nameLower.Contains("hdd") || nameLower.Contains("storage") || nameLower.Contains("nvme"))
+                        p.CategoryName = "Storage (SSD/HDD)";
+                    else if (nameLower.Contains("mouse") || nameLower.Contains("keyboard") || nameLower.Contains("headset") || nameLower.Contains("peripheral"))
+                        p.CategoryName = "Peripherals";
+                    else if (nameLower.Contains("motherboard") || nameLower.Contains("board") || nameLower.Contains("b550") || nameLower.Contains("x570") || nameLower.Contains("z790"))
+                        p.CategoryName = "Motherboards";
+                    else
+                        p.CategoryName = "Graphics Cards (GPU)";
+                }
             }
+        }
+
+        public async Task<List<Inventory>> GetInventoriesAsync(int? companyId = null)
+        {
+            int cid = companyId ?? ActiveCompanyId;
+            return await _localDb.GetInventoriesAsync(cid).ConfigureAwait(false);
         }
 
         public void LoadFromDatabase()
         {
-            // Instant short-circuit if machine has no Wi-Fi / network connection
-            if (!NetworkInterface.GetIsNetworkAvailable())
-            {
-                IsUsingLiveCloudDatabase = false;
-                ConnectionStatusChanged?.Invoke(false);
-                return;
-            }
-
+            int targetCompanyId = ActiveCompanyId;
+            bool networkUp = NetworkInterface.GetIsNetworkAvailable();
             bool anyApiSucceeded = false;
 
+            // 1. Fetch live categories for the active tenant via API (fallback to local DB)
             try
             {
-                // 1. Fetch live categories for the active tenant via API
-                var liveCategories = Task.Run(() => _apiClient.GetCategoriesAsync(ActiveCompanyId)).GetAwaiter().GetResult();
+                List<Category>? liveCategories = null;
+                if (networkUp)
+                {
+                    try
+                    {
+                        liveCategories = Task.Run(() => _apiClient.GetCategoriesAsync(targetCompanyId)).GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"API GetCategories note: {ex.Message}");
+                        liveCategories = null;
+                    }
+                }
+
                 if (liveCategories != null)
                 {
                     anyApiSucceeded = true;
-                    Categories = liveCategories;
-                    SaveCategoriesToLocalCache();
-                    CategoriesChanged?.Invoke();
-                }
-
-                // 2. Fetch live products for the active tenant via API
-                var liveProducts = Task.Run(() => _apiClient.GetProductsAsync(ActiveCompanyId)).GetAwaiter().GetResult();
-                if (liveProducts != null)
-                {
-                    anyApiSucceeded = true;
-                    Products = liveProducts
-                        .GroupBy(p => p.ProductCode)
-                        .Select(g => g.First())
-                        .ToList();
-
-                    // Normalize any legacy General or empty category to standard categories
-                    foreach (var p in Products)
+                    if (ActiveCompanyId == targetCompanyId)
                     {
-                        if (string.IsNullOrWhiteSpace(p.CategoryName) || p.CategoryName.Equals("General", StringComparison.OrdinalIgnoreCase))
+                        Categories = liveCategories;
+                        SaveCategoriesToLocalCache();
+                        CategoriesChanged?.Invoke();
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        var localCategories = Task.Run(() => _localDb.GetCategoriesAsync(targetCompanyId)).GetAwaiter().GetResult();
+                        if (localCategories != null && ActiveCompanyId == targetCompanyId)
                         {
-                            string nameLower = (p.ProductName + " " + p.ProductCode).ToLowerInvariant();
-                            if (nameLower.Contains("cpu") || nameLower.Contains("ryzen") || nameLower.Contains("intel") || nameLower.Contains("processor"))
-                                p.CategoryName = "Processors (CPU)";
-                            else if (nameLower.Contains("ram") || nameLower.Contains("ddr") || nameLower.Contains("memory"))
-                                p.CategoryName = "Memory (RAM)";
-                            else if (nameLower.Contains("ssd") || nameLower.Contains("hdd") || nameLower.Contains("storage") || nameLower.Contains("nvme"))
-                                p.CategoryName = "Storage (SSD/HDD)";
-                            else if (nameLower.Contains("mouse") || nameLower.Contains("keyboard") || nameLower.Contains("headset") || nameLower.Contains("peripheral"))
-                                p.CategoryName = "Peripherals";
-                            else if (nameLower.Contains("motherboard") || nameLower.Contains("board") || nameLower.Contains("b550") || nameLower.Contains("x570") || nameLower.Contains("z790"))
-                                p.CategoryName = "Motherboards";
-                            else
-                                p.CategoryName = "Graphics Cards (GPU)";
+                            Categories = localCategories;
+                            SaveCategoriesToLocalCache();
+                            CategoriesChanged?.Invoke();
                         }
                     }
-
-                    SaveProductsToLocalCache();
-                    ProductsChanged?.Invoke();
-                }
-
-                // 3. Fetch live orders for the active tenant via API
-                var liveOrders = Task.Run(() => _apiClient.GetOrdersAsync(ActiveCompanyId)).GetAwaiter().GetResult();
-                if (liveOrders != null)
-                {
-                    anyApiSucceeded = true;
-                    Orders = liveOrders
-                        .GroupBy(o => o.Id)
-                        .Select(g => g.First())
-                        .OrderByDescending(o => o.CreatedAt)
-                        .ToList();
-
-                    SaveOrdersToLocalCache();
-                    OrdersChanged?.Invoke();
-                }
-
-                // 4. Fetch live repairs for the active tenant via API
-                var liveRepairs = Task.Run(() => _apiClient.GetRepairsAsync(ActiveCompanyId)).GetAwaiter().GetResult();
-                if (liveRepairs != null)
-                {
-                    anyApiSucceeded = true;
-                    RepairTickets = liveRepairs;
-                    SaveRepairsToLocalCache();
-                    RepairTicketsChanged?.Invoke();
-                }
-
-                // 5. Fetch live suppliers for the active tenant via API
-                var liveSuppliers = Task.Run(() => _apiClient.GetSuppliersAsync(ActiveCompanyId)).GetAwaiter().GetResult();
-                if (liveSuppliers != null)
-                {
-                    anyApiSucceeded = true;
-                    Suppliers = liveSuppliers;
-                    SaveSuppliersToLocalCache();
-                    SuppliersChanged?.Invoke();
-                }
-
-                // 6. Fetch live staff for the active tenant via API
-                var liveStaff = Task.Run(() => _apiClient.GetStaffAsync(ActiveCompanyId)).GetAwaiter().GetResult();
-                if (liveStaff != null)
-                {
-                    anyApiSucceeded = true;
-                    StaffMembers = liveStaff;
-                    SaveStaffToLocalCache();
-                    StaffMembersChanged?.Invoke();
-                }
-
-                // 7. Fetch live approvals for the active tenant via API
-                var liveApprovals = Task.Run(() => _apiClient.GetApprovalRequestsAsync(ActiveCompanyId)).GetAwaiter().GetResult();
-                if (liveApprovals != null)
-                {
-                    anyApiSucceeded = true;
-                    ApprovalRequests = liveApprovals;
-                    SaveApprovalsToLocalCache();
-                    ApprovalRequestsChanged?.Invoke();
-                }
-
-                // 8. Fetch live customers for the active tenant via API
-                var liveCustomers = Task.Run(() => _apiClient.GetCustomersAsync(ActiveCompanyId)).GetAwaiter().GetResult();
-                if (liveCustomers != null)
-                {
-                    anyApiSucceeded = true;
-                    Customers = liveCustomers;
-                    SaveCustomersToLocalCache();
-                    CustomersChanged?.Invoke();
-                }
-
-                // 9. Fetch live payroll for the active tenant via API
-                var livePayroll = Task.Run(() => _apiClient.GetPayrollAsync(ActiveCompanyId)).GetAwaiter().GetResult();
-                if (livePayroll != null)
-                {
-                    anyApiSucceeded = true;
-                    PayrollRecords = livePayroll;
-                    SavePayrollToLocalCache();
-                    PayrollRecordsChanged?.Invoke();
-                }
-
-                // 10. Fetch live policies for the active tenant via API
-                var livePolicies = Task.Run(() => _apiClient.GetPoliciesAsync(ActiveCompanyId)).GetAwaiter().GetResult();
-                if (livePolicies != null)
-                {
-                    anyApiSucceeded = true;
-                    StorePolicies = livePolicies;
-                    SavePoliciesToLocalCache();
-                    StorePoliciesChanged?.Invoke();
+                    catch (Exception dbEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Local DB GetCategories fallback error: {dbEx.Message}");
+                        if (Categories.Count == 0 && ActiveCompanyId == targetCompanyId) LoadCategoriesFromLocalCache();
+                    }
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"DataService.LoadFromDatabase note: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"DataService Categories loading note: {ex.Message}");
             }
 
-            if (anyApiSucceeded)
-            {
-                IsUsingLiveCloudDatabase = true;
-                ConnectionStatusChanged?.Invoke(true);
-            }
-            else
-            {
-                // Only fall back to local cache when the API request actually failed/unavailable
-                if (Categories.Count == 0) LoadCategoriesFromLocalCache();
-                if (Products.Count == 0) LoadProductsToLocalCache();
-                if (Orders.Count == 0) LoadOrdersFromLocalCache();
-                if (RepairTickets.Count == 0) LoadRepairsFromLocalCache();
-                if (Suppliers.Count == 0) LoadSuppliersFromLocalCache();
-                if (StaffMembers.Count == 0) LoadStaffFromLocalCache();
-                if (ApprovalRequests.Count == 0) LoadApprovalsFromLocalCache();
-                if (Customers.Count == 0) LoadCustomersFromLocalCache();
-                if (PayrollRecords.Count == 0) LoadPayrollFromLocalCache();
-                if (StorePolicies.Count == 0) LoadPoliciesFromLocalCache();
+            if (ActiveCompanyId != targetCompanyId) return;
 
-                IsUsingLiveCloudDatabase = false;
-                ConnectionStatusChanged?.Invoke(false);
+            // 2. Fetch live products for the active tenant via API (fallback to local DB)
+            try
+            {
+                List<Product>? liveProducts = null;
+                if (networkUp)
+                {
+                    try
+                    {
+                        liveProducts = Task.Run(() => _apiClient.GetProductsAsync(targetCompanyId)).GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"API GetProducts note: {ex.Message}");
+                        liveProducts = null;
+                    }
+                }
+
+                if (liveProducts != null)
+                {
+                    anyApiSucceeded = true;
+                    if (ActiveCompanyId == targetCompanyId)
+                    {
+                        Products = liveProducts
+                            .GroupBy(p => p.ProductCode)
+                            .Select(g => g.First())
+                            .ToList();
+                        NormalizeProductCategories(Products);
+                        SaveProductsToLocalCache();
+                        ProductsChanged?.Invoke();
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        var localProducts = Task.Run(() => _localDb.GetProductsAsync(targetCompanyId)).GetAwaiter().GetResult();
+                        if (localProducts != null && ActiveCompanyId == targetCompanyId)
+                        {
+                            Products = localProducts
+                                .GroupBy(p => p.ProductCode)
+                                .Select(g => g.First())
+                                .ToList();
+                            NormalizeProductCategories(Products);
+                            SaveProductsToLocalCache();
+                            ProductsChanged?.Invoke();
+                        }
+                    }
+                    catch (Exception dbEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Local DB GetProducts fallback error: {dbEx.Message}");
+                        if (Products.Count == 0 && ActiveCompanyId == targetCompanyId) LoadProductsToLocalCache();
+                    }
+                }
             }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DataService Products loading note: {ex.Message}");
+            }
+
+            if (ActiveCompanyId != targetCompanyId) return;
+
+            // 3. Fetch live orders for the active tenant via API (fallback to local DB)
+            try
+            {
+                List<Order>? liveOrders = null;
+                if (networkUp)
+                {
+                    try
+                    {
+                        liveOrders = Task.Run(() => _apiClient.GetOrdersAsync(targetCompanyId)).GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"API GetOrders note: {ex.Message}");
+                        liveOrders = null;
+                    }
+                }
+
+                if (liveOrders != null)
+                {
+                    anyApiSucceeded = true;
+                    if (ActiveCompanyId == targetCompanyId)
+                    {
+                        Orders = liveOrders
+                            .GroupBy(o => o.Id)
+                            .Select(g => g.First())
+                            .OrderByDescending(o => o.CreatedAt)
+                            .ToList();
+                        SaveOrdersToLocalCache();
+                        OrdersChanged?.Invoke();
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        var localOrders = Task.Run(() => _localDb.GetOrdersAsync(targetCompanyId)).GetAwaiter().GetResult();
+                        if (localOrders != null && ActiveCompanyId == targetCompanyId)
+                        {
+                            Orders = localOrders
+                                .GroupBy(o => o.Id)
+                                .Select(g => g.First())
+                                .OrderByDescending(o => o.CreatedAt)
+                                .ToList();
+                            SaveOrdersToLocalCache();
+                            OrdersChanged?.Invoke();
+                        }
+                    }
+                    catch (Exception dbEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Local DB GetOrders fallback error: {dbEx.Message}");
+                        if (Orders.Count == 0 && ActiveCompanyId == targetCompanyId) LoadOrdersFromLocalCache();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DataService Orders loading note: {ex.Message}");
+            }
+
+            if (ActiveCompanyId != targetCompanyId) return;
+
+            // 4. Fetch live repairs for the active tenant via API (fallback to local DB)
+            try
+            {
+                List<RepairTicket>? liveRepairs = null;
+                if (networkUp)
+                {
+                    try
+                    {
+                        liveRepairs = Task.Run(() => _apiClient.GetRepairsAsync(targetCompanyId)).GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"API GetRepairs note: {ex.Message}");
+                        liveRepairs = null;
+                    }
+                }
+
+                if (liveRepairs != null)
+                {
+                    anyApiSucceeded = true;
+                    if (ActiveCompanyId == targetCompanyId)
+                    {
+                        RepairTickets = liveRepairs;
+                        SaveRepairsToLocalCache();
+                        RepairTicketsChanged?.Invoke();
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        var localRepairs = Task.Run(() => _localDb.GetRepairsAsync(targetCompanyId)).GetAwaiter().GetResult();
+                        if (localRepairs != null && ActiveCompanyId == targetCompanyId)
+                        {
+                            RepairTickets = localRepairs;
+                            SaveRepairsToLocalCache();
+                            RepairTicketsChanged?.Invoke();
+                        }
+                    }
+                    catch (Exception dbEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Local DB GetRepairs fallback error: {dbEx.Message}");
+                        if (RepairTickets.Count == 0 && ActiveCompanyId == targetCompanyId) LoadRepairsFromLocalCache();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DataService Repairs loading note: {ex.Message}");
+            }
+
+            if (ActiveCompanyId != targetCompanyId) return;
+
+            // 5. Fetch live suppliers for the active tenant via API (fallback to local DB)
+            try
+            {
+                List<Supplier>? liveSuppliers = null;
+                if (networkUp)
+                {
+                    try
+                    {
+                        liveSuppliers = Task.Run(() => _apiClient.GetSuppliersAsync(targetCompanyId)).GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"API GetSuppliers note: {ex.Message}");
+                        liveSuppliers = null;
+                    }
+                }
+
+                if (liveSuppliers != null)
+                {
+                    anyApiSucceeded = true;
+                    if (ActiveCompanyId == targetCompanyId)
+                    {
+                        Suppliers = liveSuppliers;
+                        SaveSuppliersToLocalCache();
+                        SuppliersChanged?.Invoke();
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        var localSuppliers = Task.Run(() => _localDb.GetSuppliersAsync(targetCompanyId)).GetAwaiter().GetResult();
+                        if (localSuppliers != null && ActiveCompanyId == targetCompanyId)
+                        {
+                            Suppliers = localSuppliers;
+                            SaveSuppliersToLocalCache();
+                            SuppliersChanged?.Invoke();
+                        }
+                    }
+                    catch (Exception dbEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Local DB GetSuppliers fallback error: {dbEx.Message}");
+                        if (Suppliers.Count == 0 && ActiveCompanyId == targetCompanyId) LoadSuppliersFromLocalCache();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DataService Suppliers loading note: {ex.Message}");
+            }
+
+            if (ActiveCompanyId != targetCompanyId) return;
+
+            // 6. Fetch live staff for the active tenant via API (fallback to local DB)
+            try
+            {
+                List<StaffMember>? liveStaff = null;
+                if (networkUp)
+                {
+                    try
+                    {
+                        liveStaff = Task.Run(() => _apiClient.GetStaffAsync(targetCompanyId)).GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"API GetStaff note: {ex.Message}");
+                        liveStaff = null;
+                    }
+                }
+
+                if (liveStaff != null)
+                {
+                    anyApiSucceeded = true;
+                    if (ActiveCompanyId == targetCompanyId)
+                    {
+                        StaffMembers = liveStaff;
+                        SaveStaffToLocalCache();
+                        StaffMembersChanged?.Invoke();
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        var localStaff = Task.Run(() => _localDb.GetStaffAsync(targetCompanyId)).GetAwaiter().GetResult();
+                        if (localStaff != null && ActiveCompanyId == targetCompanyId)
+                        {
+                            StaffMembers = localStaff;
+                            SaveStaffToLocalCache();
+                            StaffMembersChanged?.Invoke();
+                        }
+                    }
+                    catch (Exception dbEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Local DB GetStaff fallback error: {dbEx.Message}");
+                        if (StaffMembers.Count == 0 && ActiveCompanyId == targetCompanyId) LoadStaffFromLocalCache();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DataService Staff loading note: {ex.Message}");
+            }
+
+            if (ActiveCompanyId != targetCompanyId) return;
+
+            // 7. Fetch live approvals for the active tenant via API (fallback to local DB)
+            try
+            {
+                List<ApprovalRequest>? liveApprovals = null;
+                if (networkUp)
+                {
+                    try
+                    {
+                        liveApprovals = Task.Run(() => _apiClient.GetApprovalRequestsAsync(targetCompanyId)).GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"API GetApprovals note: {ex.Message}");
+                        liveApprovals = null;
+                    }
+                }
+
+                if (liveApprovals != null)
+                {
+                    anyApiSucceeded = true;
+                    if (ActiveCompanyId == targetCompanyId)
+                    {
+                        ApprovalRequests = liveApprovals;
+                        SaveApprovalsToLocalCache();
+                        ApprovalRequestsChanged?.Invoke();
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        var localApprovals = Task.Run(() => _localDb.GetApprovalsAsync(targetCompanyId)).GetAwaiter().GetResult();
+                        if (localApprovals != null && ActiveCompanyId == targetCompanyId)
+                        {
+                            ApprovalRequests = localApprovals;
+                            SaveApprovalsToLocalCache();
+                            ApprovalRequestsChanged?.Invoke();
+                        }
+                    }
+                    catch (Exception dbEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Local DB GetApprovals fallback error: {dbEx.Message}");
+                        if (ApprovalRequests.Count == 0 && ActiveCompanyId == targetCompanyId) LoadApprovalsFromLocalCache();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DataService Approvals loading note: {ex.Message}");
+            }
+
+            if (ActiveCompanyId != targetCompanyId) return;
+
+            // 8. Fetch live customers for the active tenant via API (fallback to local DB)
+            try
+            {
+                List<Customer>? liveCustomers = null;
+                if (networkUp)
+                {
+                    try
+                    {
+                        liveCustomers = Task.Run(() => _apiClient.GetCustomersAsync(targetCompanyId)).GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"API GetCustomers note: {ex.Message}");
+                        liveCustomers = null;
+                    }
+                }
+
+                if (liveCustomers != null)
+                {
+                    anyApiSucceeded = true;
+                    if (ActiveCompanyId == targetCompanyId)
+                    {
+                        Customers = liveCustomers;
+                        SaveCustomersToLocalCache();
+                        CustomersChanged?.Invoke();
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        var localCustomers = Task.Run(() => _localDb.GetCustomersAsync(targetCompanyId)).GetAwaiter().GetResult();
+                        if (localCustomers != null && ActiveCompanyId == targetCompanyId)
+                        {
+                            Customers = localCustomers;
+                            SaveCustomersToLocalCache();
+                            CustomersChanged?.Invoke();
+                        }
+                    }
+                    catch (Exception dbEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Local DB GetCustomers fallback error: {dbEx.Message}");
+                        if (Customers.Count == 0 && ActiveCompanyId == targetCompanyId) LoadCustomersFromLocalCache();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DataService Customers loading note: {ex.Message}");
+            }
+
+            if (ActiveCompanyId != targetCompanyId) return;
+
+            // 9. Fetch live payroll for the active tenant via API (fallback to local DB)
+            try
+            {
+                List<PayrollRecord>? livePayroll = null;
+                if (networkUp)
+                {
+                    try
+                    {
+                        livePayroll = Task.Run(() => _apiClient.GetPayrollAsync(targetCompanyId)).GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"API GetPayroll note: {ex.Message}");
+                        livePayroll = null;
+                    }
+                }
+
+                if (livePayroll != null)
+                {
+                    anyApiSucceeded = true;
+                    if (ActiveCompanyId == targetCompanyId)
+                    {
+                        PayrollRecords = livePayroll;
+                        SavePayrollToLocalCache();
+                        PayrollRecordsChanged?.Invoke();
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        var localPayroll = Task.Run(() => _localDb.GetPayrollAsync(targetCompanyId)).GetAwaiter().GetResult();
+                        if (localPayroll != null && ActiveCompanyId == targetCompanyId)
+                        {
+                            PayrollRecords = localPayroll;
+                            SavePayrollToLocalCache();
+                            PayrollRecordsChanged?.Invoke();
+                        }
+                    }
+                    catch (Exception dbEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Local DB GetPayroll fallback error: {dbEx.Message}");
+                        if (PayrollRecords.Count == 0 && ActiveCompanyId == targetCompanyId) LoadPayrollFromLocalCache();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DataService Payroll loading note: {ex.Message}");
+            }
+
+            if (ActiveCompanyId != targetCompanyId) return;
+
+            // 10. Fetch live policies for the active tenant via API (fallback to local DB)
+            try
+            {
+                List<StorePolicy>? livePolicies = null;
+                if (networkUp)
+                {
+                    try
+                    {
+                        livePolicies = Task.Run(() => _apiClient.GetPoliciesAsync(targetCompanyId)).GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"API GetPolicies note: {ex.Message}");
+                        livePolicies = null;
+                    }
+                }
+
+                if (livePolicies != null)
+                {
+                    anyApiSucceeded = true;
+                    if (ActiveCompanyId == targetCompanyId)
+                    {
+                        StorePolicies = livePolicies;
+                        SavePoliciesToLocalCache();
+                        StorePoliciesChanged?.Invoke();
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        var localPolicies = Task.Run(() => _localDb.GetPoliciesAsync(targetCompanyId)).GetAwaiter().GetResult();
+                        if (localPolicies != null && ActiveCompanyId == targetCompanyId)
+                        {
+                            StorePolicies = localPolicies;
+                            SavePoliciesToLocalCache();
+                            StorePoliciesChanged?.Invoke();
+                        }
+                    }
+                    catch (Exception dbEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Local DB GetPolicies fallback error: {dbEx.Message}");
+                        if (StorePolicies.Count == 0 && ActiveCompanyId == targetCompanyId) LoadPoliciesFromLocalCache();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DataService Policies loading note: {ex.Message}");
+            }
+
+            if (ActiveCompanyId != targetCompanyId) return;
+
+            IsUsingLiveCloudDatabase = anyApiSucceeded;
+            ConnectionStatusChanged?.Invoke(anyApiSucceeded);
         }
 
         private string GetLocalOrdersFilePath()

@@ -41,11 +41,27 @@ namespace ERP.winforms.Services
         public async Task<List<Product>> GetProductsAsync(int companyId)
         {
             await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
-            return await context.Products
+            var products = await context.Products
                 .AsNoTracking()
                 .OrderBy(p => p.ProductName)
                 .ToListAsync()
                 .ConfigureAwait(false);
+
+            var inventories = await context.Inventories
+                .AsNoTracking()
+                .ToListAsync()
+                .ConfigureAwait(false);
+
+            foreach (var p in products)
+            {
+                var inv = inventories.FirstOrDefault(i => i.ProductId == p.ProductId);
+                if (inv != null)
+                {
+                    p.StockQuantity = (int)inv.QuantityOnHand;
+                }
+            }
+
+            return products;
         }
 
         /// <summary>

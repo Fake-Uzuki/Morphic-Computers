@@ -16,7 +16,7 @@ namespace ERP.domain.entities
         public decimal Tax { get; set; }
         public decimal TotalAmount { get; set; }
         public string PaymentMethod { get; set; } = "Cash";
-        public string CashierName { get; set; } = "Alex M. (Cashier)";
+        public string? CashierName { get; set; }
         public string Status { get; set; } = "Completed";
         public DateTime? ArchivedAt { get; set; }
     }

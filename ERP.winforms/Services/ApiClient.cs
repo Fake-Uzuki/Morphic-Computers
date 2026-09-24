@@ -21,7 +21,19 @@ namespace ERP.winforms.Services
         public const string ApiKey = "MorphicErp_SecureKey_2026";
         public const string HttpsBaseUrl = "https://localhost:7021";
         public const string HttpBaseUrl = "http://localhost:5156";
-        public static string CurrentBaseUrl { get; set; } = HttpsBaseUrl;
+        private static string _currentBaseUrl = HttpsBaseUrl;
+        public static string CurrentBaseUrl
+        {
+            get => _currentBaseUrl;
+            set
+            {
+                _currentBaseUrl = value;
+                if (_instance != null)
+                {
+                    _instance._http = CreateHttpClient(value);
+                }
+            }
+        }
 
         private HttpClient _http;
         private readonly JsonSerializerOptions _jsonOptions;

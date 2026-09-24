@@ -73,6 +73,18 @@ END";
                 var products = await tenantDb.Products
                     .AsNoTracking()
                     .OrderBy(x => x.ProductId)
+                    .Select(p => new Product
+                    {
+                        ProductId = p.ProductId,
+                        ProductCode = p.ProductCode,
+                        ProductName = p.ProductName,
+                        UnitPrice = p.UnitPrice,
+                        CategoryName = p.CategoryName,
+                        Description = p.Description,
+                        IsActive = p.IsActive,
+                        CreatedAt = p.CreatedAt,
+                        ArchivedAt = p.ArchivedAt
+                    })
                     .ToListAsync();
 
                 var inventories = await tenantDb.Inventories
@@ -125,18 +137,24 @@ END";
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureProductsSchemaAsync(tenantDb, companyId);
 
-                // Check if product code already exists
+                // Check if product code already exists (projecting only ProductId to avoid unmigrated cloud columns)
                 var existing = await tenantDb.Products
-                    .FirstOrDefaultAsync(p => p.ProductCode == product.ProductCode);
+                    .Where(p => p.ProductCode == product.ProductCode)
+                    .Select(p => new { p.ProductId })
+                    .FirstOrDefaultAsync();
 
                 if (existing != null)
                 {
-                    // Update existing product instead of creating duplicate
-                    existing.ProductName = product.ProductName;
-                    existing.UnitPrice = product.UnitPrice;
-                    existing.CategoryName = product.CategoryName;
-                    existing.Description = product.Description;
-                    existing.IsActive = product.IsActive;
+                    // Update existing product without touching local-only cloud-absent columns
+                    await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
+                        UPDATE Products
+                        SET ProductName = {product.ProductName},
+                            UnitPrice = {product.UnitPrice},
+                            CategoryName = {product.CategoryName},
+                            Description = {product.Description},
+                            IsActive = {product.IsActive}
+                        WHERE ProductId = {existing.ProductId};
+                    ");
 
                     var inv = await tenantDb.Inventories
                         .FirstOrDefaultAsync(i => i.ProductId == existing.ProductId);
@@ -162,10 +180,18 @@ END";
                     return Ok(product);
                 }
 
-                // Ensure ProductId is 0 for database identity generation
-                product.ProductId = 0;
-                tenantDb.Products.Add(product);
-                await tenantDb.SaveChangesAsync();
+                // Insert into cloud Products table with only cloud-existing columns
+                product.CreatedAt = DateTime.UtcNow;
+                await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
+                    INSERT INTO Products (ProductCode, ProductName, UnitPrice, CategoryName, Description, IsActive, CreatedAt)
+                    VALUES ({product.ProductCode}, {product.ProductName}, {product.UnitPrice}, {product.CategoryName}, {product.Description}, {product.IsActive}, {product.CreatedAt});
+                ");
+
+                int newId = await tenantDb.Products
+                    .Where(p => p.ProductCode == product.ProductCode)
+                    .Select(p => p.ProductId)
+                    .FirstAsync();
+                product.ProductId = newId;
 
                 // Create corresponding Inventory record
                 var newInv = new Inventory
@@ -203,23 +229,29 @@ END";
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureProductsSchemaAsync(tenantDb, companyId);
 
-                var dbProduct = await tenantDb.Products
-                    .FirstOrDefaultAsync(p => p.ProductId == productId || p.ProductCode == product.ProductCode);
+                var target = await tenantDb.Products
+                    .Where(p => p.ProductId == productId || p.ProductCode == product.ProductCode)
+                    .Select(p => new { p.ProductId })
+                    .FirstOrDefaultAsync();
 
-                if (dbProduct == null)
+                if (target == null)
                 {
                     return NotFound(new { error = $"Product with ID {productId} not found." });
                 }
 
-                dbProduct.ProductName = product.ProductName;
-                dbProduct.ProductCode = product.ProductCode;
-                dbProduct.UnitPrice = product.UnitPrice;
-                dbProduct.CategoryName = product.CategoryName;
-                dbProduct.Description = product.Description;
-                dbProduct.IsActive = product.IsActive;
+                await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
+                    UPDATE Products
+                    SET ProductName = {product.ProductName},
+                        ProductCode = {product.ProductCode},
+                        UnitPrice = {product.UnitPrice},
+                        CategoryName = {product.CategoryName},
+                        Description = {product.Description},
+                        IsActive = {product.IsActive}
+                    WHERE ProductId = {target.ProductId};
+                ");
 
                 var inv = await tenantDb.Inventories
-                    .FirstOrDefaultAsync(i => i.ProductId == dbProduct.ProductId);
+                    .FirstOrDefaultAsync(i => i.ProductId == target.ProductId);
 
                 if (inv != null)
                 {
@@ -230,7 +262,7 @@ END";
                 {
                     tenantDb.Inventories.Add(new Inventory
                     {
-                        ProductId = dbProduct.ProductId,
+                        ProductId = target.ProductId,
                         QuantityOnHand = product.StockQuantity,
                         ReorderLevel = 3,
                         LastUpdatedAt = DateTime.UtcNow
@@ -238,7 +270,8 @@ END";
                 }
 
                 await tenantDb.SaveChangesAsync();
-                return Ok(dbProduct);
+                product.ProductId = target.ProductId;
+                return Ok(product);
             }
             catch (Exception ex)
             {
@@ -263,16 +296,19 @@ END";
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureProductsSchemaAsync(tenantDb, companyId);
 
-                var dbProduct = await tenantDb.Products.FirstOrDefaultAsync(p => p.ProductId == productId);
-                if (dbProduct == null)
+                bool exists = await tenantDb.Products.AnyAsync(p => p.ProductId == productId);
+                if (!exists)
                 {
                     return NotFound(new { error = $"Product with ID {productId} not found." });
                 }
 
-                dbProduct.IsActive = false;
-                dbProduct.ArchivedAt = DateTime.UtcNow;
+                await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
+                    UPDATE Products
+                    SET IsActive = 0,
+                        ArchivedAt = {DateTime.UtcNow}
+                    WHERE ProductId = {productId};
+                ");
 
-                await tenantDb.SaveChangesAsync();
                 return Ok(new { success = true, message = $"Product #{productId} archived successfully." });
             }
             catch (Exception ex)
@@ -298,16 +334,19 @@ END";
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureProductsSchemaAsync(tenantDb, companyId);
 
-                var dbProduct = await tenantDb.Products.FirstOrDefaultAsync(p => p.ProductId == productId);
-                if (dbProduct == null)
+                bool exists = await tenantDb.Products.AnyAsync(p => p.ProductId == productId);
+                if (!exists)
                 {
                     return NotFound(new { error = $"Product with ID {productId} not found." });
                 }
 
-                dbProduct.IsActive = true;
-                dbProduct.ArchivedAt = null;
+                await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
+                    UPDATE Products
+                    SET IsActive = 1,
+                        ArchivedAt = NULL
+                    WHERE ProductId = {productId};
+                ");
 
-                await tenantDb.SaveChangesAsync();
                 return Ok(new { success = true, message = $"Product #{productId} restored successfully." });
             }
             catch (Exception ex)

@@ -81,6 +81,30 @@ END";
                     .AsNoTracking()
                     .Where(t => t.IsActive)
                     .OrderByDescending(t => t.CreatedAt)
+                    .Select(t => new RepairTicket
+                    {
+                        RepairTicketId = t.RepairTicketId,
+                        TicketNumber = t.TicketNumber,
+                        CompanyId = t.CompanyId,
+                        CustomerName = t.CustomerName,
+                        CustomerPhone = t.CustomerPhone,
+                        CustomerEmail = t.CustomerEmail,
+                        DeviceType = t.DeviceType,
+                        DeviceBrandModel = t.DeviceBrandModel,
+                        SerialNumber = t.SerialNumber,
+                        ReportedIssue = t.ReportedIssue,
+                        DiagnosticNotes = t.DiagnosticNotes,
+                        AssignedTechnician = t.AssignedTechnician,
+                        Status = t.Status,
+                        LaborFee = t.LaborFee,
+                        PartsCost = t.PartsCost,
+                        DepositAmount = t.DepositAmount,
+                        CreatedAt = t.CreatedAt,
+                        EstimatedCompletionDate = t.EstimatedCompletionDate,
+                        CompletedAt = t.CompletedAt,
+                        WarrantyTerms = t.WarrantyTerms,
+                        IsActive = t.IsActive
+                    })
                     .ToListAsync();
 
                 return Ok(tickets);
@@ -113,8 +137,25 @@ END";
                 ticket.CreatedAt = DateTime.UtcNow;
                 ticket.IsActive = true;
 
-                tenantDb.RepairTickets.Add(ticket);
-                await tenantDb.SaveChangesAsync();
+                await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
+                    INSERT INTO RepairTickets (
+                        TicketNumber, CompanyId, CustomerName, CustomerPhone, CustomerEmail,
+                        DeviceType, DeviceBrandModel, SerialNumber, ReportedIssue, DiagnosticNotes,
+                        AssignedTechnician, Status, LaborFee, PartsCost, DepositAmount,
+                        CreatedAt, EstimatedCompletionDate, CompletedAt, WarrantyTerms, IsActive
+                    ) VALUES (
+                        {ticket.TicketNumber}, {ticket.CompanyId}, {ticket.CustomerName}, {ticket.CustomerPhone}, {ticket.CustomerEmail},
+                        {ticket.DeviceType}, {ticket.DeviceBrandModel}, {ticket.SerialNumber}, {ticket.ReportedIssue}, {ticket.DiagnosticNotes},
+                        {ticket.AssignedTechnician}, {ticket.Status}, {ticket.LaborFee}, {ticket.PartsCost}, {ticket.DepositAmount},
+                        {ticket.CreatedAt}, {ticket.EstimatedCompletionDate}, {ticket.CompletedAt}, {ticket.WarrantyTerms}, {ticket.IsActive}
+                    );
+                ");
+
+                int newId = await tenantDb.RepairTickets
+                    .Where(t => t.TicketNumber == ticket.TicketNumber)
+                    .Select(t => t.RepairTicketId)
+                    .FirstAsync();
+                ticket.RepairTicketId = newId;
 
                 return CreatedAtAction(nameof(GetRepairs), new { companyId }, ticket);
             }
@@ -134,28 +175,23 @@ END";
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureRepairsSchemaAsync(tenantDb, companyId);
 
-                var ticket = await tenantDb.RepairTickets.FirstOrDefaultAsync(t => t.RepairTicketId == id);
-                if (ticket == null)
+                bool exists = await tenantDb.RepairTickets.AnyAsync(t => t.RepairTicketId == id);
+                if (!exists)
                 {
                     return NotFound(new { error = $"Repair ticket ID {id} not found." });
                 }
 
-                ticket.Status = dto.Status;
-                if (!string.IsNullOrEmpty(dto.DiagnosticNotes))
-                {
-                    ticket.DiagnosticNotes = dto.DiagnosticNotes;
-                }
-                if (!string.IsNullOrEmpty(dto.AssignedTechnician))
-                {
-                    ticket.AssignedTechnician = dto.AssignedTechnician;
-                }
-                if (dto.Status == "Completed")
-                {
-                    ticket.CompletedAt = DateTime.UtcNow;
-                }
+                DateTime? completedAt = dto.Status == "Completed" ? DateTime.UtcNow : null;
+                await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
+                    UPDATE RepairTickets
+                    SET Status = {dto.Status},
+                        DiagnosticNotes = CASE WHEN {dto.DiagnosticNotes} IS NOT NULL THEN {dto.DiagnosticNotes} ELSE DiagnosticNotes END,
+                        AssignedTechnician = CASE WHEN {dto.AssignedTechnician} IS NOT NULL THEN {dto.AssignedTechnician} ELSE AssignedTechnician END,
+                        CompletedAt = CASE WHEN {dto.Status} = 'Completed' THEN {completedAt} ELSE CompletedAt END
+                    WHERE RepairTicketId = {id};
+                ");
 
-                await tenantDb.SaveChangesAsync();
-                return Ok(ticket);
+                return Ok(new { success = true, repairTicketId = id, status = dto.Status });
             }
             catch (Exception ex)
             {
@@ -173,18 +209,21 @@ END";
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureRepairsSchemaAsync(tenantDb, companyId);
 
-                var ticket = await tenantDb.RepairTickets.FirstOrDefaultAsync(t => t.RepairTicketId == id);
-                if (ticket == null)
+                bool exists = await tenantDb.RepairTickets.AnyAsync(t => t.RepairTicketId == id);
+                if (!exists)
                 {
                     return NotFound(new { error = $"Repair ticket ID {id} not found." });
                 }
 
-                ticket.LaborFee = dto.LaborFee;
-                ticket.PartsCost = dto.PartsCost;
-                ticket.DepositAmount = dto.DepositAmount;
+                await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
+                    UPDATE RepairTickets
+                    SET LaborFee = {dto.LaborFee},
+                        PartsCost = {dto.PartsCost},
+                        DepositAmount = {dto.DepositAmount}
+                    WHERE RepairTicketId = {id};
+                ");
 
-                await tenantDb.SaveChangesAsync();
-                return Ok(ticket);
+                return Ok(new { success = true, repairTicketId = id, dto.LaborFee, dto.PartsCost, dto.DepositAmount });
             }
             catch (Exception ex)
             {

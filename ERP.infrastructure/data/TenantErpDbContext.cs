@@ -51,6 +51,13 @@ namespace ERP.infrastructure.data
 
                 entity.HasIndex(x => x.ProductCode)
                     .IsUnique();
+
+                entity.Property(x => x.SupplierName)
+                    .HasMaxLength(200)
+                    .IsRequired(false);
+
+                entity.Property(x => x.SupplierId)
+                    .IsRequired(false);
             });
 
             builder.Entity<Customer>(entity =>
@@ -105,6 +112,7 @@ namespace ERP.infrastructure.data
                 entity.Property(x => x.Tax).HasPrecision(18, 2);
                 entity.Property(x => x.Discount).HasPrecision(18, 2);
                 entity.Property(x => x.TotalAmount).HasPrecision(18, 2);
+                entity.Property(x => x.CashierName).IsRequired(false);
                 entity.Ignore(x => x.Items);
                 entity.Ignore(x => x.Status);
                 entity.Ignore(x => x.ArchivedAt);
@@ -138,6 +146,7 @@ namespace ERP.infrastructure.data
                 entity.Property(x => x.WarrantyTerms).HasMaxLength(500).IsRequired(false);
                 entity.Ignore(x => x.TotalAmount);
                 entity.Ignore(x => x.BalanceDue);
+                entity.Property(x => x.PartsSupplier).IsRequired(false);
             });
 
             builder.Entity<StaffMember>(entity =>
@@ -165,6 +174,7 @@ namespace ERP.infrastructure.data
                 entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
                 entity.Property(x => x.ReviewedBy).HasMaxLength(100).IsRequired(false);
                 entity.Property(x => x.ReviewNotes).HasMaxLength(1000).IsRequired(false);
+                entity.Property(x => x.TargetReferenceId).IsRequired(false);
             });
 
             builder.Entity<PayrollRecord>(entity =>

@@ -75,7 +75,25 @@ END";
                     query = query.Where(r => r.Status == status);
                 }
 
-                var requests = await query.OrderByDescending(r => r.CreatedAt).ToListAsync();
+                var requests = await query
+                    .OrderByDescending(r => r.CreatedAt)
+                    .Select(r => new ApprovalRequest
+                    {
+                        RequestId = r.RequestId,
+                        CompanyId = r.CompanyId,
+                        RequestNumber = r.RequestNumber,
+                        RequestType = r.RequestType,
+                        Title = r.Title,
+                        ReasonDescription = r.ReasonDescription,
+                        RequestedBy = r.RequestedBy,
+                        RequestedAmount = r.RequestedAmount,
+                        Status = r.Status,
+                        ReviewedBy = r.ReviewedBy,
+                        ReviewNotes = r.ReviewNotes,
+                        CreatedAt = r.CreatedAt,
+                        ResolvedAt = r.ResolvedAt
+                    })
+                    .ToListAsync();
                 return Ok(requests);
             }
             catch (Exception ex)
@@ -106,8 +124,21 @@ END";
                 request.CreatedAt = DateTime.UtcNow;
                 request.Status = "Pending";
 
-                tenantDb.ApprovalRequests.Add(request);
-                await tenantDb.SaveChangesAsync();
+                await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
+                    INSERT INTO ApprovalRequests (
+                        CompanyId, RequestNumber, RequestType, Title, ReasonDescription,
+                        RequestedBy, RequestedAmount, Status, CreatedAt
+                    ) VALUES (
+                        {request.CompanyId}, {request.RequestNumber}, {request.RequestType}, {request.Title}, {request.ReasonDescription},
+                        {request.RequestedBy}, {request.RequestedAmount}, {request.Status}, {request.CreatedAt}
+                    );
+                ");
+
+                int newId = await tenantDb.ApprovalRequests
+                    .Where(r => r.RequestNumber == request.RequestNumber)
+                    .Select(r => r.RequestId)
+                    .FirstAsync();
+                request.RequestId = newId;
 
                 return CreatedAtAction(nameof(GetRequests), new { companyId }, request);
             }
@@ -127,19 +158,23 @@ END";
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureApprovalsSchemaAsync(tenantDb, companyId);
 
-                var request = await tenantDb.ApprovalRequests.FirstOrDefaultAsync(r => r.RequestId == id);
-                if (request == null)
+                bool exists = await tenantDb.ApprovalRequests.AnyAsync(r => r.RequestId == id);
+                if (!exists)
                 {
                     return NotFound(new { error = $"Approval request ID {id} not found." });
                 }
 
-                request.Status = dto.Status; // "Approved" or "Rejected"
-                request.ReviewedBy = dto.ReviewedBy;
-                request.ReviewNotes = dto.ReviewNotes;
-                request.ResolvedAt = DateTime.UtcNow;
+                DateTime resolvedAt = DateTime.UtcNow;
+                await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
+                    UPDATE ApprovalRequests
+                    SET Status = {dto.Status},
+                        ReviewedBy = {dto.ReviewedBy},
+                        ReviewNotes = {dto.ReviewNotes},
+                        ResolvedAt = {resolvedAt}
+                    WHERE RequestId = {id};
+                ");
 
-                await tenantDb.SaveChangesAsync();
-                return Ok(request);
+                return Ok(new { success = true, requestId = id, dto.Status, dto.ReviewedBy, dto.ReviewNotes, resolvedAt });
             }
             catch (Exception ex)
             {
