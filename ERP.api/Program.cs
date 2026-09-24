@@ -41,7 +41,7 @@ app.UseMiddleware<ApiKeyAuthMiddleware>();
 
 app.UseAuthorization();
 
-// Map all modular controllers (AuthController, ProductsController, OrdersController, CompaniesController, WeatherForecastController)
+// Map all modular controllers (AuthController, ProductsController, OrdersController, CompaniesController, etc.)
 app.MapControllers();
 
 app.Run();
