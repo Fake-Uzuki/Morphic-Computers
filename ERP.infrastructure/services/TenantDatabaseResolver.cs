@@ -16,44 +16,22 @@ namespace ERP.infrastructure.services
 
         public async Task<TenantDatabaseInfo> GetDatabaseInfoAsync(int companyId)
         {
-            try
-            {
-                if (System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
-                {
-                    using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(2));
-                    var tenantDatabase = await _masterDb.CompanyDatabases
-                        .AsNoTracking()
-                        .FirstOrDefaultAsync(x =>
-                            x.CompanyId == companyId &&
-                            x.IsActive, cts.Token);
+            var tenantDatabase = await _masterDb.CompanyDatabases
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x =>
+                    x.CompanyId == companyId &&
+                    x.IsActive);
 
-                    if (tenantDatabase != null)
-                    {
-                        Console.WriteLine($"[RESOLVER] Found in Master DB: CompanyId={companyId}, Server={tenantDatabase.ServerName}, DB={tenantDatabase.DatabaseName}, CredKey={tenantDatabase.CredentialKey}");
-                        return new TenantDatabaseInfo
-                        {
-                            ServerName = tenantDatabase.ServerName,
-                            DatabaseName = tenantDatabase.DatabaseName,
-                            CredentialKey = tenantDatabase.CredentialKey
-                        };
-                    }
-                }
-            }
-            catch (Exception ex)
+            if (tenantDatabase == null)
             {
-                System.Diagnostics.Debug.WriteLine($"Master DB resolution note: {ex.Message}. Using resilient tenant mapping.");
+                throw new InvalidOperationException($"No active database mapping found in Master DB for CompanyId {companyId}.");
             }
-
-            // Fallback default routing (Company 1 -> TenantA, Company 2 -> TenantB)
-            string server = companyId == 2 ? "db67675.databaseasp.net" : "db67673.public.databaseasp.net";
-            string dbName = companyId == 2 ? "db67675" : "db67673";
-            string credKey = companyId == 2 ? "TenantB" : "TenantA";
 
             return new TenantDatabaseInfo
             {
-                ServerName = server,
-                DatabaseName = dbName,
-                CredentialKey = credKey
+                ServerName = tenantDatabase.ServerName,
+                DatabaseName = tenantDatabase.DatabaseName,
+                CredentialKey = tenantDatabase.CredentialKey
             };
         }
     }

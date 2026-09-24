@@ -32,8 +32,8 @@ namespace ERP.infrastructure.services
             if (string.IsNullOrWhiteSpace(userId) ||
                 string.IsNullOrWhiteSpace(password))
             {
-                userId = "db67673";
-                password = "Wt7-8=mFA3#i";
+                throw new InvalidOperationException(
+                    $"Tenant credentials for '{databaseInfo.CredentialKey}' are not configured in application settings.");
             }
 
             var connectionString =

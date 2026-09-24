@@ -1,11 +1,14 @@
 using System;
 using System.Linq;
-using System.Net.NetworkInformation;
-using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using ERP.domain.entities;
 using ERP.infrastructure.data;
+using ERP.infrastructure.services;
 
 namespace ERP.api.Controllers
 {
@@ -14,10 +17,20 @@ namespace ERP.api.Controllers
     public class AuthController : ControllerBase
     {
         private readonly MasterErpDbContext _masterDb;
+        private readonly ITenantDbContextFactory _tenantDbFactory;
+        private readonly IConfiguration _configuration;
+        private readonly ILogger<AuthController> _logger;
 
-        public AuthController(MasterErpDbContext masterDb)
+        public AuthController(
+            MasterErpDbContext masterDb,
+            ITenantDbContextFactory tenantDbFactory,
+            IConfiguration configuration,
+            ILogger<AuthController> logger)
         {
             _masterDb = masterDb;
+            _tenantDbFactory = tenantDbFactory;
+            _configuration = configuration;
+            _logger = logger;
         }
 
         public record LoginRequest(string? CompanyName, string? Username, string? Password);
@@ -39,7 +52,7 @@ namespace ERP.api.Controllers
         );
 
         /// <summary>
-        /// Authenticates a user against their specific tenant and company subscription.
+        /// Authenticates a user against the Master database and configured backend data.
         /// </summary>
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
@@ -55,65 +68,96 @@ namespace ERP.api.Controllers
             string username = request.Username.Trim();
             string password = request.Password;
 
-            // 1. Resolve Company from Master DB (or fast fallback if offline/unreachable)
-            domain.entities.Company? company = null;
-            if (NetworkInterface.GetIsNetworkAvailable())
+            // 1. Resolve Company from Master DB (Source of Truth)
+            Company? company;
+            try
             {
-                try
-                {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-                    company = await _masterDb.Companies.AsNoTracking()
-                        .FirstOrDefaultAsync(c =>
-                            c.CompanyName.ToLower() == companyInput.ToLower() ||
-                            c.CompanyCode.ToLower() == companyInput.ToLower(), cts.Token);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Master DB query note: {ex.Message}");
-                }
+                company = await _masterDb.Companies.AsNoTracking()
+                    .FirstOrDefaultAsync(c =>
+                        c.CompanyName.ToLower() == companyInput.ToLower() ||
+                        c.CompanyCode.ToLower() == companyInput.ToLower());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to query Master DB for company '{CompanyInput}'.", companyInput);
+                return StatusCode(500, new { error = "Database connection error while verifying company." });
             }
 
             if (company == null)
             {
-                // Fallback for standard demo tenants if offline or not yet seeded
-                if (companyInput.Equals("Tenant A", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("TENANT_A", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("Morphic Computers", StringComparison.OrdinalIgnoreCase))
+                return NotFound(new { error = $"Company '{companyInput}' was not found in the master database." });
+            }
+
+            // 2. Validate Credentials against real backend data
+            bool isAuthenticated = false;
+            string role = "Store Administrator";
+            string displayName = username;
+
+            // Check A: Configured Backend Administrator credentials
+            var configAdminUser = _configuration["Auth:AdminUsername"];
+            var configAdminPass = _configuration["Auth:AdminPassword"];
+            if (!string.IsNullOrWhiteSpace(configAdminUser) &&
+                username.Equals(configAdminUser, StringComparison.OrdinalIgnoreCase) &&
+                password == configAdminPass)
+            {
+                isAuthenticated = true;
+                role = "Store Administrator";
+                displayName = "Administrator";
+            }
+
+            // Check B: Identity Users in Master DB
+            if (!isAuthenticated)
+            {
+                try
                 {
-                    company = new domain.entities.Company { CompanyId = 1, CompanyCode = "TENANT_A", CompanyName = "Tenant A", PlanName = "Micro" };
+                    var identityUser = await _masterDb.Users.AsNoTracking()
+                        .FirstOrDefaultAsync(u => u.UserName != null && u.UserName.ToLower() == username.ToLower());
+                    if (identityUser != null && !string.IsNullOrEmpty(identityUser.PasswordHash))
+                    {
+                        var hasher = new PasswordHasher<IdentityUser>();
+                        var verifyResult = hasher.VerifyHashedPassword(identityUser, identityUser.PasswordHash, password);
+                        if (verifyResult == PasswordVerificationResult.Success || verifyResult == PasswordVerificationResult.SuccessRehashNeeded)
+                        {
+                            isAuthenticated = true;
+                            displayName = identityUser.UserName ?? username;
+                        }
+                    }
                 }
-                else if (companyInput.Equals("Tenant B", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("TENANT_B", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("Apex Cybernetics", StringComparison.OrdinalIgnoreCase))
+                catch (Exception ex)
                 {
-                    company = new domain.entities.Company { CompanyId = 2, CompanyCode = "TENANT_B", CompanyName = "Tenant B", PlanName = "SmallBusiness" };
-                }
-                else if (companyInput.Equals("Tenant C", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("TENANT_C", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("Vanguard Tech", StringComparison.OrdinalIgnoreCase))
-                {
-                    company = new domain.entities.Company { CompanyId = 3, CompanyCode = "TENANT_C", CompanyName = "Tenant C", PlanName = "Enterprise" };
-                }
-                else
-                {
-                    return NotFound(new { error = $"Company '{companyInput}' was not found. Please enter a valid company name (e.g. Tenant A, Tenant B, or Tenant C)." });
+                    _logger.LogWarning(ex, "Identity user check failed for user '{Username}'.", username);
                 }
             }
 
-            // 2. Validate Credentials & Roles
-            string role;
-            string displayName;
+            // Check C: Tenant Database Staff Members
+            StaffMember? staff = null;
+            try
+            {
+                await using var tenantDb = await _tenantDbFactory.CreateAsync(company.CompanyId);
+                staff = await tenantDb.StaffMembers.AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.Username.ToLower() == username.ToLower() && s.IsActive);
 
-            if (username.Equals("cirunay", StringComparison.OrdinalIgnoreCase) && password == "09092121")
-            {
-                role = "Store Administrator";
-                displayName = "Cirunay";
+                if (staff != null)
+                {
+                    var defaultStaffPass = _configuration["Auth:DefaultStaffPassword"];
+                    if (!isAuthenticated && !string.IsNullOrWhiteSpace(defaultStaffPass) && password == defaultStaffPass)
+                    {
+                        isAuthenticated = true;
+                    }
+
+                    if (isAuthenticated)
+                    {
+                        displayName = !string.IsNullOrWhiteSpace(staff.FullName) ? staff.FullName : staff.Username;
+                        role = !string.IsNullOrWhiteSpace(staff.Role) ? staff.Role : role;
+                    }
+                }
             }
-            else if (username.Equals("cashier", StringComparison.OrdinalIgnoreCase) && password == "cashier123")
+            catch (Exception ex)
             {
-                role = "Cashier Operations";
-                displayName = "Cashier (Alex M.)";
+                _logger.LogWarning(ex, "Tenant staff check note for company {CompanyId}: {Message}", company.CompanyId, ex.Message);
             }
-            else if (username.Equals("admin", StringComparison.OrdinalIgnoreCase) && password == "admin123")
-            {
-                role = "Store Administrator";
-                displayName = "Admin";
-            }
-            else
+
+            if (!isAuthenticated)
             {
                 return Unauthorized(new { error = "Invalid username or password. Please try again." });
             }

@@ -117,8 +117,7 @@ namespace ERP.winforms.Services
             var tenants = new[]
             {
                 (Id: 1, Code: "TENANT_A", Name: "Tenant A", Plan: "Micro"),
-                (Id: 2, Code: "TENANT_B", Name: "Tenant B", Plan: "SmallBusiness"),
-                (Id: 3, Code: "TENANT_C", Name: "Tenant C", Plan: "Enterprise")
+                (Id: 2, Code: "TENANT_B", Name: "Tenant B", Plan: "SmallBusiness")
             };
 
             foreach (var t in tenants)
@@ -383,8 +382,6 @@ namespace ERP.winforms.Services
                 targetCompanyId = 1;
             else if (companyInput.Equals("Tenant B", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("TENANT_B", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("Apex Cybernetics", StringComparison.OrdinalIgnoreCase))
                 targetCompanyId = 2;
-            else if (companyInput.Equals("Tenant C", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("TENANT_C", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("Vanguard Tech", StringComparison.OrdinalIgnoreCase))
-                targetCompanyId = 3;
 
             var match = vault.FirstOrDefault(c =>
                 c.Username.Equals(username, StringComparison.OrdinalIgnoreCase) &&

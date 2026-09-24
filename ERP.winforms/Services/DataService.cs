@@ -125,12 +125,11 @@ namespace ERP.winforms.Services
 
         private void InitializeDataStore()
         {
-            // Initial registered companies
+            // Initial registered companies (Tenant A and Tenant B only)
             Companies = new List<Company>
             {
                 new Company { CompanyId = 1, CompanyCode = "TENANT_A", CompanyName = "Tenant A", PlanName = "Micro", Description = "Micro Store Operations" },
-                new Company { CompanyId = 2, CompanyCode = "TENANT_B", CompanyName = "Tenant B", PlanName = "SmallBusiness", Description = "Small Business Store Operations" },
-                new Company { CompanyId = 3, CompanyCode = "TENANT_C", CompanyName = "Tenant C", PlanName = "Enterprise", Description = "Enterprise Store Operations" }
+                new Company { CompanyId = 2, CompanyCode = "TENANT_B", CompanyName = "Tenant B", PlanName = "SmallBusiness", Description = "Small Business Store Operations" }
             };
 
             // Standard categories (empty by default; loaded from API or local cache)

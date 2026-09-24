@@ -150,6 +150,7 @@ namespace ERP.infrastructure.data
                 entity.Property(x => x.PositionTitle).HasMaxLength(100).IsRequired();
                 entity.Property(x => x.HourlyRate).HasPrecision(18, 2);
                 entity.Property(x => x.MonthlySalary).HasPrecision(18, 2);
+                entity.Ignore(x => x.InitialPassword);
             });
 
             builder.Entity<ApprovalRequest>(entity =>

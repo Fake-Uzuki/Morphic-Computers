@@ -936,7 +936,7 @@ namespace ERP.winforms
 
             bool online = isOnline ?? (_dataService.IsUsingLiveCloudDatabase && System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable());
             int pending = pendingSync ?? SyncManager.Instance.PendingCount;
-            string companyDb = _dataService.CurrentCompany?.CompanyId == 1 ? "db67673" : "Isolated Tenant";
+            string companyDb = _dataService.CurrentCompany?.CompanyName ?? "Isolated Tenant";
 
             if (!string.IsNullOrEmpty(customMsg))
             {
