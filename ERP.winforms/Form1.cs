@@ -59,6 +59,8 @@ namespace ERP.winforms
         private Button? _btnNavPolicies;
         private Button? _activeNavButton;
         private Label _lblBottomRight = null!;
+        private Panel _pnlStatusBadge = null!;
+        private Label _lblStatusIndicator = null!;
 
         // Views
         private DashboardView _dashboardView = null!;
@@ -156,23 +158,44 @@ namespace ERP.winforms
             };
 
             // ========================================================
-            // UPPER-RIGHT HEADER UTILITIES (Notification, User, Logout)
+            // UPPER-RIGHT HEADER UTILITIES (Status Badge, Notification, User, Logout)
             // ========================================================
             _pnlTopRight = new Panel
             {
                 Dock = DockStyle.Right,
                 Height = 54,
-                Width = 490,
+                Width = 600,
                 BackColor = Color.Transparent
             };
+
+            // 0. Upper-Right Online/Offline Status Indicator (Part 8 & 9)
+            _pnlStatusBadge = new Panel
+            {
+                Location = new Point(8, 11),
+                Size = new Size(100, 32),
+                BackColor = Color.FromArgb(28, 30, 24),
+                Cursor = Cursors.Hand
+            };
+
+            _lblStatusIndicator = new Label
+            {
+                Text = "● Checking...",
+                Font = new Font("Segoe UI", 8.2F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(245, 158, 11),
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+            _pnlStatusBadge.Controls.Add(_lblStatusIndicator);
+            _pnlStatusBadge.Click += (s, e) => _ = Task.Run(() => SyncManager.Instance.CheckAndSyncAsync(_dataService.ActiveCompanyId));
+            _lblStatusIndicator.Click += (s, e) => _ = Task.Run(() => SyncManager.Instance.CheckAndSyncAsync(_dataService.ActiveCompanyId));
 
             // 1. New Sale Action Button
             SunshineButton btnNewSale = new SunshineButton
             {
                 Text = "+ New Sale",
                 IsPrimary = true,
-                Location = new Point(12, 11),
-                Size = new Size(110, 32),
+                Location = new Point(116, 11),
+                Size = new Size(100, 32),
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Bold)
             };
             btnNewSale.Click += (s, e) => SwitchView(_posView, _btnNavPOS);
@@ -180,7 +203,7 @@ namespace ERP.winforms
             // 2. Notification Center Button with dynamic Unread Badge
             Panel pnlNotifBox = new Panel
             {
-                Location = new Point(130, 11),
+                Location = new Point(224, 11),
                 Size = new Size(88, 32),
                 BackColor = Color.Transparent
             };
@@ -221,7 +244,7 @@ namespace ERP.winforms
             // 3. User Profile Avatar Pill
             Panel pnlUser = new Panel
             {
-                Location = new Point(226, 8),
+                Location = new Point(320, 8),
                 Size = new Size(168, 38),
                 BackColor = Color.FromArgb(32, 34, 28)
             };
@@ -250,7 +273,7 @@ namespace ERP.winforms
             _btnLogout = new Button
             {
                 Text = "⎋ Logout",
-                Location = new Point(402, 11),
+                Location = new Point(496, 11),
                 Size = new Size(76, 32),
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
@@ -263,6 +286,7 @@ namespace ERP.winforms
             _btnLogout.FlatAppearance.MouseOverBackColor = Color.FromArgb(170, 45, 35);
             _btnLogout.Click += BtnLogout_Click;
 
+            _pnlTopRight.Controls.Add(_pnlStatusBadge);
             _pnlTopRight.Controls.Add(btnNewSale);
             _pnlTopRight.Controls.Add(pnlNotifBox);
             _pnlTopRight.Controls.Add(pnlUser);
@@ -504,17 +528,30 @@ namespace ERP.winforms
             _pnlBottomBar.Controls.Add(_lblBottomRight);
 
             // Hook live connectivity & sync status updates
-            UpdateConnectionStatus();
-            SyncManager.Instance.SyncStatusChanged += (isSynced, remaining, msg) => UpdateConnectionStatus(null, remaining, msg);
+            SyncManager.Instance.SyncStatusChanged += (isSynced, remaining, msg) => UpdateConnectionStatus(isSynced, remaining, msg);
             _dataService.ConnectionStatusChanged += (isLive) => UpdateConnectionStatus(isLive);
             System.Net.NetworkInformation.NetworkChange.NetworkAvailabilityChanged += (s, e) =>
             {
-                UpdateConnectionStatus(e.IsAvailable);
                 if (e.IsAvailable)
                 {
-                    Task.Run(() => _dataService.LoadFromDatabase());
+                    Task.Run(() => SyncManager.Instance.CheckAndSyncAsync(_dataService.ActiveCompanyId));
+                }
+                else
+                {
+                    UpdateConnectionStatus(false, null, "Offline");
                 }
             };
+
+            // Initial status setup based on login state (Part 9)
+            if (_dataService.IsUsingLiveCloudDatabase)
+            {
+                UpdateConnectionStatus(true, null, "Updating local data...");
+                Task.Run(() => SyncManager.Instance.CheckAndSyncAsync(_dataService.ActiveCompanyId));
+            }
+            else
+            {
+                UpdateConnectionStatus(false, null, "Offline");
+            }
 
             // ========================================================
             // 4. MAIN CONTENT AREA (Canvas Background #F7F5EE)
@@ -938,6 +975,30 @@ namespace ERP.winforms
             int pending = pendingSync ?? SyncManager.Instance.PendingCount;
             string companyDb = _dataService.CurrentCompany?.CompanyName ?? "Isolated Tenant";
 
+            if (_lblStatusIndicator != null)
+            {
+                if (customMsg != null && (customMsg.StartsWith("Syncing", StringComparison.OrdinalIgnoreCase) || customMsg.Contains("Updating local data", StringComparison.OrdinalIgnoreCase)))
+                {
+                    _lblStatusIndicator.Text = "● Syncing...";
+                    _lblStatusIndicator.ForeColor = Color.FromArgb(245, 158, 11); // Amber
+                }
+                else if (customMsg != null && customMsg.StartsWith("Checking", StringComparison.OrdinalIgnoreCase))
+                {
+                    _lblStatusIndicator.Text = "● Checking...";
+                    _lblStatusIndicator.ForeColor = Color.FromArgb(156, 163, 175); // Gray
+                }
+                else if (online)
+                {
+                    _lblStatusIndicator.Text = "● Online";
+                    _lblStatusIndicator.ForeColor = Color.FromArgb(16, 185, 129); // Emerald Green
+                }
+                else
+                {
+                    _lblStatusIndicator.Text = "● Offline";
+                    _lblStatusIndicator.ForeColor = Color.FromArgb(239, 68, 68); // Crimson Red
+                }
+            }
+
             if (!string.IsNullOrEmpty(customMsg))
             {
                 _lblBottomRight.Text = customMsg;
@@ -950,7 +1011,7 @@ namespace ERP.winforms
             else
             {
                 _lblBottomRight.ForeColor = Color.FromArgb(243, 156, 18);
-                string syncText = pending > 0 ? $"({pending} queued for sync)" : "(Local Cache Active)";
+                string syncText = pending > 0 ? $"({pending} queued for sync)" : "(Local Storage Active)";
                 _lblBottomRight.Text = $"📶 Offline Mode {syncText}  |  Local Storage Active";
             }
         }

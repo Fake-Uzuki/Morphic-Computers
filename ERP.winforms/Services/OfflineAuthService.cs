@@ -5,6 +5,8 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Tasks;
+using ERP.domain.entities;
 
 namespace ERP.winforms.Services
 {
@@ -361,10 +363,11 @@ namespace ERP.winforms.Services
         }
 
         /// <summary>
-        /// Validates offline login against the machine's DPAPI-encrypted salted hash vault.
+        /// Validates offline login against the machine's DPAPI-encrypted salted hash vault
+        /// after resolving the tenant dynamically from ERP_Master_Local.CompanyDatabases.
         /// Does not require server or internet connectivity.
         /// </summary>
-        public OfflineAuthResult ValidateOfflineLogin(string companyInput, string username, string password)
+        public async Task<OfflineAuthResult> ValidateOfflineLoginAsync(string companyInput, string username, string password)
         {
             if (string.IsNullOrWhiteSpace(companyInput) || string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
             {
@@ -374,20 +377,19 @@ namespace ERP.winforms.Services
             companyInput = companyInput.Trim();
             username = username.Trim();
 
+            // 1. Resolve company dynamically from ERP_Master_Local.CompanyDatabases (No hardcoded branching)
+            Company? company = await LocalTenantDbContextProvider.ResolveCompanyAsync(companyInput).ConfigureAwait(false);
+            if (company == null)
+            {
+                return OfflineAuthResult.Failed($"Company '{companyInput}' was not found in the local master database.");
+            }
+
+            // 2. Validate user credentials against the local DPAPI-encrypted vault for the resolved tenant
             var vault = ReadVault();
 
-            // Find matching company & user in local vault (with flexible tenant aliases)
-            int targetCompanyId = 0;
-            if (companyInput.Equals("Tenant A", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("TENANT_A", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("Morphic Computers", StringComparison.OrdinalIgnoreCase))
-                targetCompanyId = 1;
-            else if (companyInput.Equals("Tenant B", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("TENANT_B", StringComparison.OrdinalIgnoreCase) || companyInput.Equals("Apex Cybernetics", StringComparison.OrdinalIgnoreCase))
-                targetCompanyId = 2;
-
             var match = vault.FirstOrDefault(c =>
-                c.Username.Equals(username, StringComparison.OrdinalIgnoreCase) &&
-                (c.CompanyName.Equals(companyInput, StringComparison.OrdinalIgnoreCase) ||
-                 c.CompanyCode.Equals(companyInput, StringComparison.OrdinalIgnoreCase) ||
-                 (targetCompanyId > 0 && c.CompanyId == targetCompanyId)));
+                c.CompanyId == company.CompanyId &&
+                c.Username.Equals(username, StringComparison.OrdinalIgnoreCase));
 
             if (match == null)
             {
@@ -409,6 +411,9 @@ namespace ERP.winforms.Services
 
                 if (CryptographicOperations.FixedTimeEquals(computedHash, expectedHash))
                 {
+                    match.CompanyName = company.CompanyName;
+                    match.CompanyCode = company.CompanyCode;
+                    match.PlanName = company.PlanName;
                     return OfflineAuthResult.Succeeded(match);
                 }
             }
@@ -418,6 +423,14 @@ namespace ERP.winforms.Services
             }
 
             return OfflineAuthResult.Failed("Invalid username or password. Please try again.");
+        }
+
+        /// <summary>
+        /// Synchronous wrapper for offline login validation.
+        /// </summary>
+        public OfflineAuthResult ValidateOfflineLogin(string companyInput, string username, string password)
+        {
+            return Task.Run(() => ValidateOfflineLoginAsync(companyInput, username, password)).GetAwaiter().GetResult();
         }
     }
 }

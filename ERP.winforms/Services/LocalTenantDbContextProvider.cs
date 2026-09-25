@@ -1,6 +1,8 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using ERP.domain.entities;
 using ERP.infrastructure.data;
 using ERP.infrastructure.services;
 
@@ -26,6 +28,23 @@ namespace ERP.winforms.Services
                 .Options;
 
             return new MasterErpDbContext(options);
+        }
+
+        /// <summary>
+        /// Dynamically resolves a company from ERP_Master_Local.CompanyDatabases by CompanyName or CompanyCode.
+        /// Ensures the company exists and has a configured local database mapping.
+        /// </summary>
+        public static async Task<Company?> ResolveCompanyAsync(string companyInput)
+        {
+            if (string.IsNullOrWhiteSpace(companyInput)) return null;
+
+            string normalized = companyInput.Trim().ToLower();
+            await using var masterDb = CreateMasterDbContext();
+            return await (from c in masterDb.Companies.AsNoTracking()
+                          join cd in masterDb.CompanyDatabases.AsNoTracking() on c.CompanyId equals cd.CompanyId
+                          where c.CompanyName.ToLower() == normalized ||
+                                c.CompanyCode.ToLower() == normalized
+                          select c).FirstOrDefaultAsync().ConfigureAwait(false);
         }
 
         /// <summary>

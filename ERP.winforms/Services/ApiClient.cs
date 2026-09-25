@@ -42,6 +42,7 @@ namespace ERP.winforms.Services
         {
             public bool Success { get; set; }
             public string Message { get; set; } = string.Empty;
+            public bool IsConnectionError { get; set; }
             public int CompanyId { get; set; } = 1;
             public string CompanyCode { get; set; } = "TENANT_A";
             public string CompanyName { get; set; } = "Tenant A";
@@ -89,10 +90,10 @@ namespace ERP.winforms.Services
         {
             // Try CurrentBaseUrl first; if connection fails, try HttpBaseUrl
             var result = await TryLoginAsync(CurrentBaseUrl, companyName, username, password).ConfigureAwait(false);
-            if (!result.Success && result.Message.StartsWith("API Connection Error") && CurrentBaseUrl != HttpBaseUrl)
+            if (!result.Success && result.IsConnectionError && CurrentBaseUrl != HttpBaseUrl)
             {
                 var fallbackResult = await TryLoginAsync(HttpBaseUrl, companyName, username, password).ConfigureAwait(false);
-                if (fallbackResult.Success || !fallbackResult.Message.StartsWith("API Connection Error"))
+                if (fallbackResult.Success || !fallbackResult.IsConnectionError)
                 {
                     CurrentBaseUrl = HttpBaseUrl;
                     _http = CreateHttpClient(CurrentBaseUrl);
@@ -113,30 +114,82 @@ namespace ERP.winforms.Services
                 if (response.IsSuccessStatusCode)
                 {
                     var result = await response.Content.ReadFromJsonAsync<LoginResult>(_jsonOptions).ConfigureAwait(false);
-                    return result ?? new LoginResult { Success = false, Message = "Empty response from API server." };
+                    return result ?? new LoginResult { Success = false, Message = "Empty response from API server.", IsConnectionError = true };
                 }
 
                 var errorContent = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                string errorMessage = "Invalid credentials or unauthorized.";
                 try
                 {
                     using var doc = JsonDocument.Parse(errorContent);
                     if (doc.RootElement.TryGetProperty("error", out var errProp))
                     {
-                        return new LoginResult { Success = false, Message = errProp.GetString() ?? "Authentication failed." };
+                        errorMessage = errProp.GetString() ?? errorMessage;
                     }
                 }
                 catch { }
 
-                return new LoginResult { Success = false, Message = "Invalid credentials or unauthorized." };
+                bool isConnError = (int)response.StatusCode >= 500 ||
+                                   (int)response.StatusCode == 408 ||
+                                   (int)response.StatusCode == 503 ||
+                                   errorMessage.Contains("Database connection error", StringComparison.OrdinalIgnoreCase) ||
+                                   errorMessage.Contains("connection error", StringComparison.OrdinalIgnoreCase) ||
+                                   errorMessage.Contains("unavailable", StringComparison.OrdinalIgnoreCase) ||
+                                   errorMessage.Contains("Master database", StringComparison.OrdinalIgnoreCase);
+
+                return new LoginResult
+                {
+                    Success = false,
+                    Message = errorMessage,
+                    IsConnectionError = isConnError
+                };
             }
             catch (Exception ex)
             {
                 return new LoginResult
                 {
                     Success = false,
+                    IsConnectionError = true,
                     Message = $"API Connection Error: Could not connect to {baseUrl} ({ex.Message}). Make sure ERP.api is running."
                 };
             }
+        }
+
+        /// <summary>
+        /// Checks whether ERP.api server is currently reachable and responding.
+        /// Performs a fast timeout check against the API server.
+        /// </summary>
+        public async Task<bool> CheckApiConnectivityAsync()
+        {
+            if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
+                return false;
+
+            try
+            {
+                using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(2));
+                var response = await _http.GetAsync("/api/companies", cts.Token).ConfigureAwait(false);
+                if (response.IsSuccessStatusCode) return true;
+            }
+            catch
+            {
+                // Fallback attempt with HttpBaseUrl if currently on HttpsBaseUrl
+                if (CurrentBaseUrl == HttpsBaseUrl)
+                {
+                    try
+                    {
+                        using var fallbackClient = CreateHttpClient(HttpBaseUrl);
+                        using var cts2 = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(2));
+                        var response2 = await fallbackClient.GetAsync("/api/companies", cts2.Token).ConfigureAwait(false);
+                        if (response2.IsSuccessStatusCode)
+                        {
+                            CurrentBaseUrl = HttpBaseUrl;
+                            return true;
+                        }
+                    }
+                    catch { }
+                }
+            }
+            return false;
         }
 
         /// <summary>
@@ -153,6 +206,27 @@ namespace ERP.winforms.Services
                 System.Diagnostics.Debug.WriteLine($"ApiClient GetProducts error: {ex.Message}");
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Retrieves all inventory stock records for a specific tenant from ERP.api.
+        /// </summary>
+        public async Task<List<Inventory>?> GetInventoriesAsync(int companyId)
+        {
+            try
+            {
+                var response = await _http.GetAsync($"/api/tenant/{companyId}/inventories").ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    var inventories = await response.Content.ReadFromJsonAsync<List<Inventory>>(_jsonOptions).ConfigureAwait(false);
+                    return inventories ?? new List<Inventory>();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient GetInventories error: {ex.Message}");
+            }
+            return null;
         }
 
         /// <summary>

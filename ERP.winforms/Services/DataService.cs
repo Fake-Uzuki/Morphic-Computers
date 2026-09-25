@@ -60,7 +60,7 @@ namespace ERP.winforms.Services
                 }
             }
         }
-        public bool IsUsingLiveCloudDatabase { get; private set; }
+        public bool IsUsingLiveCloudDatabase { get; set; }
 
         public Company? ActiveCompany => Companies.FirstOrDefault(c => c.CompanyId == ActiveCompanyId);
 
@@ -90,16 +90,23 @@ namespace ERP.winforms.Services
             StorePolicies.Clear();
             ExpenseRecords.Clear();
 
-            LoadCategoriesFromLocalCache();
-            LoadProductsToLocalCache();
-            LoadOrdersFromLocalCache();
-            LoadRepairsFromLocalCache();
-            LoadSuppliersFromLocalCache();
-            LoadStaffFromLocalCache();
-            LoadApprovalsFromLocalCache();
-            LoadCustomersFromLocalCache();
-            LoadPayrollFromLocalCache();
-            LoadPoliciesFromLocalCache();
+            try
+            {
+                Categories = Task.Run(() => _localDb.GetCategoriesAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                Products = Task.Run(() => _localDb.GetProductsAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                Orders = Task.Run(() => _localDb.GetOrdersAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                RepairTickets = Task.Run(() => _localDb.GetRepairsAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                Suppliers = Task.Run(() => _localDb.GetSuppliersAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                StaffMembers = Task.Run(() => _localDb.GetStaffAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                ApprovalRequests = Task.Run(() => _localDb.GetApprovalsAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                Customers = Task.Run(() => _localDb.GetCustomersAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                PayrollRecords = Task.Run(() => _localDb.GetPayrollAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                StorePolicies = Task.Run(() => _localDb.GetPoliciesAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Local SQL tenant switch note: {ex.Message}");
+            }
             LoadExpensesFromLocalCache();
 
             CategoriesChanged?.Invoke();
@@ -130,23 +137,29 @@ namespace ERP.winforms.Services
                 new Company { CompanyId = 2, CompanyCode = "TENANT_B", CompanyName = "Tenant B", PlanName = "SmallBusiness", Description = "Small Business Store Operations" }
             };
 
-            // Standard categories (empty by default; loaded from API or local cache)
             Categories = new List<Category>();
 
-            // Immediate local cache hydration: UI is instantly populated without waiting on network
-            LoadCategoriesFromLocalCache();
-            LoadProductsToLocalCache();
-            LoadOrdersFromLocalCache();
-            LoadRepairsFromLocalCache();
-            LoadSuppliersFromLocalCache();
-            LoadStaffFromLocalCache();
-            LoadApprovalsFromLocalCache();
-            LoadCustomersFromLocalCache();
-            LoadPayrollFromLocalCache();
-            LoadPoliciesFromLocalCache();
+            // Immediate local SQL database hydration: UI is instantly populated from local tenant SQL DB
+            try
+            {
+                Categories = Task.Run(() => _localDb.GetCategoriesAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                Products = Task.Run(() => _localDb.GetProductsAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                Orders = Task.Run(() => _localDb.GetOrdersAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                RepairTickets = Task.Run(() => _localDb.GetRepairsAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                Suppliers = Task.Run(() => _localDb.GetSuppliersAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                StaffMembers = Task.Run(() => _localDb.GetStaffAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                ApprovalRequests = Task.Run(() => _localDb.GetApprovalsAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                Customers = Task.Run(() => _localDb.GetCustomersAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                PayrollRecords = Task.Run(() => _localDb.GetPayrollAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                StorePolicies = Task.Run(() => _localDb.GetPoliciesAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Local SQL initialization note: {ex.Message}");
+            }
             LoadExpensesFromLocalCache();
 
-            // Background / live cloud refresh (or local database fallback when offline)
+            // Background live cloud refresh (or local database fallback when offline)
             Task.Run(() => LoadFromDatabase());
         }
 
@@ -880,6 +893,19 @@ namespace ERP.winforms.Services
             "Peripherals"
         };
 
+        public bool IsApiReachable()
+        {
+            if (!NetworkInterface.GetIsNetworkAvailable()) return false;
+            try
+            {
+                return Task.Run(() => _apiClient.CheckApiConnectivityAsync()).GetAwaiter().GetResult();
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public bool IsDefaultPreset(string? categoryName)
         {
             if (string.IsNullOrWhiteSpace(categoryName)) return false;
@@ -894,37 +920,60 @@ namespace ERP.winforms.Services
             var existing = Categories.FirstOrDefault(c => c.Name.Equals(category.Name, StringComparison.OrdinalIgnoreCase));
             if (existing != null) return true;
 
-            int nextId = Categories.Count > 0 ? Categories.Max(c => c.Id) + 1 : 1;
-            category.Id = nextId;
             category.CompanyId = ActiveCompanyId;
-            Categories.Add(category);
-            SaveCategoriesToLocalCache();
-            CategoriesChanged?.Invoke();
 
-            if (NetworkInterface.GetIsNetworkAvailable())
+            bool isOnline = IsApiReachable();
+            if (isOnline)
             {
+                Category? apiCreated = null;
                 try
                 {
-                    Task.Run(async () =>
-                    {
-                        var res = await _apiClient.AddCategoryAsync(ActiveCompanyId, category);
-                        if (res == null)
-                        {
-                            SyncManager.Instance.EnqueueCategory(category, false, ActiveCompanyId);
-                        }
-                    }).ConfigureAwait(false);
+                    apiCreated = Task.Run(() => _apiClient.AddCategoryAsync(ActiveCompanyId, category)).GetAwaiter().GetResult();
                 }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"AddCategory API error: {ex.Message}");
-                    SyncManager.Instance.EnqueueCategory(category, false, ActiveCompanyId);
                 }
+
+                if (apiCreated == null)
+                {
+                    return false;
+                }
+
+                category.Id = apiCreated.Id;
+                try
+                {
+                    Task.Run(() => _localDb.AddCategoryAsync(ActiveCompanyId, category, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch { }
             }
             else
             {
-                SyncManager.Instance.EnqueueCategory(category, false, ActiveCompanyId);
+                try
+                {
+                    var localCreated = Task.Run(() => _localDb.AddCategoryAsync(ActiveCompanyId, category, enqueueSync: true)).GetAwaiter().GetResult();
+                    if (localCreated != null && localCreated.Id > 0)
+                    {
+                        category.Id = localCreated.Id;
+                    }
+                    else
+                    {
+                        int nextId = Categories.Count > 0 ? Categories.Max(c => c.Id) + 1 : 1;
+                        category.Id = nextId;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"AddCategory localDb error: {ex.Message}");
+                    return false;
+                }
             }
 
+            if (!Categories.Any(c => c.Name.Equals(category.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                Categories.Add(category);
+            }
+            CategoriesChanged?.Invoke();
             return true;
         }
 
@@ -941,10 +990,55 @@ namespace ERP.winforms.Services
             if (dup != null) return false;
 
             string oldName = cat.Name;
+            var updatedCat = new Category
+            {
+                Id = categoryId,
+                CompanyId = ActiveCompanyId,
+                Name = newName,
+                Description = description?.Trim() ?? cat.Description
+            };
+
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
+                {
+                    var res = Task.Run(() => _apiClient.UpdateCategoryAsync(ActiveCompanyId, categoryId, updatedCat)).GetAwaiter().GetResult();
+                    apiSuccess = res != null;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdateCategory API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    Task.Run(() => _localDb.UpdateCategoryAsync(ActiveCompanyId, categoryId, newName, description, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch { }
+            }
+            else
+            {
+                try
+                {
+                    Task.Run(() => _localDb.UpdateCategoryAsync(ActiveCompanyId, categoryId, newName, description, enqueueSync: true)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdateCategory localDb error: {ex.Message}");
+                    return false;
+                }
+            }
+
             cat.Name = newName;
             if (description != null) cat.Description = description.Trim();
-
-            SaveCategoriesToLocalCache();
 
             // Cascade update to in-memory products
             if (!oldName.Equals(newName, StringComparison.OrdinalIgnoreCase))
@@ -956,32 +1050,6 @@ namespace ERP.winforms.Services
             }
 
             CategoriesChanged?.Invoke();
-
-            // Dispatch to ERP.api asynchronously or enqueue offline
-            if (NetworkInterface.GetIsNetworkAvailable())
-            {
-                try
-                {
-                    Task.Run(async () =>
-                    {
-                        var res = await _apiClient.UpdateCategoryAsync(ActiveCompanyId, categoryId, cat);
-                        if (res == null)
-                        {
-                            SyncManager.Instance.EnqueueCategory(cat, true, ActiveCompanyId);
-                        }
-                    }).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"UpdateCategory API error: {ex.Message}");
-                    SyncManager.Instance.EnqueueCategory(cat, true, ActiveCompanyId);
-                }
-            }
-            else
-            {
-                SyncManager.Instance.EnqueueCategory(cat, true, ActiveCompanyId);
-            }
-
             return true;
         }
 
@@ -995,6 +1063,44 @@ namespace ERP.winforms.Services
             string fallback = string.IsNullOrWhiteSpace(reassignTo) ? "Graphics Cards (GPU)" : reassignTo.Trim();
             string oldName = cat.Name;
 
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
+                {
+                    apiSuccess = Task.Run(() => _apiClient.DeleteCategoryAsync(ActiveCompanyId, categoryId, fallback)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"DeleteCategory API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    Task.Run(() => _localDb.DeleteCategoryAsync(ActiveCompanyId, categoryId, fallback, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch { }
+            }
+            else
+            {
+                try
+                {
+                    Task.Run(() => _localDb.DeleteCategoryAsync(ActiveCompanyId, categoryId, fallback, enqueueSync: true)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"DeleteCategory localDb error: {ex.Message}");
+                    return false;
+                }
+            }
+
             // Reassign in-memory products
             foreach (var p in Products.Where(p => p.CategoryName.Equals(oldName, StringComparison.OrdinalIgnoreCase)))
             {
@@ -1002,34 +1108,7 @@ namespace ERP.winforms.Services
             }
 
             Categories.Remove(cat);
-            SaveCategoriesToLocalCache();
             CategoriesChanged?.Invoke();
-
-            // Dispatch to ERP.api asynchronously or enqueue offline
-            if (NetworkInterface.GetIsNetworkAvailable())
-            {
-                try
-                {
-                    Task.Run(async () =>
-                    {
-                        bool ok = await _apiClient.DeleteCategoryAsync(ActiveCompanyId, categoryId, fallback);
-                        if (!ok)
-                        {
-                            SyncManager.Instance.EnqueueDeleteCategory(categoryId, fallback, ActiveCompanyId);
-                        }
-                    }).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"DeleteCategory API error: {ex.Message}");
-                    SyncManager.Instance.EnqueueDeleteCategory(categoryId, fallback, ActiveCompanyId);
-                }
-            }
-            else
-            {
-                SyncManager.Instance.EnqueueDeleteCategory(categoryId, fallback, ActiveCompanyId);
-            }
-
             return true;
         }
 
@@ -1037,6 +1116,8 @@ namespace ERP.winforms.Services
 
         public bool SaveProduct(Product product)
         {
+            if (product == null) return false;
+
             try
             {
                 // Check if already in memory
@@ -1058,53 +1139,112 @@ namespace ERP.winforms.Services
                     }
                 }
 
-                // Send to ERP.api safely off UI thread only if network is available
-                Product? created = null;
-                if (NetworkInterface.GetIsNetworkAvailable())
+                bool isOnline = IsApiReachable();
+                if (isOnline)
                 {
-                    created = Task.Run(() => _apiClient.AddProductAsync(ActiveCompanyId, product)).GetAwaiter().GetResult();
-                }
+                    Product? apiCreated = null;
+                    try
+                    {
+                        apiCreated = Task.Run(() => _apiClient.AddProductAsync(ActiveCompanyId, product)).GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"SaveProduct API error: {ex.Message}");
+                    }
 
-                if (created != null)
-                {
-                    product.ProductId = created.ProductId;
+                    if (apiCreated == null)
+                    {
+                        return false;
+                    }
+
+                    product.ProductId = apiCreated.ProductId;
+                    try
+                    {
+                        Task.Run(() => _localDb.SaveProductAsync(ActiveCompanyId, product, enqueueSync: false)).GetAwaiter().GetResult();
+                    }
+                    catch { }
                 }
                 else
                 {
-                    // Enqueue for offline sync when online
-                    SyncManager.Instance.EnqueueProduct(product, false, ActiveCompanyId);
-                    if (product.ProductId == 0)
+                    try
                     {
-                        int nextId = Products.Count > 0 ? Products.Max(p => p.ProductId) + 1 : 1;
-                        product.ProductId = nextId;
+                        var saved = Task.Run(() => _localDb.SaveProductAsync(ActiveCompanyId, product, enqueueSync: true)).GetAwaiter().GetResult();
+                        if (saved != null && saved.ProductId > 0)
+                        {
+                            product.ProductId = saved.ProductId;
+                        }
+                        else
+                        {
+                            int nextId = Products.Count > 0 ? Products.Max(p => p.ProductId) + 1 : 1;
+                            product.ProductId = nextId;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"SaveProduct localDb error: {ex.Message}");
+                        return false;
                     }
                 }
 
-                Products.Add(product);
-                SaveProductsToLocalCache();
+                if (!Products.Any(p => p.ProductCode.Equals(product.ProductCode, StringComparison.OrdinalIgnoreCase)))
+                {
+                    Products.Add(product);
+                }
                 ProductsChanged?.Invoke();
                 return true;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"SaveProduct error: {ex.Message}");
-                SyncManager.Instance.EnqueueProduct(product, false, ActiveCompanyId);
-
-                if (!Products.Any(p => p.ProductCode.Equals(product.ProductCode, StringComparison.OrdinalIgnoreCase)))
-                {
-                    int nextId = Products.Count > 0 ? Products.Max(p => p.ProductId) + 1 : 1;
-                    product.ProductId = nextId;
-                    Products.Add(product);
-                }
-
-                SaveProductsToLocalCache();
-                ProductsChanged?.Invoke();
-                return true;
+                System.Diagnostics.Debug.WriteLine($"SaveProduct general error: {ex.Message}");
+                return false;
             }
         }
 
         public bool UpdateProduct(Product product)
         {
+            if (product == null) return false;
+
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
+                {
+                    apiSuccess = Task.Run(() => _apiClient.UpdateProductAsync(ActiveCompanyId, product)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdateProduct API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    Task.Run(() => _localDb.SaveProductAsync(ActiveCompanyId, product, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdateProduct localDb mirror error: {ex.Message}");
+                }
+            }
+            else
+            {
+                try
+                {
+                    Task.Run(() => _localDb.SaveProductAsync(ActiveCompanyId, product, enqueueSync: true)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdateProduct localDb offline error: {ex.Message}");
+                    return false;
+                }
+            }
+
             var existing = Products.FirstOrDefault(p =>
                 (product.ProductId > 0 && p.ProductId == product.ProductId) ||
                 p.ProductCode.Equals(product.ProductCode, StringComparison.OrdinalIgnoreCase));
@@ -1122,34 +1262,13 @@ namespace ERP.winforms.Services
                 existing.SupplierId = product.SupplierId;
             }
 
-            try
-            {
-                bool synced = false;
-                if (NetworkInterface.GetIsNetworkAvailable())
-                {
-                    synced = Task.Run(() => _apiClient.UpdateProductAsync(ActiveCompanyId, product)).GetAwaiter().GetResult();
-                }
-                if (!synced)
-                {
-                    SyncManager.Instance.EnqueueProduct(product, true, ActiveCompanyId);
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"UpdateProduct API error: {ex.Message}");
-                SyncManager.Instance.EnqueueProduct(product, true, ActiveCompanyId);
-            }
-
             // Ensure deduplication in memory
             Products = Products
                 .GroupBy(p => p.ProductCode)
                 .Select(g => g.First())
                 .ToList();
 
-            // Immediately persist changes to local storage
-            SaveProductsToLocalCache();
             ProductsChanged?.Invoke();
-
             return true;
         }
 
@@ -1158,36 +1277,47 @@ namespace ERP.winforms.Services
             var p = Products.FirstOrDefault(x => x.ProductId == productId);
             if (p == null) return false;
 
-            p.IsActive = false;
-            p.ArchivedAt = DateTime.UtcNow;
-
-            SaveProductsToLocalCache();
-            ProductsChanged?.Invoke();
-
-            if (NetworkInterface.GetIsNetworkAvailable())
+            bool isOnline = IsApiReachable();
+            if (isOnline)
             {
+                bool apiSuccess = false;
                 try
                 {
-                    Task.Run(async () =>
-                    {
-                        bool ok = await _apiClient.ArchiveProductAsync(ActiveCompanyId, productId);
-                        if (!ok)
-                        {
-                            SyncManager.Instance.EnqueueArchiveProduct(productId, ActiveCompanyId);
-                        }
-                    }).ConfigureAwait(false);
+                    apiSuccess = Task.Run(() => _apiClient.ArchiveProductAsync(ActiveCompanyId, productId)).GetAwaiter().GetResult();
                 }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"ArchiveProduct API error: {ex.Message}");
-                    SyncManager.Instance.EnqueueArchiveProduct(productId, ActiveCompanyId);
+                    apiSuccess = false;
                 }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    Task.Run(() => _localDb.ArchiveProductAsync(ActiveCompanyId, productId, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch { }
             }
             else
             {
-                SyncManager.Instance.EnqueueArchiveProduct(productId, ActiveCompanyId);
+                try
+                {
+                    Task.Run(() => _localDb.ArchiveProductAsync(ActiveCompanyId, productId, enqueueSync: true)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"ArchiveProduct localDb error: {ex.Message}");
+                    return false;
+                }
             }
 
+            p.IsActive = false;
+            p.ArchivedAt = DateTime.UtcNow;
+            ProductsChanged?.Invoke();
             return true;
         }
 
@@ -1196,36 +1326,47 @@ namespace ERP.winforms.Services
             var p = Products.FirstOrDefault(x => x.ProductId == productId);
             if (p == null) return false;
 
-            p.IsActive = true;
-            p.ArchivedAt = null;
-
-            SaveProductsToLocalCache();
-            ProductsChanged?.Invoke();
-
-            if (NetworkInterface.GetIsNetworkAvailable())
+            bool isOnline = IsApiReachable();
+            if (isOnline)
             {
+                bool apiSuccess = false;
                 try
                 {
-                    Task.Run(async () =>
-                    {
-                        bool ok = await _apiClient.RestoreProductAsync(ActiveCompanyId, productId);
-                        if (!ok)
-                        {
-                            SyncManager.Instance.EnqueueRestoreProduct(productId, ActiveCompanyId);
-                        }
-                    }).ConfigureAwait(false);
+                    apiSuccess = Task.Run(() => _apiClient.RestoreProductAsync(ActiveCompanyId, productId)).GetAwaiter().GetResult();
                 }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"RestoreProduct API error: {ex.Message}");
-                    SyncManager.Instance.EnqueueRestoreProduct(productId, ActiveCompanyId);
+                    apiSuccess = false;
                 }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    Task.Run(() => _localDb.RestoreProductAsync(ActiveCompanyId, productId, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch { }
             }
             else
             {
-                SyncManager.Instance.EnqueueRestoreProduct(productId, ActiveCompanyId);
+                try
+                {
+                    Task.Run(() => _localDb.RestoreProductAsync(ActiveCompanyId, productId, enqueueSync: true)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"RestoreProduct localDb error: {ex.Message}");
+                    return false;
+                }
             }
 
+            p.IsActive = true;
+            p.ArchivedAt = null;
+            ProductsChanged?.Invoke();
             return true;
         }
 
@@ -1234,15 +1375,63 @@ namespace ERP.winforms.Services
         /// </summary>
         public bool DeleteProduct(int productId) => ArchiveProduct(productId);
 
-        public void ProcessOrder(Order order)
+        public bool ProcessOrder(Order order)
         {
-            // Prevent duplicate insertions
-            if (!Orders.Any(o => o.Id == order.Id))
+            if (order == null || order.Items == null || order.Items.Count == 0) return false;
+
+            // Pre-validation of stock
+            foreach (var item in order.Items)
             {
-                Orders.Insert(0, order);
+                var prod = Products.FirstOrDefault(p => p.ProductId == item.ProductId);
+                if (prod == null || !prod.IsActive) return false;
+                if (prod.StockQuantity < item.Quantity || prod.StockQuantity <= 0) return false;
             }
 
-            // Deduct stock for purchased items locally
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
+                {
+                    apiSuccess = Task.Run(() => _apiClient.ProcessOrderAsync(ActiveCompanyId, order)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"ProcessOrder API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                // Mirror to local SQL without enqueuing sync
+                try
+                {
+                    Task.Run(() => _localDb.ProcessOrderAsync(ActiveCompanyId, order, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"ProcessOrder localDb mirror error: {ex.Message}");
+                }
+            }
+            else
+            {
+                // Truly offline: save to local DB and enqueue sync
+                try
+                {
+                    bool localSuccess = Task.Run(() => _localDb.ProcessOrderAsync(ActiveCompanyId, order, enqueueSync: true)).GetAwaiter().GetResult();
+                    if (!localSuccess) return false;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"ProcessOrder localDb error: {ex.Message}");
+                    return false;
+                }
+            }
+
+            // Deduct stock for purchased items locally in memory
             foreach (var item in order.Items)
             {
                 var prod = Products.FirstOrDefault(p => p.ProductId == item.ProductId);
@@ -1252,29 +1441,13 @@ namespace ERP.winforms.Services
                 }
             }
 
-            // Save immediately to local persistent cache so transactions and stock levels are never lost
-            SaveOrdersToLocalCache();
-            SaveProductsToLocalCache();
-            ProductsChanged?.Invoke();
+            if (!Orders.Any(o => o.Id == order.Id))
+            {
+                Orders.Insert(0, order);
+            }
 
-            // Sync with ERP.api / MonsterASP DB safely off UI thread
-            try
-            {
-                bool synced = false;
-                if (NetworkInterface.GetIsNetworkAvailable())
-                {
-                    synced = Task.Run(() => _apiClient.ProcessOrderAsync(ActiveCompanyId, order)).GetAwaiter().GetResult();
-                }
-                if (!synced)
-                {
-                    SyncManager.Instance.EnqueueOrder(order, ActiveCompanyId);
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"ProcessOrder API error: {ex.Message}");
-                SyncManager.Instance.EnqueueOrder(order, ActiveCompanyId);
-            }
+            ProductsChanged?.Invoke();
+            return true;
         }
 
         public bool VoidOrder(string orderId)
@@ -1295,6 +1468,12 @@ namespace ERP.winforms.Services
                     prod.StockQuantity += item.Quantity;
                 }
             }
+
+            try
+            {
+                Task.Run(() => _localDb.VoidOrderAsync(ActiveCompanyId, cleanId)).GetAwaiter().GetResult();
+            }
+            catch { }
 
             SaveOrdersToLocalCache();
             SaveProductsToLocalCache();
@@ -1320,6 +1499,12 @@ namespace ERP.winforms.Services
                     prod.StockQuantity = Math.Max(0, prod.StockQuantity - item.Quantity);
                 }
             }
+
+            try
+            {
+                Task.Run(() => _localDb.RestoreOrderAsync(ActiveCompanyId, cleanId)).GetAwaiter().GetResult();
+            }
+            catch { }
 
             SaveOrdersToLocalCache();
             SaveProductsToLocalCache();
@@ -1437,10 +1622,9 @@ namespace ERP.winforms.Services
             }
         }
 
-        public void AddRepairTicket(RepairTicket ticket)
+        public bool AddRepairTicket(RepairTicket ticket)
         {
-            if (ticket == null) return;
-            ticket.RepairTicketId = (RepairTickets.Count > 0 ? RepairTickets.Max(t => t.RepairTicketId) : 0) + 1;
+            if (ticket == null) return false;
             ticket.CompanyId = ActiveCompanyId;
             if (string.IsNullOrWhiteSpace(ticket.TicketNumber))
             {
@@ -1449,20 +1633,101 @@ namespace ERP.winforms.Services
             ticket.CreatedAt = DateTime.UtcNow;
             ticket.IsActive = true;
 
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
+                {
+                    apiSuccess = Task.Run(() => _apiClient.CreateRepairTicketAsync(ActiveCompanyId, ticket)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"AddRepairTicket API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    Task.Run(() => _localDb.AddRepairTicketAsync(ActiveCompanyId, ticket, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch { }
+            }
+            else
+            {
+                try
+                {
+                    var saved = Task.Run(() => _localDb.AddRepairTicketAsync(ActiveCompanyId, ticket, enqueueSync: true)).GetAwaiter().GetResult();
+                    if (saved != null && saved.RepairTicketId > 0)
+                    {
+                        ticket.RepairTicketId = saved.RepairTicketId;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"AddRepairTicket localDb error: {ex.Message}");
+                    return false;
+                }
+            }
+
+            if (ticket.RepairTicketId == 0)
+            {
+                ticket.RepairTicketId = (RepairTickets.Count > 0 ? RepairTickets.Max(t => t.RepairTicketId) : 0) + 1;
+            }
+
             RepairTickets.Insert(0, ticket);
             SaveRepairsToLocalCache();
             RepairTicketsChanged?.Invoke();
-
-            if (NetworkInterface.GetIsNetworkAvailable())
-            {
-                Task.Run(() => _apiClient.CreateRepairTicketAsync(ActiveCompanyId, ticket));
-            }
+            return true;
         }
 
-        public void UpdateRepairStatus(int ticketId, string status, string? notes = null, string? technician = null)
+        public bool UpdateRepairStatus(int ticketId, string status, string? notes = null, string? technician = null)
         {
             var ticket = RepairTickets.FirstOrDefault(t => t.RepairTicketId == ticketId);
-            if (ticket == null) return;
+            if (ticket == null) return false;
+
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
+                {
+                    apiSuccess = Task.Run(() => _apiClient.UpdateRepairStatusAsync(ActiveCompanyId, ticketId, status, notes, technician)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdateRepairStatus API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    Task.Run(() => _localDb.UpdateRepairStatusAsync(ActiveCompanyId, ticketId, status, notes, technician, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch { }
+            }
+            else
+            {
+                try
+                {
+                    Task.Run(() => _localDb.UpdateRepairStatusAsync(ActiveCompanyId, ticketId, status, notes, technician, enqueueSync: true)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdateRepairStatus localDb error: {ex.Message}");
+                    return false;
+                }
+            }
 
             ticket.Status = status;
             if (!string.IsNullOrEmpty(notes)) ticket.DiagnosticNotes = notes;
@@ -1474,17 +1739,51 @@ namespace ERP.winforms.Services
 
             SaveRepairsToLocalCache();
             RepairTicketsChanged?.Invoke();
-
-            if (NetworkInterface.GetIsNetworkAvailable())
-            {
-                Task.Run(() => _apiClient.UpdateRepairStatusAsync(ActiveCompanyId, ticketId, status, notes, technician));
-            }
+            return true;
         }
 
-        public void UpdateRepairBilling(int ticketId, decimal labor, decimal parts, decimal deposit)
+        public bool UpdateRepairBilling(int ticketId, decimal labor, decimal parts, decimal deposit)
         {
             var ticket = RepairTickets.FirstOrDefault(t => t.RepairTicketId == ticketId);
-            if (ticket == null) return;
+            if (ticket == null) return false;
+
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
+                {
+                    apiSuccess = Task.Run(() => _apiClient.UpdateRepairBillingAsync(ActiveCompanyId, ticketId, labor, parts, deposit)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdateRepairBilling API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    Task.Run(() => _localDb.UpdateRepairBillingAsync(ActiveCompanyId, ticketId, labor, parts, deposit, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch { }
+            }
+            else
+            {
+                try
+                {
+                    Task.Run(() => _localDb.UpdateRepairBillingAsync(ActiveCompanyId, ticketId, labor, parts, deposit, enqueueSync: true)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdateRepairBilling localDb error: {ex.Message}");
+                    return false;
+                }
+            }
 
             ticket.LaborFee = labor;
             ticket.PartsCost = parts;
@@ -1492,11 +1791,7 @@ namespace ERP.winforms.Services
 
             SaveRepairsToLocalCache();
             RepairTicketsChanged?.Invoke();
-
-            if (NetworkInterface.GetIsNetworkAvailable())
-            {
-                Task.Run(() => _apiClient.UpdateRepairBillingAsync(ActiveCompanyId, ticketId, labor, parts, deposit));
-            }
+            return true;
         }
 
         // =========================================================================
@@ -1544,10 +1839,9 @@ namespace ERP.winforms.Services
             }
         }
 
-        public void AddSupplier(Supplier supplier)
+        public bool AddSupplier(Supplier supplier)
         {
-            if (supplier == null) return;
-            supplier.SupplierId = (Suppliers.Count > 0 ? Suppliers.Max(s => s.SupplierId) : 0) + 1;
+            if (supplier == null) return false;
             if (string.IsNullOrWhiteSpace(supplier.SupplierCode))
             {
                 supplier.SupplierCode = $"SUP-{new Random().Next(100, 999)}";
@@ -1555,58 +1849,233 @@ namespace ERP.winforms.Services
             supplier.CreatedAt = DateTime.UtcNow;
             supplier.IsActive = true;
 
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
+                {
+                    apiSuccess = Task.Run(() => _apiClient.CreateSupplierAsync(ActiveCompanyId, supplier)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"AddSupplier API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    Task.Run(() => _localDb.AddSupplierAsync(ActiveCompanyId, supplier, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch { }
+            }
+            else
+            {
+                try
+                {
+                    var saved = Task.Run(() => _localDb.AddSupplierAsync(ActiveCompanyId, supplier, enqueueSync: true)).GetAwaiter().GetResult();
+                    if (saved != null && saved.SupplierId > 0)
+                    {
+                        supplier.SupplierId = saved.SupplierId;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"AddSupplier localDb error: {ex.Message}");
+                    return false;
+                }
+            }
+
+            if (supplier.SupplierId == 0)
+            {
+                supplier.SupplierId = (Suppliers.Count > 0 ? Suppliers.Max(s => s.SupplierId) : 0) + 1;
+            }
+
             Suppliers.Add(supplier);
             SaveSuppliersToLocalCache();
             SuppliersChanged?.Invoke();
-
-            if (NetworkInterface.GetIsNetworkAvailable())
-            {
-                Task.Run(() => _apiClient.CreateSupplierAsync(ActiveCompanyId, supplier));
-            }
+            return true;
         }
 
-        public void UpdateSupplier(Supplier supplier)
+        public bool UpdateSupplier(Supplier supplier)
         {
-            if (supplier == null) return;
+            if (supplier == null) return false;
             var existing = Suppliers.FirstOrDefault(s => s.SupplierId == supplier.SupplierId);
-            if (existing != null)
+            if (existing == null) return false;
+
+            var updatedSupplier = new Supplier
             {
-                existing.SupplierName = supplier.SupplierName;
-                existing.ContactPerson = supplier.ContactPerson;
-                existing.ContactNumber = supplier.ContactNumber;
-                existing.EmailAddress = supplier.EmailAddress;
-                existing.Address = supplier.Address;
+                SupplierId = existing.SupplierId,
+                SupplierCode = existing.SupplierCode,
+                SupplierName = supplier.SupplierName,
+                ContactPerson = supplier.ContactPerson,
+                ContactNumber = supplier.ContactNumber,
+                EmailAddress = supplier.EmailAddress,
+                Address = supplier.Address,
+                IsActive = existing.IsActive,
+                CreatedAt = existing.CreatedAt
+            };
 
-                SaveSuppliersToLocalCache();
-                SuppliersChanged?.Invoke();
-
-                if (NetworkInterface.GetIsNetworkAvailable())
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
                 {
-                    Task.Run(() => _apiClient.UpdateSupplierAsync(ActiveCompanyId, supplier.SupplierId, existing));
+                    apiSuccess = Task.Run(() => _apiClient.UpdateSupplierAsync(ActiveCompanyId, supplier.SupplierId, updatedSupplier)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdateSupplier API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    Task.Run(() => _localDb.UpdateSupplierAsync(ActiveCompanyId, updatedSupplier, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch { }
+            }
+            else
+            {
+                try
+                {
+                    Task.Run(() => _localDb.UpdateSupplierAsync(ActiveCompanyId, updatedSupplier, enqueueSync: true)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdateSupplier localDb error: {ex.Message}");
+                    return false;
                 }
             }
+
+            existing.SupplierName = updatedSupplier.SupplierName;
+            existing.ContactPerson = updatedSupplier.ContactPerson;
+            existing.ContactNumber = updatedSupplier.ContactNumber;
+            existing.EmailAddress = updatedSupplier.EmailAddress;
+            existing.Address = updatedSupplier.Address;
+
+            SaveSuppliersToLocalCache();
+            SuppliersChanged?.Invoke();
+            return true;
         }
 
-        public void ToggleSupplierArchive(int supplierId)
+        public bool ToggleSupplierArchive(int supplierId)
         {
             var existing = Suppliers.FirstOrDefault(s => s.SupplierId == supplierId);
-            if (existing != null)
-            {
-                existing.IsActive = !existing.IsActive;
-                SaveSuppliersToLocalCache();
-                SuppliersChanged?.Invoke();
+            if (existing == null) return false;
 
-                if (NetworkInterface.GetIsNetworkAvailable())
+            bool targetActive = !existing.IsActive;
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
                 {
-                    if (!existing.IsActive)
-                        Task.Run(() => _apiClient.DeleteSupplierAsync(ActiveCompanyId, supplierId));
+                    if (!targetActive)
+                        apiSuccess = Task.Run(() => _apiClient.DeleteSupplierAsync(ActiveCompanyId, supplierId)).GetAwaiter().GetResult();
                     else
-                        Task.Run(() => _apiClient.UpdateSupplierAsync(ActiveCompanyId, supplierId, existing));
+                    {
+                        var copy = new Supplier
+                        {
+                            SupplierId = existing.SupplierId,
+                            SupplierCode = existing.SupplierCode,
+                            SupplierName = existing.SupplierName,
+                            ContactPerson = existing.ContactPerson,
+                            ContactNumber = existing.ContactNumber,
+                            EmailAddress = existing.EmailAddress,
+                            Address = existing.Address,
+                            IsActive = true,
+                            CreatedAt = existing.CreatedAt
+                        };
+                        apiSuccess = Task.Run(() => _apiClient.UpdateSupplierAsync(ActiveCompanyId, supplierId, copy)).GetAwaiter().GetResult();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"ToggleSupplierArchive API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    if (!targetActive)
+                    {
+                        Task.Run(() => _localDb.DeleteSupplierAsync(ActiveCompanyId, supplierId, enqueueSync: false)).GetAwaiter().GetResult();
+                    }
+                    else
+                    {
+                        var copy = new Supplier
+                        {
+                            SupplierId = existing.SupplierId,
+                            SupplierCode = existing.SupplierCode,
+                            SupplierName = existing.SupplierName,
+                            ContactPerson = existing.ContactPerson,
+                            ContactNumber = existing.ContactNumber,
+                            EmailAddress = existing.EmailAddress,
+                            Address = existing.Address,
+                            IsActive = true,
+                            CreatedAt = existing.CreatedAt
+                        };
+                        Task.Run(() => _localDb.UpdateSupplierAsync(ActiveCompanyId, copy, enqueueSync: false)).GetAwaiter().GetResult();
+                    }
+                }
+                catch { }
+            }
+            else
+            {
+                try
+                {
+                    if (!targetActive)
+                    {
+                        Task.Run(() => _localDb.DeleteSupplierAsync(ActiveCompanyId, supplierId, enqueueSync: true)).GetAwaiter().GetResult();
+                    }
+                    else
+                    {
+                        var copy = new Supplier
+                        {
+                            SupplierId = existing.SupplierId,
+                            SupplierCode = existing.SupplierCode,
+                            SupplierName = existing.SupplierName,
+                            ContactPerson = existing.ContactPerson,
+                            ContactNumber = existing.ContactNumber,
+                            EmailAddress = existing.EmailAddress,
+                            Address = existing.Address,
+                            IsActive = true,
+                            CreatedAt = existing.CreatedAt
+                        };
+                        Task.Run(() => _localDb.UpdateSupplierAsync(ActiveCompanyId, copy, enqueueSync: true)).GetAwaiter().GetResult();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"ToggleSupplierArchive localDb error: {ex.Message}");
+                    return false;
                 }
             }
+
+            existing.IsActive = targetActive;
+            SaveSuppliersToLocalCache();
+            SuppliersChanged?.Invoke();
+            return true;
         }
 
-        public void DeleteSupplier(int supplierId) => ToggleSupplierArchive(supplierId);
+        public bool DeleteSupplier(int supplierId) => ToggleSupplierArchive(supplierId);
 
         // =========================================================================
         // TENANT B: STAFF MANAGEMENT CACHING & CRUD
@@ -1653,10 +2122,9 @@ namespace ERP.winforms.Services
             }
         }
 
-        public void AddStaffMember(StaffMember staff)
+        public bool AddStaffMember(StaffMember staff)
         {
-            if (staff == null) return;
-            staff.StaffId = (StaffMembers.Count > 0 ? StaffMembers.Max(s => s.StaffId) : 0) + 1;
+            if (staff == null) return false;
             staff.CompanyId = ActiveCompanyId;
             if (string.IsNullOrWhiteSpace(staff.StaffCode))
             {
@@ -1664,10 +2132,6 @@ namespace ERP.winforms.Services
             }
             staff.HiredDate = DateTime.UtcNow;
             staff.IsActive = true;
-
-            StaffMembers.Add(staff);
-            SaveStaffToLocalCache();
-            StaffMembersChanged?.Invoke();
 
             if (!string.IsNullOrWhiteSpace(staff.InitialPassword))
             {
@@ -1683,71 +2147,270 @@ namespace ERP.winforms.Services
                 );
             }
 
-            if (NetworkInterface.GetIsNetworkAvailable())
+            bool isOnline = IsApiReachable();
+            if (isOnline)
             {
-                Task.Run(() => _apiClient.CreateStaffAsync(ActiveCompanyId, staff));
+                bool apiSuccess = false;
+                try
+                {
+                    apiSuccess = Task.Run(() => _apiClient.CreateStaffAsync(ActiveCompanyId, staff)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"AddStaffMember API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    Task.Run(() => _localDb.AddStaffMemberAsync(ActiveCompanyId, staff, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch { }
             }
+            else
+            {
+                try
+                {
+                    var saved = Task.Run(() => _localDb.AddStaffMemberAsync(ActiveCompanyId, staff, enqueueSync: true)).GetAwaiter().GetResult();
+                    if (saved != null && saved.StaffId > 0)
+                    {
+                        staff.StaffId = saved.StaffId;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"AddStaffMember localDb error: {ex.Message}");
+                    return false;
+                }
+            }
+
+            if (staff.StaffId == 0)
+            {
+                staff.StaffId = (StaffMembers.Count > 0 ? StaffMembers.Max(s => s.StaffId) : 0) + 1;
+            }
+
+            StaffMembers.Add(staff);
+            SaveStaffToLocalCache();
+            StaffMembersChanged?.Invoke();
+            return true;
         }
 
-        public void UpdateStaffMember(StaffMember staff)
+        public bool UpdateStaffMember(StaffMember staff)
         {
-            if (staff == null) return;
+            if (staff == null) return false;
             var existing = StaffMembers.FirstOrDefault(s => s.StaffId == staff.StaffId);
-            if (existing != null)
-            {
-                existing.FullName = staff.FullName;
-                existing.Role = staff.Role;
-                existing.PositionTitle = staff.PositionTitle;
-                existing.Email = staff.Email;
-                existing.PhoneNumber = staff.PhoneNumber;
-                existing.HourlyRate = staff.HourlyRate;
-                existing.MonthlySalary = staff.MonthlySalary;
+            if (existing == null) return false;
 
-                if (!string.IsNullOrWhiteSpace(staff.InitialPassword))
+            var updatedStaff = new StaffMember
+            {
+                StaffId = existing.StaffId,
+                CompanyId = existing.CompanyId,
+                StaffCode = existing.StaffCode,
+                FullName = staff.FullName,
+                Username = existing.Username,
+                Role = staff.Role,
+                PositionTitle = staff.PositionTitle,
+                Email = staff.Email,
+                PhoneNumber = staff.PhoneNumber,
+                HourlyRate = staff.HourlyRate,
+                MonthlySalary = staff.MonthlySalary,
+                IsActive = existing.IsActive,
+                HiredDate = existing.HiredDate,
+                InitialPassword = !string.IsNullOrWhiteSpace(staff.InitialPassword) ? staff.InitialPassword : existing.InitialPassword
+            };
+
+            if (!string.IsNullOrWhiteSpace(staff.InitialPassword))
+            {
+                OfflineAuthService.Instance.RegisterOrUpdateStaffPassword(
+                    ActiveCompanyId,
+                    CurrentCompany.CompanyCode,
+                    CurrentCompany.CompanyName,
+                    CurrentCompany.PlanName,
+                    existing.Username,
+                    existing.FullName,
+                    existing.Role,
+                    staff.InitialPassword
+                );
+            }
+
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
                 {
-                    existing.InitialPassword = staff.InitialPassword;
-                    OfflineAuthService.Instance.RegisterOrUpdateStaffPassword(
-                        ActiveCompanyId,
-                        CurrentCompany.CompanyCode,
-                        CurrentCompany.CompanyName,
-                        CurrentCompany.PlanName,
-                        existing.Username,
-                        existing.FullName,
-                        existing.Role,
-                        staff.InitialPassword
-                    );
+                    apiSuccess = Task.Run(() => _apiClient.UpdateStaffAsync(ActiveCompanyId, staff.StaffId, updatedStaff)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdateStaffMember API error: {ex.Message}");
+                    apiSuccess = false;
                 }
 
-                SaveStaffToLocalCache();
-                StaffMembersChanged?.Invoke();
-
-                if (NetworkInterface.GetIsNetworkAvailable())
+                if (!apiSuccess)
                 {
-                    Task.Run(() => _apiClient.UpdateStaffAsync(ActiveCompanyId, staff.StaffId, existing));
+                    return false;
+                }
+
+                try
+                {
+                    Task.Run(() => _localDb.UpdateStaffMemberAsync(ActiveCompanyId, updatedStaff, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch { }
+            }
+            else
+            {
+                try
+                {
+                    Task.Run(() => _localDb.UpdateStaffMemberAsync(ActiveCompanyId, updatedStaff, enqueueSync: true)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdateStaffMember localDb error: {ex.Message}");
+                    return false;
                 }
             }
+
+            existing.FullName = updatedStaff.FullName;
+            existing.Role = updatedStaff.Role;
+            existing.PositionTitle = updatedStaff.PositionTitle;
+            existing.Email = updatedStaff.Email;
+            existing.PhoneNumber = updatedStaff.PhoneNumber;
+            existing.HourlyRate = updatedStaff.HourlyRate;
+            existing.MonthlySalary = updatedStaff.MonthlySalary;
+            if (!string.IsNullOrWhiteSpace(updatedStaff.InitialPassword))
+            {
+                existing.InitialPassword = updatedStaff.InitialPassword;
+            }
+
+            SaveStaffToLocalCache();
+            StaffMembersChanged?.Invoke();
+            return true;
         }
 
-        public void ToggleStaffArchive(int staffId)
+        public bool ToggleStaffArchive(int staffId)
         {
             var existing = StaffMembers.FirstOrDefault(s => s.StaffId == staffId);
-            if (existing != null)
-            {
-                existing.IsActive = !existing.IsActive;
-                SaveStaffToLocalCache();
-                StaffMembersChanged?.Invoke();
+            if (existing == null) return false;
 
-                if (NetworkInterface.GetIsNetworkAvailable())
+            bool targetActive = !existing.IsActive;
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
                 {
-                    if (!existing.IsActive)
-                        Task.Run(() => _apiClient.DeactivateStaffAsync(ActiveCompanyId, staffId));
+                    if (!targetActive)
+                        apiSuccess = Task.Run(() => _apiClient.DeactivateStaffAsync(ActiveCompanyId, staffId)).GetAwaiter().GetResult();
                     else
-                        Task.Run(() => _apiClient.UpdateStaffAsync(ActiveCompanyId, staffId, existing));
+                    {
+                        var copy = new StaffMember
+                        {
+                            StaffId = existing.StaffId,
+                            CompanyId = existing.CompanyId,
+                            StaffCode = existing.StaffCode,
+                            FullName = existing.FullName,
+                            Username = existing.Username,
+                            Role = existing.Role,
+                            PositionTitle = existing.PositionTitle,
+                            Email = existing.Email,
+                            PhoneNumber = existing.PhoneNumber,
+                            HourlyRate = existing.HourlyRate,
+                            MonthlySalary = existing.MonthlySalary,
+                            IsActive = true,
+                            HiredDate = existing.HiredDate
+                        };
+                        apiSuccess = Task.Run(() => _apiClient.UpdateStaffAsync(ActiveCompanyId, staffId, copy)).GetAwaiter().GetResult();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"ToggleStaffArchive API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    if (!targetActive)
+                    {
+                        Task.Run(() => _localDb.DeleteStaffMemberAsync(ActiveCompanyId, staffId, enqueueSync: false)).GetAwaiter().GetResult();
+                    }
+                    else
+                    {
+                        var copy = new StaffMember
+                        {
+                            StaffId = existing.StaffId,
+                            CompanyId = existing.CompanyId,
+                            StaffCode = existing.StaffCode,
+                            FullName = existing.FullName,
+                            Username = existing.Username,
+                            Role = existing.Role,
+                            PositionTitle = existing.PositionTitle,
+                            Email = existing.Email,
+                            PhoneNumber = existing.PhoneNumber,
+                            HourlyRate = existing.HourlyRate,
+                            MonthlySalary = existing.MonthlySalary,
+                            IsActive = true,
+                            HiredDate = existing.HiredDate
+                        };
+                        Task.Run(() => _localDb.UpdateStaffMemberAsync(ActiveCompanyId, copy, enqueueSync: false)).GetAwaiter().GetResult();
+                    }
+                }
+                catch { }
+            }
+            else
+            {
+                try
+                {
+                    if (!targetActive)
+                    {
+                        Task.Run(() => _localDb.DeleteStaffMemberAsync(ActiveCompanyId, staffId, enqueueSync: true)).GetAwaiter().GetResult();
+                    }
+                    else
+                    {
+                        var copy = new StaffMember
+                        {
+                            StaffId = existing.StaffId,
+                            CompanyId = existing.CompanyId,
+                            StaffCode = existing.StaffCode,
+                            FullName = existing.FullName,
+                            Username = existing.Username,
+                            Role = existing.Role,
+                            PositionTitle = existing.PositionTitle,
+                            Email = existing.Email,
+                            PhoneNumber = existing.PhoneNumber,
+                            HourlyRate = existing.HourlyRate,
+                            MonthlySalary = existing.MonthlySalary,
+                            IsActive = true,
+                            HiredDate = existing.HiredDate
+                        };
+                        Task.Run(() => _localDb.UpdateStaffMemberAsync(ActiveCompanyId, copy, enqueueSync: true)).GetAwaiter().GetResult();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"ToggleStaffArchive localDb error: {ex.Message}");
+                    return false;
                 }
             }
+
+            existing.IsActive = targetActive;
+            SaveStaffToLocalCache();
+            StaffMembersChanged?.Invoke();
+            return true;
         }
 
-        public void DeactivateStaffMember(int staffId) => ToggleStaffArchive(staffId);
+        public bool DeactivateStaffMember(int staffId) => ToggleStaffArchive(staffId);
 
         // =========================================================================
         // TENANT B: WORKFLOW & APPROVAL CACHING & CRUD
@@ -1794,10 +2457,9 @@ namespace ERP.winforms.Services
             }
         }
 
-        public void AddApprovalRequest(ApprovalRequest request)
+        public bool AddApprovalRequest(ApprovalRequest request)
         {
-            if (request == null) return;
-            request.RequestId = (ApprovalRequests.Count > 0 ? ApprovalRequests.Max(r => r.RequestId) : 0) + 1;
+            if (request == null) return false;
             request.CompanyId = ActiveCompanyId;
             if (string.IsNullOrWhiteSpace(request.RequestNumber))
             {
@@ -1806,20 +2468,101 @@ namespace ERP.winforms.Services
             request.CreatedAt = DateTime.UtcNow;
             request.Status = "Pending";
 
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
+                {
+                    apiSuccess = Task.Run(() => _apiClient.CreateApprovalRequestAsync(ActiveCompanyId, request)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"AddApprovalRequest API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    Task.Run(() => _localDb.CreateApprovalRequestAsync(ActiveCompanyId, request, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch { }
+            }
+            else
+            {
+                try
+                {
+                    var saved = Task.Run(() => _localDb.CreateApprovalRequestAsync(ActiveCompanyId, request, enqueueSync: true)).GetAwaiter().GetResult();
+                    if (saved != null && saved.RequestId > 0)
+                    {
+                        request.RequestId = saved.RequestId;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"AddApprovalRequest localDb error: {ex.Message}");
+                    return false;
+                }
+            }
+
+            if (request.RequestId == 0)
+            {
+                request.RequestId = (ApprovalRequests.Count > 0 ? ApprovalRequests.Max(r => r.RequestId) : 0) + 1;
+            }
+
             ApprovalRequests.Insert(0, request);
             SaveApprovalsToLocalCache();
             ApprovalRequestsChanged?.Invoke();
-
-            if (NetworkInterface.GetIsNetworkAvailable())
-            {
-                Task.Run(() => _apiClient.CreateApprovalRequestAsync(ActiveCompanyId, request));
-            }
+            return true;
         }
 
-        public void ResolveApprovalRequest(int requestId, string status, string reviewer, string? notes)
+        public bool ResolveApprovalRequest(int requestId, string status, string reviewer, string? notes)
         {
             var request = ApprovalRequests.FirstOrDefault(r => r.RequestId == requestId);
-            if (request == null) return;
+            if (request == null) return false;
+
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
+                {
+                    apiSuccess = Task.Run(() => _apiClient.ResolveApprovalRequestAsync(ActiveCompanyId, requestId, status, reviewer, notes)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"ResolveApprovalRequest API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    Task.Run(() => _localDb.ResolveApprovalRequestAsync(ActiveCompanyId, requestId, status, reviewer, notes, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch { }
+            }
+            else
+            {
+                try
+                {
+                    Task.Run(() => _localDb.ResolveApprovalRequestAsync(ActiveCompanyId, requestId, status, reviewer, notes, enqueueSync: true)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"ResolveApprovalRequest localDb error: {ex.Message}");
+                    return false;
+                }
+            }
 
             request.Status = status;
             request.ReviewedBy = reviewer;
@@ -1828,11 +2571,7 @@ namespace ERP.winforms.Services
 
             SaveApprovalsToLocalCache();
             ApprovalRequestsChanged?.Invoke();
-
-            if (NetworkInterface.GetIsNetworkAvailable())
-            {
-                Task.Run(() => _apiClient.ResolveApprovalRequestAsync(ActiveCompanyId, requestId, status, reviewer, notes));
-            }
+            return true;
         }
 
         // =========================================================================
@@ -1896,10 +2635,9 @@ namespace ERP.winforms.Services
             }
         }
 
-        public void AddCustomer(Customer customer)
+        public bool AddCustomer(Customer customer)
         {
-            if (customer == null) return;
-            customer.CustomerId = (Customers.Count > 0 ? Customers.Max(c => c.CustomerId) : 0) + 1;
+            if (customer == null) return false;
             if (string.IsNullOrWhiteSpace(customer.CustomerCode))
             {
                 customer.CustomerCode = $"CUST-{new Random().Next(1000, 9999)}";
@@ -1907,57 +2645,228 @@ namespace ERP.winforms.Services
             customer.CreatedAt = DateTime.UtcNow;
             customer.IsActive = true;
 
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
+                {
+                    apiSuccess = Task.Run(() => _apiClient.CreateCustomerAsync(ActiveCompanyId, customer)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"AddCustomer API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    Task.Run(() => _localDb.AddCustomerAsync(ActiveCompanyId, customer, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch { }
+            }
+            else
+            {
+                try
+                {
+                    var saved = Task.Run(() => _localDb.AddCustomerAsync(ActiveCompanyId, customer, enqueueSync: true)).GetAwaiter().GetResult();
+                    if (saved != null && saved.CustomerId > 0)
+                    {
+                        customer.CustomerId = saved.CustomerId;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"AddCustomer localDb error: {ex.Message}");
+                    return false;
+                }
+            }
+
+            if (customer.CustomerId == 0)
+            {
+                customer.CustomerId = (Customers.Count > 0 ? Customers.Max(c => c.CustomerId) : 0) + 1;
+            }
+
             Customers.Add(customer);
             SaveCustomersToLocalCache();
             CustomersChanged?.Invoke();
-
-            if (NetworkInterface.GetIsNetworkAvailable())
-            {
-                Task.Run(() => _apiClient.CreateCustomerAsync(ActiveCompanyId, customer));
-            }
+            return true;
         }
 
-        public void UpdateCustomer(Customer customer)
+        public bool UpdateCustomer(Customer customer)
         {
-            if (customer == null) return;
+            if (customer == null) return false;
             var existing = Customers.FirstOrDefault(c => c.CustomerId == customer.CustomerId);
-            if (existing != null)
+            if (existing == null) return false;
+
+            var updatedCustomer = new Customer
             {
-                existing.CustomerName = customer.CustomerName;
-                existing.ContactNumber = customer.ContactNumber;
-                existing.EmailAddress = customer.EmailAddress;
-                existing.Address = customer.Address;
+                CustomerId = existing.CustomerId,
+                CustomerCode = existing.CustomerCode,
+                CustomerName = customer.CustomerName,
+                ContactNumber = customer.ContactNumber,
+                EmailAddress = customer.EmailAddress,
+                Address = customer.Address,
+                IsActive = existing.IsActive,
+                CreatedAt = existing.CreatedAt
+            };
 
-                SaveCustomersToLocalCache();
-                CustomersChanged?.Invoke();
-
-                if (NetworkInterface.GetIsNetworkAvailable())
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
                 {
-                    Task.Run(() => _apiClient.UpdateCustomerAsync(ActiveCompanyId, customer.CustomerId, existing));
+                    apiSuccess = Task.Run(() => _apiClient.UpdateCustomerAsync(ActiveCompanyId, customer.CustomerId, updatedCustomer)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdateCustomer API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    Task.Run(() => _localDb.UpdateCustomerAsync(ActiveCompanyId, updatedCustomer, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch { }
+            }
+            else
+            {
+                try
+                {
+                    Task.Run(() => _localDb.UpdateCustomerAsync(ActiveCompanyId, updatedCustomer, enqueueSync: true)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdateCustomer localDb error: {ex.Message}");
+                    return false;
                 }
             }
+
+            existing.CustomerName = updatedCustomer.CustomerName;
+            existing.ContactNumber = updatedCustomer.ContactNumber;
+            existing.EmailAddress = updatedCustomer.EmailAddress;
+            existing.Address = updatedCustomer.Address;
+
+            SaveCustomersToLocalCache();
+            CustomersChanged?.Invoke();
+            return true;
         }
 
-        public void ToggleCustomerArchive(int customerId)
+        public bool ToggleCustomerArchive(int customerId)
         {
             var existing = Customers.FirstOrDefault(c => c.CustomerId == customerId);
-            if (existing != null)
-            {
-                existing.IsActive = !existing.IsActive;
-                SaveCustomersToLocalCache();
-                CustomersChanged?.Invoke();
+            if (existing == null) return false;
 
-                if (NetworkInterface.GetIsNetworkAvailable())
+            bool targetActive = !existing.IsActive;
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
                 {
-                    if (!existing.IsActive)
-                        Task.Run(() => _apiClient.DeleteCustomerAsync(ActiveCompanyId, customerId));
+                    if (!targetActive)
+                        apiSuccess = Task.Run(() => _apiClient.DeleteCustomerAsync(ActiveCompanyId, customerId)).GetAwaiter().GetResult();
                     else
-                        Task.Run(() => _apiClient.UpdateCustomerAsync(ActiveCompanyId, customerId, existing));
+                    {
+                        var copy = new Customer
+                        {
+                            CustomerId = existing.CustomerId,
+                            CustomerCode = existing.CustomerCode,
+                            CustomerName = existing.CustomerName,
+                            ContactNumber = existing.ContactNumber,
+                            EmailAddress = existing.EmailAddress,
+                            Address = existing.Address,
+                            IsActive = true,
+                            CreatedAt = existing.CreatedAt
+                        };
+                        apiSuccess = Task.Run(() => _apiClient.UpdateCustomerAsync(ActiveCompanyId, customerId, copy)).GetAwaiter().GetResult();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"ToggleCustomerArchive API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    if (!targetActive)
+                    {
+                        Task.Run(() => _localDb.DeleteCustomerAsync(ActiveCompanyId, customerId, enqueueSync: false)).GetAwaiter().GetResult();
+                    }
+                    else
+                    {
+                        var copy = new Customer
+                        {
+                            CustomerId = existing.CustomerId,
+                            CustomerCode = existing.CustomerCode,
+                            CustomerName = existing.CustomerName,
+                            ContactNumber = existing.ContactNumber,
+                            EmailAddress = existing.EmailAddress,
+                            Address = existing.Address,
+                            IsActive = true,
+                            CreatedAt = existing.CreatedAt
+                        };
+                        Task.Run(() => _localDb.UpdateCustomerAsync(ActiveCompanyId, copy, enqueueSync: false)).GetAwaiter().GetResult();
+                    }
+                }
+                catch { }
+            }
+            else
+            {
+                try
+                {
+                    if (!targetActive)
+                    {
+                        Task.Run(() => _localDb.DeleteCustomerAsync(ActiveCompanyId, customerId, enqueueSync: true)).GetAwaiter().GetResult();
+                    }
+                    else
+                    {
+                        var copy = new Customer
+                        {
+                            CustomerId = existing.CustomerId,
+                            CustomerCode = existing.CustomerCode,
+                            CustomerName = existing.CustomerName,
+                            ContactNumber = existing.ContactNumber,
+                            EmailAddress = existing.EmailAddress,
+                            Address = existing.Address,
+                            IsActive = true,
+                            CreatedAt = existing.CreatedAt
+                        };
+                        Task.Run(() => _localDb.UpdateCustomerAsync(ActiveCompanyId, copy, enqueueSync: true)).GetAwaiter().GetResult();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"ToggleCustomerArchive localDb error: {ex.Message}");
+                    return false;
                 }
             }
+
+            existing.IsActive = targetActive;
+            SaveCustomersToLocalCache();
+            CustomersChanged?.Invoke();
+            return true;
         }
 
-        public void DeleteCustomer(int customerId) => ToggleCustomerArchive(customerId);
+        public bool DeleteCustomer(int customerId) => ToggleCustomerArchive(customerId);
 
         public decimal GetTotalRevenue() => Orders.Sum(o => o.TotalAmount);
         public int GetTotalOrders() => Orders.Count;
@@ -2009,24 +2918,66 @@ namespace ERP.winforms.Services
             }
         }
 
-        public void AddPayrollRecord(PayrollRecord record)
+        public bool AddPayrollRecord(PayrollRecord record)
         {
-            if (record == null) return;
-            record.PayrollId = (PayrollRecords.Count > 0 ? PayrollRecords.Max(p => p.PayrollId) : 0) + 1;
+            if (record == null) return false;
             record.CompanyId = ActiveCompanyId;
             record.ProcessedAt = DateTime.UtcNow;
+
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
+                {
+                    apiSuccess = Task.Run(() => _apiClient.CreatePayrollRecordAsync(ActiveCompanyId, record)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"AddPayrollRecord API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    Task.Run(() => _localDb.AddPayrollRecordAsync(ActiveCompanyId, record, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch { }
+            }
+            else
+            {
+                try
+                {
+                    var saved = Task.Run(() => _localDb.AddPayrollRecordAsync(ActiveCompanyId, record, enqueueSync: true)).GetAwaiter().GetResult();
+                    if (saved != null && saved.PayrollId > 0)
+                    {
+                        record.PayrollId = saved.PayrollId;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"AddPayrollRecord localDb error: {ex.Message}");
+                    return false;
+                }
+            }
+
+            if (record.PayrollId == 0)
+            {
+                record.PayrollId = (PayrollRecords.Count > 0 ? PayrollRecords.Max(p => p.PayrollId) : 0) + 1;
+            }
 
             PayrollRecords.Insert(0, record);
             SavePayrollToLocalCache();
             PayrollRecordsChanged?.Invoke();
-
-            if (NetworkInterface.GetIsNetworkAvailable())
-            {
-                Task.Run(() => _apiClient.CreatePayrollRecordAsync(ActiveCompanyId, record));
-            }
+            return true;
         }
 
-        public void DeletePayrollRecord(int payrollId)
+        public bool DeletePayrollRecord(int payrollId)
         {
             var record = PayrollRecords.FirstOrDefault(p => p.PayrollId == payrollId);
             if (record != null)
@@ -2034,7 +2985,9 @@ namespace ERP.winforms.Services
                 PayrollRecords.Remove(record);
                 SavePayrollToLocalCache();
                 PayrollRecordsChanged?.Invoke();
+                return true;
             }
+            return false;
         }
 
         // =========================================================================
@@ -2087,23 +3040,56 @@ namespace ERP.winforms.Services
             return StorePolicies.FirstOrDefault(p => string.Equals(p.PolicyType, policyType, StringComparison.OrdinalIgnoreCase));
         }
 
-        public void UpdateStorePolicy(string policyType, string content, string updatedBy)
+        public bool UpdateStorePolicy(string policyType, string content, string updatedBy)
         {
             var policy = StorePolicies.FirstOrDefault(p => string.Equals(p.PolicyType, policyType, StringComparison.OrdinalIgnoreCase));
-            if (policy != null)
+            if (policy == null) return false;
+
+            bool isOnline = IsApiReachable();
+            if (isOnline)
             {
-                policy.ContentText = content;
-                policy.LastUpdatedBy = updatedBy;
-                policy.UpdatedAt = DateTime.UtcNow;
-
-                SavePoliciesToLocalCache();
-                StorePoliciesChanged?.Invoke();
-
-                if (NetworkInterface.GetIsNetworkAvailable())
+                bool apiSuccess = false;
+                try
                 {
-                    Task.Run(() => _apiClient.UpdatePolicyAsync(ActiveCompanyId, policyType, content, updatedBy));
+                    apiSuccess = Task.Run(() => _apiClient.UpdatePolicyAsync(ActiveCompanyId, policyType, content, updatedBy)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdateStorePolicy API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (!apiSuccess)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    Task.Run(() => _localDb.UpdateStorePolicyAsync(ActiveCompanyId, policyType, content, updatedBy, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch { }
+            }
+            else
+            {
+                try
+                {
+                    Task.Run(() => _localDb.UpdateStorePolicyAsync(ActiveCompanyId, policyType, content, updatedBy, enqueueSync: true)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdateStorePolicy localDb error: {ex.Message}");
+                    return false;
                 }
             }
+
+            policy.ContentText = content;
+            policy.LastUpdatedBy = updatedBy;
+            policy.UpdatedAt = DateTime.UtcNow;
+
+            SavePoliciesToLocalCache();
+            StorePoliciesChanged?.Invoke();
+            return true;
         }
 
         #region Business Intelligence Analytics
