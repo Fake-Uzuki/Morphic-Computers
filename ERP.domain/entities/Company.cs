@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations.Schema;
+using ERP.domain.security;
 
 namespace ERP.domain.entities
 {
@@ -16,15 +17,23 @@ namespace ERP.domain.entities
         // Relationship
         public ICollection<Device> Devices { get; set; } = new List<Device>();
 
-        // Feature Entitlement Properties
+        // Feature Entitlement Properties (Driven by Centralized ModuleAccessService)
         [NotMapped]
-        public bool IsPOSAllowed => true;
+        public bool IsPOSAllowed => ModuleAccessService.IsModuleEnabled(PlanName, "POS");
         [NotMapped]
-        public bool IsInventoryAllowed => true;
+        public bool IsInventoryAllowed => ModuleAccessService.IsModuleEnabled(PlanName, "Inventory");
         [NotMapped]
-        public bool IsRepairAllowed => !string.Equals(PlanName, "Micro", StringComparison.OrdinalIgnoreCase);
+        public bool IsRepairAllowed => ModuleAccessService.IsModuleEnabled(PlanName, "Repairs");
         [NotMapped]
-        public bool IsSupplierAllowed => !string.Equals(PlanName, "Micro", StringComparison.OrdinalIgnoreCase);
+        public bool IsSupplierAllowed => ModuleAccessService.IsModuleEnabled(PlanName, "Suppliers");
+        [NotMapped]
+        public bool IsBusinessIntelligenceAllowed => ModuleAccessService.IsModuleEnabled(PlanName, "BusinessIntelligence");
+        [NotMapped]
+        public bool IsPayrollAllowed => ModuleAccessService.IsModuleEnabled(PlanName, "Payroll");
+        [NotMapped]
+        public bool IsBranchAllowed => ModuleAccessService.IsModuleEnabled(PlanName, "BranchManagement");
+        [NotMapped]
+        public bool IsDashboardAllowed => ModuleAccessService.IsModuleEnabled(PlanName, "Dashboard");
 
         // Backward compatibility helpers for WinForms UI
         [NotMapped]
