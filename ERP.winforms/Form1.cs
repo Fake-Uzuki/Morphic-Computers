@@ -11,6 +11,7 @@ using ERP.winforms.Theme;
 using ERP.winforms.UI.Components;
 using ERP.winforms.UI.Dialogs;
 using ERP.winforms.UI.Views;
+using ERP.domain.security;
 
 namespace ERP.winforms
 {
@@ -45,10 +46,11 @@ namespace ERP.winforms
         private int _navScrollOffset = 0;
 
         // Navigation tab buttons
-        private Button _btnNavDashboard = null!;
-        private Button _btnNavProducts = null!;
-        private Button _btnNavPOS = null!;
-        private Button _btnNavOrders = null!;
+        private Button? _btnNavDashboard;
+        private Button? _btnNavBI;
+        private Button? _btnNavProducts;
+        private Button? _btnNavPOS;
+        private Button? _btnNavOrders;
         private Button? _btnNavRepairs;
         private Button? _btnNavSuppliers;
         private Button? _btnNavStaff;
@@ -57,6 +59,9 @@ namespace ERP.winforms
         private Button? _btnNavPayroll;
         private Button? _btnNavFinance;
         private Button? _btnNavPolicies;
+        private Button? _btnNavBranches;
+        private Button? _btnNavProcurement;
+        private Button? _btnNavSuperAdmin;
         private Button? _activeNavButton;
         private Label _lblBottomRight = null!;
         private Panel _pnlStatusBadge = null!;
@@ -75,6 +80,9 @@ namespace ERP.winforms
         private PayrollView _payrollView = null!;
         private FinanceView _financeView = null!;
         private PoliciesView _policiesView = null!;
+        private BranchManagementView _branchView = null!;
+        private ProcurementView _procurementView = null!;
+        private SuperAdminView _superAdminView = null!;
 
         private readonly HashSet<string> _dismissedAlertKeys = new();
         private readonly HashSet<string> _readAlertKeys = new();
@@ -97,7 +105,29 @@ namespace ERP.winforms
 
             SetupCustomLayout();
 
-            SwitchView(_dashboardView, _btnNavDashboard);
+            // Initial landing view selection based on plan entitlement
+            var initialPlan = ModuleAccessService.NormalizePlan(_dataService.CurrentCompany?.PlanName);
+            if (initialPlan == ErpPlan.SuperAdmin && _btnNavSuperAdmin != null)
+            {
+                SwitchView(_superAdminView, _btnNavSuperAdmin);
+            }
+            else if (_btnNavDashboard != null)
+            {
+                SwitchView(_dashboardView, _btnNavDashboard);
+            }
+            else if (_btnNavBI != null)
+            {
+                _dashboardView.SetDashboardMode(DashboardMode.BusinessIntelligence);
+                SwitchView(_dashboardView, _btnNavBI);
+            }
+            else if (_btnNavPOS != null)
+            {
+                SwitchView(_posView, _btnNavPOS);
+            }
+            else if (_btnNavProducts != null)
+            {
+                SwitchView(_productsView, _btnNavProducts);
+            }
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -189,16 +219,18 @@ namespace ERP.winforms
             _pnlStatusBadge.Click += (s, e) => _ = Task.Run(() => SyncManager.Instance.CheckAndSyncAsync(_dataService.ActiveCompanyId));
             _lblStatusIndicator.Click += (s, e) => _ = Task.Run(() => SyncManager.Instance.CheckAndSyncAsync(_dataService.ActiveCompanyId));
 
-            // 1. New Sale Action Button
+            // 1. New Sale Action Button (Hidden for Super Admin)
+            bool isPlatformAdmin = ModuleAccessService.NormalizePlan(_dataService.CurrentCompany?.PlanName) == ErpPlan.SuperAdmin;
             SunshineButton btnNewSale = new SunshineButton
             {
                 Text = "+ New Sale",
                 IsPrimary = true,
                 Location = new Point(116, 11),
                 Size = new Size(100, 32),
-                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold)
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                Visible = !isPlatformAdmin
             };
-            btnNewSale.Click += (s, e) => SwitchView(_posView, _btnNavPOS);
+            btnNewSale.Click += (s, e) => { if (_btnNavPOS != null) SwitchView(_posView, _btnNavPOS); };
 
             // 2. Notification Center Button with dynamic Unread Badge
             Panel pnlNotifBox = new Panel
@@ -388,108 +420,159 @@ namespace ERP.winforms
             _pnlTabsTrack.MouseWheel += HandleWheel;
 
             int tabX = 10;
-            _btnNavDashboard = CreateEnterpriseTab("Dashboard", tabX, 130);
-            tabX += 132;
-            _btnNavProducts = CreateEnterpriseTab("Products Stock", tabX, 145);
-            tabX += 147;
-            _btnNavPOS = CreateEnterpriseTab("Point of Sale", tabX, 135);
-            tabX += 137;
-            _btnNavOrders = CreateEnterpriseTab("Sales Reports", tabX, 140);
-            tabX += 142;
+            var plan = ModuleAccessService.NormalizePlan(_dataService.CurrentCompany?.PlanName);
 
-            _btnNavDashboard.Click += (s, e) => SwitchView(_dashboardView, _btnNavDashboard);
-            _btnNavProducts.Click += (s, e) => SwitchView(_productsView, _btnNavProducts);
-            _btnNavPOS.Click += (s, e) => SwitchView(_posView, _btnNavPOS);
-            _btnNavOrders.Click += (s, e) => SwitchView(_ordersView, _btnNavOrders);
-
-            _pnlTabsTrack.Controls.Add(_btnNavDashboard);
-            _pnlTabsTrack.Controls.Add(_btnNavProducts);
-            _pnlTabsTrack.Controls.Add(_btnNavPOS);
-            _pnlTabsTrack.Controls.Add(_btnNavOrders);
-
-            // ========================================================
-            // TENANT B (SMALL BUSINESS) MODULES DYNAMIC INTEGRATION
-            // ========================================================
-            var company = _dataService.ActiveCompany;
-            bool isSmallBusinessOrHigher = company != null && (company.IsRepairAllowed || !string.Equals(company.PlanName, "Micro", StringComparison.OrdinalIgnoreCase));
-
-            // 1. Service & Repair Management (Admin, Manager, Staff)
-            if (isSmallBusinessOrHigher)
-            {
-                _btnNavRepairs = CreateEnterpriseTab("Repair Services", tabX, 145);
-                _btnNavRepairs.Click += (s, e) => SwitchView(_repairsView, _btnNavRepairs);
-                _pnlTabsTrack.Controls.Add(_btnNavRepairs);
-                tabX += 147;
-            }
-
-            // 2. Supplier Management (Admin per architecture diagram)
             bool isAdmin = _currentRole.Contains("Admin", StringComparison.OrdinalIgnoreCase) || 
                            _currentRole.Contains("Owner", StringComparison.OrdinalIgnoreCase);
             bool isManager = _currentRole.Contains("Manager", StringComparison.OrdinalIgnoreCase);
-            bool isStaff = _currentRole.Contains("Staff", StringComparison.OrdinalIgnoreCase) ||
-                           _currentRole.Contains("Tech", StringComparison.OrdinalIgnoreCase) ||
-                           _currentRole.Contains("Cashier", StringComparison.OrdinalIgnoreCase);
 
-            if (isSmallBusinessOrHigher && isAdmin)
+            if (plan == ErpPlan.SuperAdmin)
             {
-                _btnNavSuppliers = CreateEnterpriseTab("Suppliers", tabX, 130);
-                _btnNavSuppliers.Click += (s, e) => SwitchView(_suppliersView, _btnNavSuppliers);
-                _pnlTabsTrack.Controls.Add(_btnNavSuppliers);
-                tabX += 132;
+                // Super Admin Platform Navigation
+                _btnNavSuperAdmin = CreateEnterpriseTab("⚡ Super Admin Platform", tabX, 220);
+                _btnNavSuperAdmin.Click += (s, e) => SwitchView(_superAdminView, _btnNavSuperAdmin);
+                _pnlTabsTrack.Controls.Add(_btnNavSuperAdmin);
+                tabX += 222;
             }
-
-            // 3. Staff Management (Admin, Manager per architecture diagram)
-            if (isSmallBusinessOrHigher && (isAdmin || isManager))
+            else
             {
-                _btnNavStaff = CreateEnterpriseTab("Staff & Team", tabX, 130);
-                _btnNavStaff.Click += (s, e) => SwitchView(_staffView, _btnNavStaff);
-                _pnlTabsTrack.Controls.Add(_btnNavStaff);
-                tabX += 132;
-            }
+                // 1. Dashboard (Medium Enterprise only)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Dashboard))
+                {
+                    _btnNavDashboard = CreateEnterpriseTab("Dashboard", tabX, 130);
+                    _btnNavDashboard.Click += (s, e) => SwitchView(_dashboardView, _btnNavDashboard);
+                    _pnlTabsTrack.Controls.Add(_btnNavDashboard);
+                    tabX += 132;
+                }
+                // 2. Business Intelligence (Small Business tier)
+                else if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.BusinessIntelligence))
+                {
+                    _btnNavBI = CreateEnterpriseTab("Business Intelligence", tabX, 175);
+                    _btnNavBI.Click += (s, e) =>
+                    {
+                        _dashboardView.SetDashboardMode(DashboardMode.BusinessIntelligence);
+                        SwitchView(_dashboardView, _btnNavBI);
+                    };
+                    _pnlTabsTrack.Controls.Add(_btnNavBI);
+                    tabX += 177;
+                }
 
-            // 4. Workflow & Approval (Admin, Manager, Staff per architecture diagram)
-            if (isSmallBusinessOrHigher)
-            {
-                _btnNavApprovals = CreateEnterpriseTab("Approvals", tabX, 120);
-                _btnNavApprovals.Click += (s, e) => SwitchView(_approvalsView, _btnNavApprovals);
-                _pnlTabsTrack.Controls.Add(_btnNavApprovals);
-                tabX += 122;
-            }
+                // 3. Products Stock (Micro, Small, Medium)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Products))
+                {
+                    _btnNavProducts = CreateEnterpriseTab("Products Stock", tabX, 145);
+                    _btnNavProducts.Click += (s, e) => SwitchView(_productsView, _btnNavProducts);
+                    _pnlTabsTrack.Controls.Add(_btnNavProducts);
+                    tabX += 147;
+                }
 
-            // 5. Customer Management (Manager, Staff, Admin per architecture diagram)
-            if (isSmallBusinessOrHigher)
-            {
-                _btnNavCustomers = CreateEnterpriseTab("Customers", tabX, 120);
-                _btnNavCustomers.Click += (s, e) => SwitchView(_customersView, _btnNavCustomers);
-                _pnlTabsTrack.Controls.Add(_btnNavCustomers);
-                tabX += 122;
-            }
+                // 4. Point of Sale (Micro, Small, Medium)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.POS))
+                {
+                    _btnNavPOS = CreateEnterpriseTab("Point of Sale", tabX, 135);
+                    _btnNavPOS.Click += (s, e) => SwitchView(_posView, _btnNavPOS);
+                    _pnlTabsTrack.Controls.Add(_btnNavPOS);
+                    tabX += 137;
+                }
 
-            // 6. Store Payroll (Manager, Admin per architecture diagram)
-            if (isSmallBusinessOrHigher && (isAdmin || isManager))
-            {
-                _btnNavPayroll = CreateEnterpriseTab("Store Payroll", tabX, 130);
-                _btnNavPayroll.Click += (s, e) => SwitchView(_payrollView, _btnNavPayroll);
-                _pnlTabsTrack.Controls.Add(_btnNavPayroll);
-                tabX += 132;
-            }
+                // 5. Sales Reports (Micro, Small, Medium)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Orders) || ModuleAccessService.IsModuleEnabled(plan, ErpModule.Reports))
+                {
+                    _btnNavOrders = CreateEnterpriseTab("Sales Reports", tabX, 140);
+                    _btnNavOrders.Click += (s, e) => SwitchView(_ordersView, _btnNavOrders);
+                    _pnlTabsTrack.Controls.Add(_btnNavOrders);
+                    tabX += 142;
+                }
 
-            // 7. Finance & Accounting (Manager, Admin per architecture diagram)
-            if (isSmallBusinessOrHigher && (isAdmin || isManager))
-            {
-                _btnNavFinance = CreateEnterpriseTab("Finance & Accounting", tabX, 160);
-                _btnNavFinance.Click += (s, e) => SwitchView(_financeView, _btnNavFinance);
-                _pnlTabsTrack.Controls.Add(_btnNavFinance);
-                tabX += 162;
-            }
+                // 6. Repair Services (Micro, Small, Medium operational module)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Repairs))
+                {
+                    _btnNavRepairs = CreateEnterpriseTab("Repair Services", tabX, 145);
+                    _btnNavRepairs.Click += (s, e) => SwitchView(_repairsView, _btnNavRepairs);
+                    _pnlTabsTrack.Controls.Add(_btnNavRepairs);
+                    tabX += 147;
+                }
 
-            // 8. Terms & Policies (Admin per architecture diagram)
-            if (isSmallBusinessOrHigher && isAdmin)
-            {
-                _btnNavPolicies = CreateEnterpriseTab("Policies & Terms", tabX, 140);
-                _btnNavPolicies.Click += (s, e) => SwitchView(_policiesView, _btnNavPolicies);
-                _pnlTabsTrack.Controls.Add(_btnNavPolicies);
-                tabX += 142;
+                // 7. Customers (Micro, Small, Medium)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Customers))
+                {
+                    _btnNavCustomers = CreateEnterpriseTab("Customers", tabX, 120);
+                    _btnNavCustomers.Click += (s, e) => SwitchView(_customersView, _btnNavCustomers);
+                    _pnlTabsTrack.Controls.Add(_btnNavCustomers);
+                    tabX += 122;
+                }
+
+                // 8. Approvals (Micro, Small, Medium)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Approvals))
+                {
+                    _btnNavApprovals = CreateEnterpriseTab("Approvals", tabX, 120);
+                    _btnNavApprovals.Click += (s, e) => SwitchView(_approvalsView, _btnNavApprovals);
+                    _pnlTabsTrack.Controls.Add(_btnNavApprovals);
+                    tabX += 122;
+                }
+
+                // 9. Suppliers (Micro, Small, Medium)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Suppliers) && isAdmin)
+                {
+                    _btnNavSuppliers = CreateEnterpriseTab("Suppliers", tabX, 130);
+                    _btnNavSuppliers.Click += (s, e) => SwitchView(_suppliersView, _btnNavSuppliers);
+                    _pnlTabsTrack.Controls.Add(_btnNavSuppliers);
+                    tabX += 132;
+                }
+
+                // 10. Staff & Team (Micro, Small, Medium)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Staff) && (isAdmin || isManager))
+                {
+                    _btnNavStaff = CreateEnterpriseTab("Staff & Team", tabX, 130);
+                    _btnNavStaff.Click += (s, e) => SwitchView(_staffView, _btnNavStaff);
+                    _pnlTabsTrack.Controls.Add(_btnNavStaff);
+                    tabX += 132;
+                }
+
+                // 11. Policies & Terms (Micro, Small, Medium)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.StorePolicies) && isAdmin)
+                {
+                    _btnNavPolicies = CreateEnterpriseTab("Policies & Terms", tabX, 140);
+                    _btnNavPolicies.Click += (s, e) => SwitchView(_policiesView, _btnNavPolicies);
+                    _pnlTabsTrack.Controls.Add(_btnNavPolicies);
+                    tabX += 142;
+                }
+
+                // 12. Branch Management (Medium Enterprise only)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.BranchManagement))
+                {
+                    _btnNavBranches = CreateEnterpriseTab("Branches", tabX, 120);
+                    _btnNavBranches.Click += (s, e) => SwitchView(_branchView, _btnNavBranches);
+                    _pnlTabsTrack.Controls.Add(_btnNavBranches);
+                    tabX += 122;
+                }
+
+                // 13. Procurement / Supply Chain (Medium Enterprise only)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Procurement))
+                {
+                    _btnNavProcurement = CreateEnterpriseTab("Procurement", tabX, 135);
+                    _btnNavProcurement.Click += (s, e) => SwitchView(_procurementView, _btnNavProcurement);
+                    _pnlTabsTrack.Controls.Add(_btnNavProcurement);
+                    tabX += 137;
+                }
+
+                // 14. Store Payroll (Medium Enterprise only)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Payroll) && (isAdmin || isManager))
+                {
+                    _btnNavPayroll = CreateEnterpriseTab("Store Payroll", tabX, 130);
+                    _btnNavPayroll.Click += (s, e) => SwitchView(_payrollView, _btnNavPayroll);
+                    _pnlTabsTrack.Controls.Add(_btnNavPayroll);
+                    tabX += 132;
+                }
+
+                // 15. Finance & Accounting / P&L (Medium Enterprise only)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.FinancialStatements) && (isAdmin || isManager))
+                {
+                    _btnNavFinance = CreateEnterpriseTab("Finance & P&L", tabX, 145);
+                    _btnNavFinance.Click += (s, e) => SwitchView(_financeView, _btnNavFinance);
+                    _pnlTabsTrack.Controls.Add(_btnNavFinance);
+                    tabX += 147;
+                }
             }
 
             _pnlTabsTrack.Width = tabX + 20;
@@ -575,15 +658,21 @@ namespace ERP.winforms
             _payrollView = new PayrollView();
             _financeView = new FinanceView(_currentUser, _currentRole);
             _policiesView = new PoliciesView();
+            _branchView = new BranchManagementView();
+            _procurementView = new ProcurementView();
+            _superAdminView = new SuperAdminView();
 
             // Wire inter-view navigation events
-            _dashboardView.OnNavigateToPOSRequest = () => SwitchView(_posView, _btnNavPOS);
+            _dashboardView.OnNavigateToPOSRequest = () => { if (_btnNavPOS != null) SwitchView(_posView, _btnNavPOS); };
             _dashboardView.OnNavigateToProductsRequest = (lowStock) =>
             {
-                SwitchView(_productsView, _btnNavProducts);
-                if (lowStock) _productsView.FilterLowStockOnly();
+                if (_btnNavProducts != null)
+                {
+                    SwitchView(_productsView, _btnNavProducts);
+                    if (lowStock) _productsView.FilterLowStockOnly();
+                }
             };
-            _dashboardView.OnNavigateToOrdersRequest = () => SwitchView(_ordersView, _btnNavOrders);
+            _dashboardView.OnNavigateToOrdersRequest = () => { if (_btnNavOrders != null) SwitchView(_ordersView, _btnNavOrders); };
 
             _posView.OnOrderCompleted = () =>
             {
@@ -625,7 +714,7 @@ namespace ERP.winforms
             return btn;
         }
 
-        private void SwitchView(UserControl view, Button navButton)
+        private void SwitchView(UserControl view, Button? navButton)
         {
             if (_notificationFlyout != null) _notificationFlyout.Visible = false;
 
@@ -636,10 +725,12 @@ namespace ERP.winforms
             }
 
             _activeNavButton = navButton;
-            _activeNavButton.BackColor = AppTheme.NavTabActive;
-            _activeNavButton.ForeColor = AppTheme.NavTabActiveText;
-
-            ScrollTabIntoView(navButton);
+            if (_activeNavButton != null)
+            {
+                _activeNavButton.BackColor = AppTheme.NavTabActive;
+                _activeNavButton.ForeColor = AppTheme.NavTabActiveText;
+                ScrollTabIntoView(_activeNavButton);
+            }
 
             _pnlContentArea.Controls.Clear();
             view.Dock = DockStyle.Fill;
@@ -654,6 +745,9 @@ namespace ERP.winforms
             if (view is StaffView stv) stv.RefreshData();
             if (view is ApprovalsView av) av.RefreshData();
             if (view is CustomersView cv) cv.RefreshData();
+            if (view is PayrollView prv) prv.RefreshData();
+            if (view is FinanceView fv) fv.RefreshData();
+            if (view is PoliciesView pol) pol.RefreshData();
         }
 
         private void ToggleNotifications()

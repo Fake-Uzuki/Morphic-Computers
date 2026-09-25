@@ -296,7 +296,7 @@ namespace ERP.winforms.UI.Views
             return btn;
         }
 
-        private void SetDashboardMode(DashboardMode mode)
+        public void SetDashboardMode(DashboardMode mode)
         {
             if (mode == DashboardMode.BusinessIntelligence && !IsSmallBusinessOrHigher)
             {

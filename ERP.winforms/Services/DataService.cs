@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net.NetworkInformation;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using ERP.domain.entities;
 
 namespace ERP.winforms.Services
@@ -90,6 +91,21 @@ namespace ERP.winforms.Services
             StorePolicies.Clear();
             ExpenseRecords.Clear();
 
+            if (ActiveCompanyId <= 0 || string.Equals(CurrentCompany?.PlanName, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
+            {
+                CategoriesChanged?.Invoke();
+                ProductsChanged?.Invoke();
+                RepairTicketsChanged?.Invoke();
+                SuppliersChanged?.Invoke();
+                StaffMembersChanged?.Invoke();
+                ApprovalRequestsChanged?.Invoke();
+                CustomersChanged?.Invoke();
+                PayrollRecordsChanged?.Invoke();
+                StorePoliciesChanged?.Invoke();
+                ExpensesChanged?.Invoke();
+                return;
+            }
+
             try
             {
                 Categories = Task.Run(() => _localDb.GetCategoriesAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
@@ -130,12 +146,24 @@ namespace ERP.winforms.Services
 
         private void InitializeDataStore()
         {
-            // Initial registered companies (Tenant A and Tenant B only)
+            // Registered companies with Tenant C and dynamic master resolution
             Companies = new List<Company>
             {
                 new Company { CompanyId = 1, CompanyCode = "TENANT_A", CompanyName = "Tenant A", PlanName = "Micro", Description = "Micro Store Operations" },
-                new Company { CompanyId = 2, CompanyCode = "TENANT_B", CompanyName = "Tenant B", PlanName = "SmallBusiness", Description = "Small Business Store Operations" }
+                new Company { CompanyId = 2, CompanyCode = "TENANT_B", CompanyName = "Tenant B", PlanName = "Small", Description = "Small Business Store Operations" },
+                new Company { CompanyId = 1001, CompanyCode = "TENANT_C", CompanyName = "Tenant C", PlanName = "Medium", Description = "Medium Enterprise Store Operations" }
             };
+
+            try
+            {
+                using var masterDb = LocalTenantDbContextProvider.CreateMasterDbContext();
+                var masterCompanies = masterDb.Companies.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.CompanyId).ToList();
+                if (masterCompanies.Count > 0)
+                {
+                    Companies = masterCompanies;
+                }
+            }
+            catch { }
 
             Categories = new List<Category>();
 
@@ -194,6 +222,11 @@ namespace ERP.winforms.Services
 
         public void LoadFromDatabase()
         {
+            if (ActiveCompanyId <= 0 || string.Equals(CurrentCompany?.PlanName, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
             int targetCompanyId = ActiveCompanyId;
             bool networkUp = NetworkInterface.GetIsNetworkAvailable();
             bool anyApiSucceeded = false;
