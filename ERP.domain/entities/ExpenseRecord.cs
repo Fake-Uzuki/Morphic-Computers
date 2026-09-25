@@ -15,7 +15,9 @@ namespace ERP.domain.entities
         public string PaymentMethod { get; set; } = "Cash";
         public string RecordedBy { get; set; } = "Admin";
         public string? ReceiptRef { get; set; }
+        public string? Notes { get; set; }
         public bool IsTaxDeductible { get; set; } = true;
         public bool IsActive { get; set; } = true;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 }

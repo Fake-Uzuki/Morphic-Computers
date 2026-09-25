@@ -16,6 +16,7 @@ namespace ERP.infrastructure.data
         public DbSet<ApprovalRequest> ApprovalRequests => Set<ApprovalRequest>();
         public DbSet<PayrollRecord> PayrollRecords => Set<PayrollRecord>();
         public DbSet<StorePolicy> StorePolicies => Set<StorePolicy>();
+        public DbSet<ExpenseRecord> Expenses => Set<ExpenseRecord>();
         public DbSet<SyncOutboxItem> SyncOutbox => Set<SyncOutboxItem>();
 
         public TenantErpDbContext(DbContextOptions<TenantErpDbContext> options)
@@ -213,6 +214,21 @@ namespace ERP.infrastructure.data
                 entity.Property(x => x.Title).HasMaxLength(200).IsRequired();
                 entity.Property(x => x.ContentText).HasMaxLength(4000).IsRequired();
                 entity.Property(x => x.LastUpdatedBy).HasMaxLength(100).IsRequired();
+            });
+
+            builder.Entity<ExpenseRecord>(entity =>
+            {
+                entity.ToTable("Expenses");
+                entity.HasKey(x => x.ExpenseId);
+                entity.Property(x => x.ExpenseNumber).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.Category).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.Description).HasMaxLength(500).IsRequired();
+                entity.Property(x => x.Amount).HasPrecision(18, 2);
+                entity.Property(x => x.PaidTo).HasMaxLength(200).IsRequired();
+                entity.Property(x => x.PaymentMethod).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.RecordedBy).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.ReceiptRef).HasMaxLength(100).IsRequired(false);
+                entity.Property(x => x.Notes).HasMaxLength(1000).IsRequired(false);
             });
         }
     }
