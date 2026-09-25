@@ -821,5 +821,71 @@ namespace ERP.winforms.Services
                 return false;
             }
         }
+
+        // ==========================================
+        // OPERATING EXPENSES (Financial Statements - Medium)
+        // ==========================================
+        public async Task<List<ExpenseRecord>?> GetExpensesAsync(int companyId, bool includeArchived = true)
+        {
+            try
+            {
+                var response = await _http.GetAsync($"/api/tenant/{companyId}/expenses?includeArchived={includeArchived}").ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    var records = await response.Content.ReadFromJsonAsync<List<ExpenseRecord>>(_jsonOptions).ConfigureAwait(false);
+                    return records ?? new List<ExpenseRecord>();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient GetExpenses error: {ex.Message}");
+            }
+            return null;
+        }
+
+        public async Task<ExpenseRecord?> CreateExpenseAsync(int companyId, ExpenseRecord record)
+        {
+            try
+            {
+                var response = await _http.PostAsJsonAsync($"/api/tenant/{companyId}/expenses", record).ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadFromJsonAsync<ExpenseRecord>(_jsonOptions).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient CreateExpense error: {ex.Message}");
+            }
+            return null;
+        }
+
+        public async Task<bool> UpdateExpenseAsync(int companyId, int expenseId, ExpenseRecord record)
+        {
+            try
+            {
+                var response = await _http.PutAsJsonAsync($"/api/tenant/{companyId}/expenses/{expenseId}", record).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient UpdateExpense error: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<bool> ArchiveExpenseAsync(int companyId, int expenseId)
+        {
+            try
+            {
+                var response = await _http.DeleteAsync($"/api/tenant/{companyId}/expenses/{expenseId}").ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient ArchiveExpense error: {ex.Message}");
+                return false;
+            }
+        }
     }
 }

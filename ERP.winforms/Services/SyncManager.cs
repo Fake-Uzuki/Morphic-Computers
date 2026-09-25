@@ -345,6 +345,26 @@ namespace ERP.winforms.Services
                         return await _apiClient.UpdatePolicyAsync(item.CompanyId, policyType, content, updatedBy).ConfigureAwait(false);
                     }
                     break;
+
+                case "Expense":
+                    if (item.Operation == "Create")
+                    {
+                        var exp = JsonSerializer.Deserialize<ExpenseRecord>(item.PayloadJson, _jsonOpts);
+                        if (exp == null) return false;
+                        var created = await _apiClient.CreateExpenseAsync(item.CompanyId, exp).ConfigureAwait(false);
+                        return created != null;
+                    }
+                    else if (item.Operation == "Update" && int.TryParse(item.EntityId, out int expId))
+                    {
+                        var exp = JsonSerializer.Deserialize<ExpenseRecord>(item.PayloadJson, _jsonOpts);
+                        if (exp == null) return false;
+                        return await _apiClient.UpdateExpenseAsync(item.CompanyId, expId, exp).ConfigureAwait(false);
+                    }
+                    else if (item.Operation == "Archive" && int.TryParse(item.EntityId, out int archExpId))
+                    {
+                        return await _apiClient.ArchiveExpenseAsync(item.CompanyId, archExpId).ConfigureAwait(false);
+                    }
+                    break;
             }
 
             return false;

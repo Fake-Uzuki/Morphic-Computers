@@ -143,6 +143,24 @@ namespace ERP.winforms.Services
         }
 
         /// <summary>
+        /// Retrieves all expenses for the specified tenant from the local tenant database.
+        /// </summary>
+        public async Task<List<ExpenseRecord>> GetExpensesAsync(int companyId, bool includeArchived = true)
+        {
+            await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
+            var query = context.Expenses.AsNoTracking().Where(e => e.CompanyId == companyId);
+            if (!includeArchived)
+            {
+                query = query.Where(e => e.IsActive);
+            }
+            return await query
+                .OrderByDescending(e => e.ExpenseDate)
+                .ThenByDescending(e => e.ExpenseId)
+                .ToListAsync()
+                .ConfigureAwait(false);
+        }
+
+        /// <summary>
         /// Retrieves all approval requests for the specified tenant from the local tenant database.
         /// </summary>
         public async Task<List<ApprovalRequest>> GetApprovalsAsync(int companyId)
@@ -1201,6 +1219,117 @@ namespace ERP.winforms.Services
                     EntityId = policyId.ToString(),
                     Operation = "Delete",
                     PayloadJson = System.Text.Json.JsonSerializer.Serialize(new { PolicyId = policyId }),
+                    CreatedAt = DateTime.UtcNow,
+                    SyncStatus = "Pending"
+                });
+            }
+
+            await context.SaveChangesAsync().ConfigureAwait(false);
+            return true;
+        }
+
+        // =========================================================================
+        // EXPENSE OPERATIONS
+        // =========================================================================
+        public async Task<ExpenseRecord?> SaveExpenseAsync(int companyId, ExpenseRecord expense, bool enqueueSync = true)
+        {
+            if (expense == null) return null;
+            await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
+
+            expense.CompanyId = companyId;
+            expense.ExpenseId = 0;
+            if (string.IsNullOrWhiteSpace(expense.ExpenseNumber))
+            {
+                expense.ExpenseNumber = $"EXP-{DateTime.UtcNow:yyyyMMdd}-{new Random().Next(100, 999)}";
+            }
+            if (expense.ExpenseDate == default)
+            {
+                expense.ExpenseDate = DateTime.UtcNow;
+            }
+            expense.CreatedAt = DateTime.UtcNow;
+
+            context.Expenses.Add(expense);
+            await context.SaveChangesAsync().ConfigureAwait(false);
+
+            if (enqueueSync)
+            {
+                context.SyncOutbox.Add(new SyncOutboxItem
+                {
+                    SyncId = Guid.NewGuid().ToString("N"),
+                    CompanyId = companyId,
+                    EntityType = "Expense",
+                    EntityId = expense.ExpenseId.ToString(),
+                    Operation = "Create",
+                    PayloadJson = System.Text.Json.JsonSerializer.Serialize(expense),
+                    CreatedAt = DateTime.UtcNow,
+                    SyncStatus = "Pending"
+                });
+                await context.SaveChangesAsync().ConfigureAwait(false);
+            }
+
+            return expense;
+        }
+
+        public async Task<ExpenseRecord?> UpdateExpenseAsync(int companyId, ExpenseRecord expense, bool enqueueSync = true)
+        {
+            if (expense == null) return null;
+            await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
+
+            var existing = await context.Expenses.FirstOrDefaultAsync(e => e.ExpenseId == expense.ExpenseId && e.CompanyId == companyId).ConfigureAwait(false);
+            if (existing == null) return null;
+
+            existing.Category = expense.Category;
+            existing.Description = expense.Description;
+            existing.Amount = expense.Amount;
+            existing.PaidTo = expense.PaidTo;
+            existing.PaymentMethod = expense.PaymentMethod;
+            existing.RecordedBy = expense.RecordedBy;
+            existing.ReceiptRef = expense.ReceiptRef;
+            existing.Notes = expense.Notes;
+            existing.IsTaxDeductible = expense.IsTaxDeductible;
+            existing.IsActive = expense.IsActive;
+            if (expense.ExpenseDate != default)
+            {
+                existing.ExpenseDate = expense.ExpenseDate;
+            }
+
+            if (enqueueSync)
+            {
+                context.SyncOutbox.Add(new SyncOutboxItem
+                {
+                    SyncId = Guid.NewGuid().ToString("N"),
+                    CompanyId = companyId,
+                    EntityType = "Expense",
+                    EntityId = existing.ExpenseId.ToString(),
+                    Operation = "Update",
+                    PayloadJson = System.Text.Json.JsonSerializer.Serialize(existing),
+                    CreatedAt = DateTime.UtcNow,
+                    SyncStatus = "Pending"
+                });
+            }
+
+            await context.SaveChangesAsync().ConfigureAwait(false);
+            return existing;
+        }
+
+        public async Task<bool> ToggleExpenseArchiveAsync(int companyId, int expenseId, bool enqueueSync = true)
+        {
+            await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
+            var existing = await context.Expenses.FirstOrDefaultAsync(e => e.ExpenseId == expenseId && e.CompanyId == companyId).ConfigureAwait(false);
+            if (existing == null) return false;
+
+            existing.IsActive = !existing.IsActive;
+
+            if (enqueueSync)
+            {
+                context.SyncOutbox.Add(new SyncOutboxItem
+                {
+                    SyncId = Guid.NewGuid().ToString("N"),
+                    CompanyId = companyId,
+                    EntityType = "Expense",
+                    EntityId = expenseId.ToString(),
+                    Operation = "Archive",
+                    PayloadJson = System.Text.Json.JsonSerializer.Serialize(new { ExpenseId = expenseId, IsActive = existing.IsActive }),
                     CreatedAt = DateTime.UtcNow,
                     SyncStatus = "Pending"
                 });

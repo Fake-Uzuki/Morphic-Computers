@@ -118,12 +118,16 @@ namespace ERP.winforms.Services
                 Customers = Task.Run(() => _localDb.GetCustomersAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
                 PayrollRecords = Task.Run(() => _localDb.GetPayrollAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
                 StorePolicies = Task.Run(() => _localDb.GetPoliciesAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                ExpenseRecords = Task.Run(() => _localDb.GetExpensesAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                if (ExpenseRecords.Count == 0)
+                {
+                    MigrateJsonExpensesIfAvailable(ActiveCompanyId);
+                }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Local SQL tenant switch note: {ex.Message}");
             }
-            LoadExpensesFromLocalCache();
 
             CategoriesChanged?.Invoke();
             ProductsChanged?.Invoke();
@@ -180,12 +184,16 @@ namespace ERP.winforms.Services
                 Customers = Task.Run(() => _localDb.GetCustomersAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
                 PayrollRecords = Task.Run(() => _localDb.GetPayrollAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
                 StorePolicies = Task.Run(() => _localDb.GetPoliciesAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                ExpenseRecords = Task.Run(() => _localDb.GetExpensesAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                if (ExpenseRecords.Count == 0)
+                {
+                    MigrateJsonExpensesIfAvailable(ActiveCompanyId);
+                }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Local SQL initialization note: {ex.Message}");
             }
-            LoadExpensesFromLocalCache();
 
             // Background live cloud refresh (or local database fallback when offline)
             Task.Run(() => LoadFromDatabase());
@@ -773,6 +781,56 @@ namespace ERP.winforms.Services
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"DataService Policies loading note: {ex.Message}");
+            }
+
+            if (ActiveCompanyId != targetCompanyId) return;
+
+            // 11. Fetch live expenses for the active tenant via API (fallback to local DB)
+            try
+            {
+                List<ExpenseRecord>? liveExpenses = null;
+                if (networkUp)
+                {
+                    try
+                    {
+                        liveExpenses = Task.Run(() => _apiClient.GetExpensesAsync(targetCompanyId)).GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"API GetExpenses note: {ex.Message}");
+                        liveExpenses = null;
+                    }
+                }
+
+                if (liveExpenses != null)
+                {
+                    anyApiSucceeded = true;
+                    if (ActiveCompanyId == targetCompanyId)
+                    {
+                        ExpenseRecords = liveExpenses;
+                        ExpensesChanged?.Invoke();
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        var localExpenses = Task.Run(() => _localDb.GetExpensesAsync(targetCompanyId)).GetAwaiter().GetResult();
+                        if (localExpenses != null && ActiveCompanyId == targetCompanyId)
+                        {
+                            ExpenseRecords = localExpenses;
+                            ExpensesChanged?.Invoke();
+                        }
+                    }
+                    catch (Exception dbEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Local DB GetExpenses fallback error: {dbEx.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DataService Expenses loading note: {ex.Message}");
             }
 
             if (ActiveCompanyId != targetCompanyId) return;
@@ -3425,40 +3483,174 @@ namespace ERP.winforms.Services
             }
         }
 
-        public void AddExpense(ExpenseRecord expense)
+        private string? ResolveLocalExpensesFilePath(int companyId)
         {
-            if (expense == null) return;
-            expense.ExpenseId = (ExpenseRecords.Count > 0 ? ExpenseRecords.Max(e => e.ExpenseId) : 0) + 1;
+            string fileName = $"tenant_{companyId}_expenses.json";
+            string[] searchPaths = new[]
+            {
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LocalData", fileName),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "LocalData", fileName),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "ERP.winforms", "bin", "Debug", "net10.0-windows", "LocalData", fileName),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "ERP.winforms", "LocalData", fileName)
+            };
+
+            foreach (var p in searchPaths)
+            {
+                try
+                {
+                    if (File.Exists(p)) return Path.GetFullPath(p);
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        public void MigrateJsonExpensesIfAvailable(int companyId)
+        {
+            try
+            {
+                string? path = ResolveLocalExpensesFilePath(companyId);
+                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
+
+                string json = File.ReadAllText(path);
+                var jsonRecords = JsonSerializer.Deserialize<List<ExpenseRecord>>(json);
+                if (jsonRecords == null || jsonRecords.Count == 0) return;
+
+                var existingInDb = Task.Run(() => _localDb.GetExpensesAsync(companyId)).GetAwaiter().GetResult();
+                if (existingInDb != null && existingInDb.Count > 0)
+                {
+                    ExpenseRecords = existingInDb;
+                    return;
+                }
+
+                foreach (var rec in jsonRecords)
+                {
+                    rec.CompanyId = companyId;
+                    rec.ExpenseId = 0;
+                    Task.Run(() => _localDb.SaveExpenseAsync(companyId, rec, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+
+                ExpenseRecords = Task.Run(() => _localDb.GetExpensesAsync(companyId)).GetAwaiter().GetResult() ?? new();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"MigrateJsonExpensesIfAvailable error: {ex.Message}");
+            }
+        }
+
+        public bool AddExpense(ExpenseRecord expense)
+        {
+            if (expense == null) return false;
             expense.CompanyId = ActiveCompanyId;
             if (string.IsNullOrWhiteSpace(expense.ExpenseNumber))
             {
-                expense.ExpenseNumber = $"EXP-{DateTime.UtcNow:yyyyMMdd}-{new Random().Next(100, 999)}";
+                expense.ExpenseNumber = $"EXP-{DateTime.UtcNow:yyyyMMdd}-{Random.Shared.Next(100, 999)}";
             }
             if (expense.ExpenseDate == default)
             {
                 expense.ExpenseDate = DateTime.UtcNow;
             }
 
-            ExpenseRecords.Insert(0, expense);
-            SaveExpensesToLocalCache();
-            ExpensesChanged?.Invoke();
-        }
-
-        public void ToggleExpenseArchive(int expenseId)
-        {
-            var exp = ExpenseRecords.FirstOrDefault(e => e.ExpenseId == expenseId);
-            if (exp != null)
+            bool isOnline = IsApiReachable();
+            if (isOnline)
             {
-                exp.IsActive = !exp.IsActive;
-                SaveExpensesToLocalCache();
+                ExpenseRecord? apiCreated = null;
+                try
+                {
+                    apiCreated = Task.Run(() => _apiClient.CreateExpenseAsync(ActiveCompanyId, expense)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"AddExpense API error: {ex.Message}");
+                    apiCreated = null;
+                }
+
+                if (apiCreated != null)
+                {
+                    try
+                    {
+                        Task.Run(() => _localDb.SaveExpenseAsync(ActiveCompanyId, apiCreated, enqueueSync: false)).GetAwaiter().GetResult();
+                    }
+                    catch { }
+
+                    ExpenseRecords.RemoveAll(e => e.ExpenseId == apiCreated.ExpenseId);
+                    ExpenseRecords.Insert(0, apiCreated);
+                    ExpensesChanged?.Invoke();
+                    return true;
+                }
+            }
+
+            // Offline or API failure: persist locally and enqueue SyncOutbox
+            try
+            {
+                var saved = Task.Run(() => _localDb.SaveExpenseAsync(ActiveCompanyId, expense, enqueueSync: true)).GetAwaiter().GetResult();
+                if (saved != null)
+                {
+                    expense.ExpenseId = saved.ExpenseId;
+                }
+                ExpenseRecords.RemoveAll(e => e.ExpenseId == expense.ExpenseId);
+                ExpenseRecords.Insert(0, expense);
                 ExpensesChanged?.Invoke();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"AddExpense localDb error: {ex.Message}");
+                return false;
             }
         }
 
-        public void DeleteExpense(int expenseId)
+        public bool ToggleExpenseArchive(int expenseId)
         {
-            ToggleExpenseArchive(expenseId);
+            var exp = ExpenseRecords.FirstOrDefault(e => e.ExpenseId == expenseId);
+            if (exp == null) return false;
+
+            bool targetActive = !exp.IsActive;
+
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
+                {
+                    apiSuccess = Task.Run(() => _apiClient.ArchiveExpenseAsync(ActiveCompanyId, expenseId)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"ToggleExpenseArchive API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (apiSuccess)
+                {
+                    try
+                    {
+                        Task.Run(() => _localDb.ToggleExpenseArchiveAsync(ActiveCompanyId, expenseId, enqueueSync: false)).GetAwaiter().GetResult();
+                    }
+                    catch { }
+
+                    exp.IsActive = targetActive;
+                    ExpensesChanged?.Invoke();
+                    return true;
+                }
+            }
+
+            // Offline or API failure: persist locally and enqueue SyncOutbox
+            try
+            {
+                Task.Run(() => _localDb.ToggleExpenseArchiveAsync(ActiveCompanyId, expenseId, enqueueSync: true)).GetAwaiter().GetResult();
+                exp.IsActive = targetActive;
+                ExpensesChanged?.Invoke();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ToggleExpenseArchive localDb error: {ex.Message}");
+                return false;
+            }
         }
+
+        public bool DeleteExpense(int expenseId) => ToggleExpenseArchive(expenseId);
 
         public decimal GetTotalRetailSalesRevenue()
         {
