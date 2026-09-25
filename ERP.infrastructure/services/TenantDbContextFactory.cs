@@ -59,7 +59,7 @@ namespace ERP.infrastructure.services
                     $"Encrypt=False;" +
                     $"TrustServerCertificate=True;" +
                     $"MultipleActiveResultSets=True;" +
-                    $"Connect Timeout=5;";
+                    $"Connect Timeout=30;";
             }
 
             var options = new DbContextOptionsBuilder<TenantErpDbContext>()

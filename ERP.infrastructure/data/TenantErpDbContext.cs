@@ -16,6 +16,7 @@ namespace ERP.infrastructure.data
         public DbSet<ApprovalRequest> ApprovalRequests => Set<ApprovalRequest>();
         public DbSet<PayrollRecord> PayrollRecords => Set<PayrollRecord>();
         public DbSet<StorePolicy> StorePolicies => Set<StorePolicy>();
+        public DbSet<SyncOutboxItem> SyncOutbox => Set<SyncOutboxItem>();
 
         public TenantErpDbContext(DbContextOptions<TenantErpDbContext> options)
             : base(options)
@@ -25,6 +26,19 @@ namespace ERP.infrastructure.data
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
+
+            builder.Entity<SyncOutboxItem>(entity =>
+            {
+                entity.HasKey(x => x.SyncId);
+                entity.Property(x => x.SyncId).HasMaxLength(100);
+                entity.Property(x => x.EntityType).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.EntityId).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.Operation).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.PayloadJson).IsRequired();
+                entity.Property(x => x.SyncStatus).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.ErrorMessage).HasMaxLength(2000).IsRequired(false);
+                entity.HasIndex(x => new { x.CompanyId, x.SyncStatus, x.CreatedAt });
+            });
 
             builder.Entity<Product>(entity =>
             {
@@ -146,7 +160,7 @@ namespace ERP.infrastructure.data
                 entity.Property(x => x.WarrantyTerms).HasMaxLength(500).IsRequired(false);
                 entity.Ignore(x => x.TotalAmount);
                 entity.Ignore(x => x.BalanceDue);
-                entity.Property(x => x.PartsSupplier).IsRequired(false);
+                entity.Property(x => x.PartsSupplier).HasMaxLength(200).IsRequired(false);
             });
 
             builder.Entity<StaffMember>(entity =>
