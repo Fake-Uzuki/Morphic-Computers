@@ -40,21 +40,7 @@ namespace ERP.winforms.UI.Dialogs
 
             if (_targetProduct != null)
             {
-                _txtCode.Text = _targetProduct.ProductCode;
-                _txtName.Text = _targetProduct.ProductName;
-                int cIdx = _cboCategory.FindStringExact(_targetProduct.CategoryName);
-                if (cIdx >= 0) _cboCategory.SelectedIndex = cIdx;
-                else if (_cboCategory.Items.Count > 0) _cboCategory.SelectedIndex = 0;
-
-                if (_cboSupplier != null && !string.IsNullOrEmpty(_targetProduct.SupplierName))
-                {
-                    int sIdx = _cboSupplier.FindStringExact(_targetProduct.SupplierName);
-                    if (sIdx >= 0) _cboSupplier.SelectedIndex = sIdx;
-                }
-
-                _numPrice.Value = Math.Min(_targetProduct.UnitPrice, _numPrice.Maximum);
-                _numStock.Value = Math.Min(_targetProduct.StockQuantity, _numStock.Maximum);
-                _txtDescription.Text = _targetProduct.Description;
+                PopulateFields(_targetProduct);
             }
 
             _dataService.CategoriesChanged += () =>
@@ -90,17 +76,17 @@ namespace ERP.winforms.UI.Dialogs
             int y = 50;
 
             // Product Code
-            Label lblCode = new Label { Text = "Product Code (SKU):", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(20, y), AutoSize = true };
+            Label lblCode = new Label { Text = "Product Code (SKU) *:", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(20, y), AutoSize = true };
             _txtCode = new TextBox { Font = AppTheme.BodyFont, Location = new Point(20, y + 18), Width = 404 };
             y += 48;
 
             // Product Name
-            Label lblName = new Label { Text = "Product Name / Model:", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(20, y), AutoSize = true };
+            Label lblName = new Label { Text = "Product Name / Model *:", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(20, y), AutoSize = true };
             _txtName = new TextBox { Font = AppTheme.BodyFont, Location = new Point(20, y + 18), Width = 404 };
             y += 48;
 
             // Category
-            Label lblCategory = new Label { Text = "Category:", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(20, y), AutoSize = true };
+            Label lblCategory = new Label { Text = "Category *:", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(20, y), AutoSize = true };
             _cboCategory = new ComboBox { Font = AppTheme.BodyFont, Location = new Point(20, y + 18), Width = 270, DropDownStyle = ComboBoxStyle.DropDownList };
             foreach (var cat in _dataService.Categories)
             {
@@ -163,7 +149,7 @@ namespace ERP.winforms.UI.Dialogs
             {
                 lblSupplier = new Label { Text = "Supplier / Vendor:", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(20, y), AutoSize = true };
                 _cboSupplier = new ComboBox { Font = AppTheme.BodyFont, Location = new Point(20, y + 18), Width = 404, DropDownStyle = ComboBoxStyle.DropDownList };
-                _cboSupplier.Items.Add("Direct Distribution");
+                _cboSupplier.Items.Add("(None / Unassigned)");
                 foreach (var sup in _dataService.Suppliers)
                 {
                     if (!_cboSupplier.Items.Contains(sup.SupplierName))
@@ -174,11 +160,11 @@ namespace ERP.winforms.UI.Dialogs
             }
 
             // Price & Stock
-            Label lblPrice = new Label { Text = "Unit Price (₱):", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(20, y), AutoSize = true };
-            _numPrice = new NumericUpDown { Font = AppTheme.BodyFont, Location = new Point(20, y + 18), Width = 195, DecimalPlaces = 2, Maximum = 100000, Value = 10.00m };
+            Label lblPrice = new Label { Text = "Unit Price (₱) *:", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(20, y), AutoSize = true };
+            _numPrice = new NumericUpDown { Font = AppTheme.BodyFont, Location = new Point(20, y + 18), Width = 195, DecimalPlaces = 2, Maximum = 1000000, Value = 0.00m };
 
             Label lblStock = new Label { Text = "Initial Stock Qty:", Font = AppTheme.SmallFont, ForeColor = AppTheme.TextMuted, Location = new Point(229, y), AutoSize = true };
-            _numStock = new NumericUpDown { Font = AppTheme.BodyFont, Location = new Point(229, y + 18), Width = 195, Maximum = 10000, Value = 10 };
+            _numStock = new NumericUpDown { Font = AppTheme.BodyFont, Location = new Point(229, y + 18), Width = 195, Maximum = 100000, Value = 0 };
             y += 48;
 
             // Description
@@ -240,25 +226,64 @@ namespace ERP.winforms.UI.Dialogs
 
         private void PopulateFields(Product prod)
         {
-            _txtName.Text = prod.Name;
-            int catIdx = _cboCategory.Items.IndexOf(prod.CategoryName);
+            _txtCode.Text = prod.ProductCode;
+            _txtName.Text = prod.ProductName;
+            int catIdx = _cboCategory.FindStringExact(prod.CategoryName);
             if (catIdx >= 0) _cboCategory.SelectedIndex = catIdx;
-            _numPrice.Value = Math.Min(prod.Price, _numPrice.Maximum);
+
+            if (_cboSupplier != null && !string.IsNullOrWhiteSpace(prod.SupplierName))
+            {
+                int sIdx = _cboSupplier.FindStringExact(prod.SupplierName);
+                if (sIdx >= 0) _cboSupplier.SelectedIndex = sIdx;
+            }
+
+            _numPrice.Value = Math.Min(prod.UnitPrice, _numPrice.Maximum);
             _numStock.Value = Math.Min(prod.StockQuantity, _numStock.Maximum);
             _txtDescription.Text = prod.Description;
         }
 
         private void BtnSave_Click(object? sender, EventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(_txtName.Text))
+            string code = _txtCode.Text.Trim();
+            if (string.IsNullOrWhiteSpace(code))
             {
-                MessageBox.Show("Please enter a valid product name!", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Please enter a Product Code (SKU)!", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                _txtCode.Focus();
                 return;
             }
 
-            string code = string.IsNullOrWhiteSpace(_txtCode.Text) ? $"PRD{DateTime.Now:fff}" : _txtCode.Text.Trim();
-            string cat = _cboCategory.SelectedItem?.ToString() ?? "Graphics Cards (GPU)";
-            string sup = (_cboSupplier != null) ? (_cboSupplier.SelectedItem?.ToString() ?? "Direct Distribution") : "Direct Distribution";
+            string name = _txtName.Text.Trim();
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                MessageBox.Show("Please enter a product name / model!", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                _txtName.Focus();
+                return;
+            }
+
+            if (_cboCategory.SelectedItem == null || string.IsNullOrWhiteSpace(_cboCategory.SelectedItem.ToString()))
+            {
+                MessageBox.Show("Please select or create a product category!", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                _cboCategory.Focus();
+                return;
+            }
+            string cat = _cboCategory.SelectedItem.ToString()!;
+
+            string? sup = null;
+            if (_cboSupplier != null && _cboSupplier.SelectedItem != null)
+            {
+                string selectedSup = _cboSupplier.SelectedItem.ToString()!;
+                if (!selectedSup.Equals("(None / Unassigned)", StringComparison.OrdinalIgnoreCase))
+                {
+                    sup = selectedSup;
+                }
+            }
+
+            if (_numPrice.Value <= 0)
+            {
+                MessageBox.Show("Please enter a valid Unit Price greater than ₱0.00!", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                _numPrice.Focus();
+                return;
+            }
 
             if (_targetProduct == null)
             {
@@ -271,10 +296,10 @@ namespace ERP.winforms.UI.Dialogs
                 Product newProd = new Product
                 {
                     ProductCode = code,
-                    Name = _txtName.Text.Trim(),
+                    ProductName = name,
                     CategoryName = cat,
                     SupplierName = sup,
-                    Price = _numPrice.Value,
+                    UnitPrice = _numPrice.Value,
                     StockQuantity = (int)_numStock.Value,
                     Description = _txtDescription.Text.Trim()
                 };
@@ -289,10 +314,10 @@ namespace ERP.winforms.UI.Dialogs
                 }
 
                 _targetProduct.ProductCode = code;
-                _targetProduct.Name = _txtName.Text.Trim();
+                _targetProduct.ProductName = name;
                 _targetProduct.CategoryName = cat;
                 _targetProduct.SupplierName = sup;
-                _targetProduct.Price = _numPrice.Value;
+                _targetProduct.UnitPrice = _numPrice.Value;
                 _targetProduct.StockQuantity = (int)_numStock.Value;
                 _targetProduct.Description = _txtDescription.Text.Trim();
                 _dataService.UpdateProduct(_targetProduct);

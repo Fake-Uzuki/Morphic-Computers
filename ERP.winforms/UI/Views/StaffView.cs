@@ -91,7 +91,7 @@ namespace ERP.winforms.UI.Views
             AddFilterPill("Manager", "Managers");
             AddFilterPill("Cashier", "Cashiers");
             AddFilterPill("Administrator", "Admins");
-            AddFilterPill("Archived", "📦 Archived");
+            AddFilterPill("Archived", "Archived");
 
             SunshineButton btnAddStaff = new SunshineButton
             {
