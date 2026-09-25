@@ -317,9 +317,17 @@ namespace ERP.winforms.UI.Views
             {
                 if (_selectedTicket != null)
                 {
-                    _selectedTicket.DiagnosticNotes = _txtDetailNotes.Text.Trim();
-                    _dataService.SaveRepairsToLocalCache();
-                    MessageBox.Show("Diagnostic notes updated successfully.", "Saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    string notes = _txtDetailNotes.Text.Trim();
+                    _selectedTicket.DiagnosticNotes = notes;
+                    bool ok = _dataService.UpdateRepairStatus(_selectedTicket.RepairTicketId, _selectedTicket.Status, notes, _selectedTicket.AssignedTechnician);
+                    if (ok)
+                    {
+                        MessageBox.Show("Diagnostic notes updated successfully.", "Saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    else
+                    {
+                        MessageBox.Show("Failed to save diagnostic notes. Please check connection.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
                 }
             };
             y += 36;
@@ -390,15 +398,21 @@ namespace ERP.winforms.UI.Views
         private void AdvanceStatus(string nextStatus)
         {
             if (_selectedTicket == null) return;
+            string notes = _txtDetailNotes.Text.Trim();
             _selectedTicket.Status = nextStatus;
-            _selectedTicket.DiagnosticNotes = _txtDetailNotes.Text.Trim();
+            _selectedTicket.DiagnosticNotes = notes;
             if (nextStatus == "Completed" || nextStatus == "ReadyForPickup")
             {
                 _selectedTicket.CompletedAt = DateTime.UtcNow;
             }
 
-            _dataService.SaveRepairsToLocalCache();
-            _dataService.RepairTicketsChanged?.Invoke();
+            bool ok = _dataService.UpdateRepairStatus(_selectedTicket.RepairTicketId, nextStatus, notes, _selectedTicket.AssignedTechnician);
+            if (!ok)
+            {
+                MessageBox.Show($"Failed to advance repair status to '{nextStatus}'. Please check connection.", "Update Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
             UpdateDetailPanel();
             ApplyFilters();
         }

@@ -318,7 +318,12 @@ namespace ERP.winforms.UI.Dialogs
                     EstimatedCompletionDate = DateTime.UtcNow.AddDays(2)
                 };
 
-                _dataService.AddRepairTicket(newTicket);
+                bool ok = _dataService.AddRepairTicket(newTicket);
+                if (!ok)
+                {
+                    MessageBox.Show("Failed to save repair job order. Please check network/database connectivity.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
                 CreatedOrUpdatedTicket = newTicket;
             }
             else
@@ -336,8 +341,12 @@ namespace ERP.winforms.UI.Dialogs
                 _targetTicket.PartsCost = _numParts.Value;
                 _targetTicket.DepositAmount = _numDeposit.Value;
 
-                _dataService.SaveRepairsToLocalCache();
-                _dataService.RepairTicketsChanged?.Invoke();
+                bool ok = _dataService.UpdateRepairBilling(_targetTicket.RepairTicketId, _targetTicket.LaborFee, _targetTicket.PartsCost, _targetTicket.DepositAmount);
+                if (!ok)
+                {
+                    MessageBox.Show("Failed to update repair job order. Please check network/database connectivity.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
                 CreatedOrUpdatedTicket = _targetTicket;
             }
 

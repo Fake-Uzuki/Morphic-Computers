@@ -251,7 +251,12 @@ namespace ERP.winforms.UI.Dialogs
                     HiredDate = DateTime.UtcNow
                 };
 
-                _dataService.AddStaffMember(newStaff);
+                bool ok = _dataService.AddStaffMember(newStaff);
+                if (!ok)
+                {
+                    MessageBox.Show("Failed to save staff member. Please check network/database connectivity.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
                 ResultStaff = newStaff;
             }
             else
@@ -266,7 +271,12 @@ namespace ERP.winforms.UI.Dialogs
                 _targetStaff.HourlyRate = _numHourlyRate.Value;
                 _targetStaff.MonthlySalary = _numMonthlySalary.Value;
 
-                _dataService.UpdateStaffMember(_targetStaff);
+                bool ok = _dataService.UpdateStaffMember(_targetStaff);
+                if (!ok)
+                {
+                    MessageBox.Show("Failed to update staff member. Please check network/database connectivity.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
                 ResultStaff = _targetStaff;
             }
 

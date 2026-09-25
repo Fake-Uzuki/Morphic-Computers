@@ -306,7 +306,12 @@ namespace ERP.winforms.UI.Dialogs
                 ProcessedBy = "Store Manager"
             };
 
-            _dataService.AddPayrollRecord(record);
+            bool ok = _dataService.AddPayrollRecord(record);
+            if (!ok)
+            {
+                MessageBox.Show("Failed to record payroll disbursement. Please check network/database connectivity.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
 
             MessageBox.Show(
                 $"Payroll compensation successfully disbursed for {record.StaffName}!\n\nNet Amount: ₱{record.NetPay:N2}\nChannel: {record.PaymentMethod}",

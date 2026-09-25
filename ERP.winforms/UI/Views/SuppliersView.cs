@@ -223,7 +223,11 @@ namespace ERP.winforms.UI.Views
 
                         if (res == DialogResult.Yes)
                         {
-                            _dataService.ToggleSupplierArchive(supplierId);
+                            bool ok = _dataService.ToggleSupplierArchive(supplierId);
+                            if (!ok)
+                            {
+                                MessageBox.Show("Failed to change supplier status. Please check network/database connectivity.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            }
                             RefreshData();
                         }
                     }

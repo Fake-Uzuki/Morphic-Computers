@@ -448,7 +448,13 @@ namespace ERP.winforms.UI.Views
                 notes = approve ? "Authorized by Store Manager / Admin." : "Rejected by Store Manager / Admin.";
             }
 
-            _dataService.ResolveApprovalRequest(reqId, status, authorizer, notes);
+            bool resolvedOk = _dataService.ResolveApprovalRequest(reqId, status, authorizer, notes);
+            if (!resolvedOk)
+            {
+                MessageBox.Show($"Failed to record {status} for request {reqNumber}. Please check network/database connectivity.", "Action Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
             MessageBox.Show($"Request {reqNumber} marked as {status} by {authorizer}.", "Decision Recorded", MessageBoxButtons.OK, MessageBoxIcon.Information);
             RefreshData();
         }

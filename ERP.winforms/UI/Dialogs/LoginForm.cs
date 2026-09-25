@@ -240,6 +240,7 @@ namespace ERP.winforms.UI.Dialogs
 
                         _dataService.ActiveCompanyId = loginResult.CompanyId;
                         _dataService.CurrentCompany = SelectedCompany;
+                        _dataService.IsUsingLiveCloudDatabase = true;
                         _dataService.LoadFromDatabase();
 
                         // Securely cache credentials in machine DPAPI-encrypted vault for offline operations
@@ -251,10 +252,20 @@ namespace ERP.winforms.UI.Dialogs
                     }
 
                     // If API returned a specific rejection (e.g. invalid credentials or company not found)
-                    if (loginResult != null && !string.IsNullOrEmpty(loginResult.Message) && !loginResult.Message.StartsWith("API Connection Error"))
+                    // and it was NOT a connection / backend database failure:
+                    if (loginResult != null && !loginResult.Success)
                     {
-                        _lblError.Text = loginResult.Message;
-                        return;
+                        if (!loginResult.IsConnectionError &&
+                            !loginResult.Message.StartsWith("API Connection Error", StringComparison.OrdinalIgnoreCase) &&
+                            !loginResult.Message.Contains("Database connection error", StringComparison.OrdinalIgnoreCase) &&
+                            !loginResult.Message.Contains("unavailable", StringComparison.OrdinalIgnoreCase) &&
+                            !loginResult.Message.Contains("Master database", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _lblError.Text = loginResult.Message;
+                            return;
+                        }
+
+                        System.Diagnostics.Debug.WriteLine($"Cloud login unavailable ({loginResult.Message}). Falling back to offline authentication.");
                     }
                 }
                 catch (Exception ex)
@@ -270,7 +281,7 @@ namespace ERP.winforms.UI.Dialogs
             }
 
             // 4. Secure Offline Authentication via DPAPI Salted Hash Vault
-            var offlineResult = OfflineAuthService.Instance.ValidateOfflineLogin(companyInput, username, password);
+            var offlineResult = await OfflineAuthService.Instance.ValidateOfflineLoginAsync(companyInput, username, password).ConfigureAwait(true);
             if (offlineResult.Success && offlineResult.Credential != null)
             {
                 var cred = offlineResult.Credential;
@@ -286,6 +297,7 @@ namespace ERP.winforms.UI.Dialogs
 
                 _dataService.ActiveCompanyId = cred.CompanyId;
                 _dataService.CurrentCompany = SelectedCompany;
+                _dataService.IsUsingLiveCloudDatabase = false;
                 _dataService.LoadFromDatabase();
 
                 DialogResult = DialogResult.OK;

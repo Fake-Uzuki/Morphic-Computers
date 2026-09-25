@@ -182,7 +182,12 @@ namespace ERP.winforms.UI.Dialogs
                     CreatedAt = DateTime.UtcNow
                 };
 
-                _dataService.AddCustomer(newCust);
+                bool ok = _dataService.AddCustomer(newCust);
+                if (!ok)
+                {
+                    MessageBox.Show("Failed to save customer. Please check network/database connectivity.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
                 ResultCustomer = newCust;
             }
             else
@@ -191,7 +196,13 @@ namespace ERP.winforms.UI.Dialogs
                 _targetCustomer.ContactNumber = phone;
                 _targetCustomer.EmailAddress = _txtEmail.Text.Trim();
                 _targetCustomer.Address = address;
-                _dataService.UpdateCustomer(_targetCustomer);
+
+                bool ok = _dataService.UpdateCustomer(_targetCustomer);
+                if (!ok)
+                {
+                    MessageBox.Show("Failed to update customer. Please check network/database connectivity.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
                 ResultCustomer = _targetCustomer;
             }
 

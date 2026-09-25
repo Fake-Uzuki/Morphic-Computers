@@ -187,7 +187,12 @@ namespace ERP.winforms.UI.Dialogs
                     IsActive = true,
                     CreatedAt = DateTime.UtcNow
                 };
-                _dataService.AddSupplier(newSup);
+                bool ok = _dataService.AddSupplier(newSup);
+                if (!ok)
+                {
+                    MessageBox.Show("Failed to save supplier. Please check network/database connectivity.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
                 ResultSupplier = newSup;
             }
             else
@@ -197,7 +202,13 @@ namespace ERP.winforms.UI.Dialogs
                 _targetSupplier.ContactNumber = _txtPhone.Text.Trim();
                 _targetSupplier.EmailAddress = _txtEmail.Text.Trim();
                 _targetSupplier.Address = _txtAddress.Text.Trim();
-                _dataService.UpdateSupplier(_targetSupplier);
+
+                bool ok = _dataService.UpdateSupplier(_targetSupplier);
+                if (!ok)
+                {
+                    MessageBox.Show("Failed to update supplier. Please check network/database connectivity.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
                 ResultSupplier = _targetSupplier;
             }
 

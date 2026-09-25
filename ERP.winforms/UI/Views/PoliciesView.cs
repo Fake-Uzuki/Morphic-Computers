@@ -309,7 +309,16 @@ namespace ERP.winforms.UI.Views
         private void OnSavePolicy(object? sender, EventArgs e)
         {
             string content = _txtPolicyContent.Text;
-            _dataService.UpdateStorePolicy(_activePolicyType, content, "Admin (Cirunay)");
+            bool ok = _dataService.UpdateStorePolicy(_activePolicyType, content, "Admin (Cirunay)");
+            if (!ok)
+            {
+                MessageBox.Show(
+                    $"Failed to save and publish policy '{_lblPolicyTitle.Text}'. Please check connectivity.",
+                    "Save Failed",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+                return;
+            }
 
             MessageBox.Show(
                 $"Store policy '{_lblPolicyTitle.Text}' successfully saved and published to the ERP store system!",

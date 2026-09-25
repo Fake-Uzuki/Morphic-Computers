@@ -523,18 +523,20 @@ namespace ERP.winforms.UI.Views
             // Top Row: SKU code on left, stock badge on right
             Label lblSku = new Label { Text = prod.ProductCode, Font = new Font("Segoe UI", 7F, FontStyle.Bold), ForeColor = AppTheme.TextMuted, Location = new Point(8, 8), AutoSize = true };
 
+            bool isOutOfStock = prod.StockQuantity <= 0 || !prod.IsActive;
+
             Panel pnlStockBadge = new Panel
             {
                 Name = "StockBadge",
-                Location = new Point(cardWidth - 92, 6),
-                Size = new Size(84, 20),
-                BackColor = prod.StockQuantity > 2 ? AppTheme.GreenPillBg : AppTheme.AmberPillBg
+                Location = new Point(cardWidth - 96, 6),
+                Size = new Size(88, 20),
+                BackColor = isOutOfStock ? AppTheme.RedPillBg : (prod.StockQuantity > 2 ? AppTheme.GreenPillBg : AppTheme.AmberPillBg)
             };
             Label lblStockBadge = new Label
             {
-                Text = prod.StockQuantity > 2 ? $"● {prod.StockQuantity} In Stock" : $"● {prod.StockQuantity} Low Stock",
+                Text = isOutOfStock ? "● Out of Stock" : (prod.StockQuantity > 2 ? $"● {prod.StockQuantity} In Stock" : $"● {prod.StockQuantity} Low Stock"),
                 Font = new Font("Segoe UI", 6.5F, FontStyle.Bold),
-                ForeColor = prod.StockQuantity > 2 ? AppTheme.GreenPillText : AppTheme.AmberPillText,
+                ForeColor = isOutOfStock ? AppTheme.RedPillText : (prod.StockQuantity > 2 ? AppTheme.GreenPillText : AppTheme.AmberPillText),
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleCenter
             };
@@ -571,13 +573,17 @@ namespace ERP.winforms.UI.Views
             SunshineButton btnAdd = new SunshineButton
             {
                 Name = "AddBtn",
-                Text = "+ Add",
-                IsPrimary = prod.StockQuantity > 0,
-                Location = new Point(cardWidth - 78, 114),
-                Size = new Size(70, 30),
+                Text = isOutOfStock ? "Unavailable" : "+ Add",
+                IsPrimary = !isOutOfStock,
+                Enabled = !isOutOfStock,
+                Location = new Point(cardWidth - (isOutOfStock ? 92 : 78), 114),
+                Size = new Size(isOutOfStock ? 84 : 70, 30),
                 Font = new Font("Segoe UI", 8F, FontStyle.Bold)
             };
-            btnAdd.Click += (s, e) => AddToCart(prod);
+            if (!isOutOfStock)
+            {
+                btnAdd.Click += (s, e) => AddToCart(prod);
+            }
 
             card.Controls.Add(lblSku);
             card.Controls.Add(pnlStockBadge);
@@ -592,9 +598,9 @@ namespace ERP.winforms.UI.Views
 
         private void AddToCart(Product prod)
         {
-            if (prod.StockQuantity <= 0)
+            if (prod.StockQuantity <= 0 || !prod.IsActive)
             {
-                MessageBox.Show("This item is currently out of stock!", "Out of Stock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("This item is currently out of stock or unavailable for sale!", "Out of Stock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -603,7 +609,7 @@ namespace ERP.winforms.UI.Views
             {
                 if (item.Quantity >= prod.StockQuantity)
                 {
-                    MessageBox.Show("Requested quantity exceeds available inventory.", "Stock Limit", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show($"Requested quantity exceeds available inventory (Available: {prod.StockQuantity}).", "Stock Limit", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
                 item.Quantity++;
@@ -710,10 +716,36 @@ namespace ERP.winforms.UI.Views
                 PaymentMethod = paymentMethod
             };
 
+            // Pre-checkout stock verification
+            foreach (var item in _cart)
+            {
+                var prod = _dataService.Products.FirstOrDefault(p => p.ProductId == item.ProductId);
+                if (prod == null || !prod.IsActive)
+                {
+                    MessageBox.Show($"Item '{item.ProductName}' is no longer available for sale.", "Checkout Cancelled", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                if (prod.StockQuantity <= 0)
+                {
+                    MessageBox.Show($"Item '{item.ProductName}' has run out of stock.", "Out of Stock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                if (item.Quantity > prod.StockQuantity)
+                {
+                    MessageBox.Show($"Item '{item.ProductName}' has insufficient stock (Requested: {item.Quantity}, Available: {prod.StockQuantity}).", "Stock Limit Exceeded", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+            }
+
             using var receipt = new ReceiptForm(order);
             if (receipt.ShowDialog(this) == DialogResult.OK)
             {
-                _dataService.ProcessOrder(order);
+                bool success = _dataService.ProcessOrder(order);
+                if (!success)
+                {
+                    MessageBox.Show("Failed to complete transaction. Inventory could not be deducted.", "Transaction Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
                 _cart.Clear();
                 _appliedDiscount = 0;
                 _discountReason = "";

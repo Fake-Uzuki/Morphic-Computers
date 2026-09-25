@@ -678,6 +678,12 @@ namespace ERP.winforms.UI.Views
 
         private void BtnSaveProduct_Click(object? sender, EventArgs e)
         {
+            if (_selectedProduct != null)
+            {
+                BtnUpdateProduct_Click(sender, e);
+                return;
+            }
+
             string sku = _txtFormSku.Text.Trim();
             string name = _txtFormName.Text.Trim();
             if (string.IsNullOrEmpty(sku) || string.IsNullOrEmpty(name))
@@ -716,7 +722,13 @@ namespace ERP.winforms.UI.Views
                 Description = _txtFormDesc.Text.Trim()
             };
 
-            _dataService.AddProduct(newProd);
+            bool added = _dataService.AddProduct(newProd);
+            if (!added)
+            {
+                MessageBox.Show($"Failed to add product '{name}'. Please check your network or database connection.", "Save Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
             ApplyFilters();
             OnProductsChanged?.Invoke();
             ClearForm();
@@ -756,6 +768,9 @@ namespace ERP.winforms.UI.Views
             }
 
             string cat = _cboFormCategory.SelectedItem?.ToString() ?? "Graphics Cards (GPU)";
+            _selectedProduct.ProductName = name;
+            _selectedProduct.ProductCode = skuText;
+            _selectedProduct.CategoryName = cat;
             if (HasSupplierModule && _cboFormSupplier != null)
             {
                 _selectedProduct.SupplierName = _cboFormSupplier.SelectedItem?.ToString() ?? "Direct Distribution";
@@ -764,7 +779,13 @@ namespace ERP.winforms.UI.Views
             _selectedProduct.StockQuantity = (int)_numFormStock.Value;
             _selectedProduct.Description = _txtFormDesc.Text.Trim();
 
-            _dataService.UpdateProduct(_selectedProduct);
+            bool success = _dataService.UpdateProduct(_selectedProduct);
+            if (!success)
+            {
+                MessageBox.Show($"Failed to update product '{name}'. Please check your network or database connection and try again.", "Update Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
             ApplyFilters();
             OnProductsChanged?.Invoke();
 
@@ -862,7 +883,12 @@ namespace ERP.winforms.UI.Views
 
                 if (res == DialogResult.Yes)
                 {
-                    _dataService.ArchiveProduct(prodId);
+                    bool ok = _dataService.ArchiveProduct(prodId);
+                    if (!ok)
+                    {
+                        MessageBox.Show($"Failed to archive product '{prodName}'. Please check database connection.", "Archive Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
                     ApplyFilters();
                     OnProductsChanged?.Invoke();
                     ClearForm();
@@ -880,7 +906,12 @@ namespace ERP.winforms.UI.Views
 
                 if (res == DialogResult.Yes)
                 {
-                    _dataService.RestoreProduct(prodId);
+                    bool ok = _dataService.RestoreProduct(prodId);
+                    if (!ok)
+                    {
+                        MessageBox.Show($"Failed to restore product '{prodName}'. Please check database connection.", "Restore Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
                     ApplyFilters();
                     OnProductsChanged?.Invoke();
                     ClearForm();

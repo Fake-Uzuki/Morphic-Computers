@@ -223,7 +223,11 @@ namespace ERP.winforms.UI.Views
 
                         if (res == DialogResult.Yes)
                         {
-                            _dataService.ToggleCustomerArchive(customerId);
+                            bool ok = _dataService.ToggleCustomerArchive(customerId);
+                            if (!ok)
+                            {
+                                MessageBox.Show("Failed to change customer status. Please check network/database connectivity.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            }
                             RefreshData();
                         }
                     }
