@@ -68,7 +68,39 @@ namespace ERP.api.Controllers
             string username = request.Username.Trim();
             string password = request.Password;
 
-            // 1. Resolve Company from Master DB (Source of Truth)
+            var configAdminUser = _configuration["Auth:AdminUsername"];
+            var configAdminPass = _configuration["Auth:AdminPassword"];
+
+            // 1. Resolve Company or Platform Super Admin from Master DB (Source of Truth)
+            if (string.Equals(companyInput, "master", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(companyInput, "platform", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(companyInput, "superadmin", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!string.IsNullOrWhiteSpace(configAdminUser) &&
+                    username.Equals(configAdminUser, StringComparison.OrdinalIgnoreCase) &&
+                    password == configAdminPass)
+                {
+                    string superToken = Convert.ToBase64String(Guid.NewGuid().ToByteArray());
+                    return Ok(new LoginResponse(
+                        Success: true,
+                        Message: "Platform Super Administrator authentication successful.",
+                        CompanyId: 0,
+                        CompanyCode: "PLATFORM",
+                        CompanyName: "Platform Master",
+                        PlanName: "SuperAdmin",
+                        Username: "Super Administrator",
+                        Role: "Super Administrator",
+                        Token: superToken,
+                        IsPOSAllowed: false,
+                        IsInventoryAllowed: false,
+                        IsRepairAllowed: false,
+                        IsSupplierAllowed: false
+                    ));
+                }
+
+                return Unauthorized(new { error = "Invalid Super Administrator credentials." });
+            }
+
             Company? company;
             try
             {
@@ -94,8 +126,6 @@ namespace ERP.api.Controllers
             string displayName = username;
 
             // Check A: Configured Backend Administrator credentials
-            var configAdminUser = _configuration["Auth:AdminUsername"];
-            var configAdminPass = _configuration["Auth:AdminPassword"];
             if (!string.IsNullOrWhiteSpace(configAdminUser) &&
                 username.Equals(configAdminUser, StringComparison.OrdinalIgnoreCase) &&
                 password == configAdminPass)

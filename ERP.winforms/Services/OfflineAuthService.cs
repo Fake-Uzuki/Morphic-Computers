@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using ERP.domain.entities;
+using ERP.domain.security;
 
 namespace ERP.winforms.Services
 {
@@ -119,11 +120,17 @@ namespace ERP.winforms.Services
             var tenants = new[]
             {
                 (Id: 1, Code: "TENANT_A", Name: "Tenant A", Plan: "Micro"),
-                (Id: 2, Code: "TENANT_B", Name: "Tenant B", Plan: "SmallBusiness")
+                (Id: 2, Code: "TENANT_B", Name: "Tenant B", Plan: "Small"),
+                (Id: 1001, Code: "TENANT_C", Name: "Tenant C", Plan: "Medium")
             };
 
             foreach (var t in tenants)
             {
+                bool isPosAllowed = ModuleAccessService.IsModuleEnabled(t.Plan, "POS");
+                bool isInvAllowed = ModuleAccessService.IsModuleEnabled(t.Plan, "Inventory");
+                bool isRepAllowed = ModuleAccessService.IsModuleEnabled(t.Plan, "Repairs");
+                bool isSupAllowed = ModuleAccessService.IsModuleEnabled(t.Plan, "Suppliers");
+
                 // Store Administrator - cirunay
                 if (!list.Any(c => c.CompanyId == t.Id && c.Username.Equals("cirunay", StringComparison.OrdinalIgnoreCase)))
                 {
@@ -140,10 +147,10 @@ namespace ERP.winforms.Services
                         SaltBase64 = cSalt,
                         HashBase64 = cHash,
                         LastLoginUtc = DateTime.UtcNow,
-                        IsPOSAllowed = true,
-                        IsInventoryAllowed = true,
-                        IsRepairAllowed = t.Id >= 2,
-                        IsSupplierAllowed = t.Id == 3
+                        IsPOSAllowed = isPosAllowed,
+                        IsInventoryAllowed = isInvAllowed,
+                        IsRepairAllowed = isRepAllowed,
+                        IsSupplierAllowed = isSupAllowed
                     });
                     modified = true;
                 }
@@ -164,8 +171,8 @@ namespace ERP.winforms.Services
                         SaltBase64 = kSalt,
                         HashBase64 = kHash,
                         LastLoginUtc = DateTime.UtcNow,
-                        IsPOSAllowed = true,
-                        IsInventoryAllowed = true,
+                        IsPOSAllowed = isPosAllowed,
+                        IsInventoryAllowed = isInvAllowed,
                         IsRepairAllowed = false,
                         IsSupplierAllowed = false
                     });
@@ -188,10 +195,10 @@ namespace ERP.winforms.Services
                         SaltBase64 = aSalt,
                         HashBase64 = aHash,
                         LastLoginUtc = DateTime.UtcNow,
-                        IsPOSAllowed = true,
-                        IsInventoryAllowed = true,
-                        IsRepairAllowed = true,
-                        IsSupplierAllowed = true
+                        IsPOSAllowed = isPosAllowed,
+                        IsInventoryAllowed = isInvAllowed,
+                        IsRepairAllowed = isRepAllowed,
+                        IsSupplierAllowed = isSupAllowed
                     });
                     modified = true;
                 }
@@ -212,9 +219,9 @@ namespace ERP.winforms.Services
                         SaltBase64 = mSalt,
                         HashBase64 = mHash,
                         LastLoginUtc = DateTime.UtcNow,
-                        IsPOSAllowed = true,
-                        IsInventoryAllowed = true,
-                        IsRepairAllowed = true,
+                        IsPOSAllowed = isPosAllowed,
+                        IsInventoryAllowed = isInvAllowed,
+                        IsRepairAllowed = isRepAllowed,
                         IsSupplierAllowed = false
                     });
                     modified = true;
@@ -236,9 +243,9 @@ namespace ERP.winforms.Services
                         SaltBase64 = techSalt,
                         HashBase64 = techHash,
                         LastLoginUtc = DateTime.UtcNow,
-                        IsPOSAllowed = true,
-                        IsInventoryAllowed = true,
-                        IsRepairAllowed = true,
+                        IsPOSAllowed = isPosAllowed,
+                        IsInventoryAllowed = isInvAllowed,
+                        IsRepairAllowed = isRepAllowed,
                         IsSupplierAllowed = false
                     });
                     modified = true;
@@ -377,8 +384,25 @@ namespace ERP.winforms.Services
             companyInput = companyInput.Trim();
             username = username.Trim();
 
-            // 1. Resolve company dynamically from ERP_Master_Local.CompanyDatabases (No hardcoded branching)
-            Company? company = await LocalTenantDbContextProvider.ResolveCompanyAsync(companyInput).ConfigureAwait(false);
+            // 1. Resolve company or platform dynamically
+            Company? company = null;
+            if (string.Equals(companyInput, "master", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(companyInput, "platform", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(companyInput, "superadmin", StringComparison.OrdinalIgnoreCase))
+            {
+                company = new Company
+                {
+                    CompanyId = 0,
+                    CompanyCode = "PLATFORM",
+                    CompanyName = "Platform Master",
+                    PlanName = "SuperAdmin"
+                };
+            }
+            else
+            {
+                company = await LocalTenantDbContextProvider.ResolveCompanyAsync(companyInput).ConfigureAwait(false);
+            }
+
             if (company == null)
             {
                 return OfflineAuthResult.Failed($"Company '{companyInput}' was not found in the local master database.");
@@ -414,6 +438,10 @@ namespace ERP.winforms.Services
                     match.CompanyName = company.CompanyName;
                     match.CompanyCode = company.CompanyCode;
                     match.PlanName = company.PlanName;
+                    match.IsPOSAllowed = ModuleAccessService.IsModuleEnabled(company.PlanName, "POS");
+                    match.IsInventoryAllowed = ModuleAccessService.IsModuleEnabled(company.PlanName, "Inventory");
+                    match.IsRepairAllowed = ModuleAccessService.IsModuleEnabled(company.PlanName, "Repairs");
+                    match.IsSupplierAllowed = ModuleAccessService.IsModuleEnabled(company.PlanName, "Suppliers");
                     return OfflineAuthResult.Succeeded(match);
                 }
             }
