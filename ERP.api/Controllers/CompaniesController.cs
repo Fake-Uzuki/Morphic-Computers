@@ -76,7 +76,11 @@ namespace ERP.api.Controllers
                     company.IsPOSAllowed,
                     company.IsInventoryAllowed,
                     company.IsRepairAllowed,
-                    company.IsSupplierAllowed
+                    company.IsSupplierAllowed,
+                    company.IsBusinessIntelligenceAllowed,
+                    company.IsPayrollAllowed,
+                    company.IsBranchAllowed,
+                    company.IsDashboardAllowed
                 });
             }
             catch (Exception ex)
@@ -111,8 +115,14 @@ namespace ERP.api.Controllers
                     company.CompanyId,
                     company.CompanyName,
                     company.PlanName,
+                    company.IsPOSAllowed,
+                    company.IsInventoryAllowed,
                     company.IsRepairAllowed,
-                    company.IsSupplierAllowed
+                    company.IsSupplierAllowed,
+                    company.IsBusinessIntelligenceAllowed,
+                    company.IsPayrollAllowed,
+                    company.IsBranchAllowed,
+                    company.IsDashboardAllowed
                 });
             }
             catch (Exception ex)

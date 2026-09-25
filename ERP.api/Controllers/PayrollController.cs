@@ -8,6 +8,8 @@ using ERP.domain.entities;
 using ERP.infrastructure.data;
 using ERP.infrastructure.services;
 
+using ERP.domain.security;
+
 namespace ERP.api.Controllers
 {
     [ApiController]
@@ -15,11 +17,13 @@ namespace ERP.api.Controllers
     public class PayrollController : ControllerBase
     {
         private readonly ITenantDbContextFactory _tenantFactory;
+        private readonly MasterErpDbContext _masterDb;
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, bool> _ensuredSchemas = new();
 
-        public PayrollController(ITenantDbContextFactory tenantFactory)
+        public PayrollController(ITenantDbContextFactory tenantFactory, MasterErpDbContext masterDb)
         {
             _tenantFactory = tenantFactory;
+            _masterDb = masterDb;
         }
 
         private static async Task EnsurePayrollSchemaAsync(TenantErpDbContext db, int companyId)
@@ -68,6 +72,12 @@ END";
 
             try
             {
+                var company = await _masterDb.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.CompanyId == companyId);
+                if (company != null && !ModuleAccessService.IsModuleEnabled(company.PlanName, "Payroll"))
+                {
+                    return StatusCode(403, new { error = $"Plan '{company.PlanName}' does not include access to the Payroll module. Upgrade to Medium to enable Payroll." });
+                }
+
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsurePayrollSchemaAsync(tenantDb, companyId);
 
@@ -95,6 +105,12 @@ END";
 
             try
             {
+                var company = await _masterDb.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.CompanyId == companyId);
+                if (company != null && !ModuleAccessService.IsModuleEnabled(company.PlanName, "Payroll"))
+                {
+                    return StatusCode(403, new { error = $"Plan '{company.PlanName}' does not include access to the Payroll module. Upgrade to Medium to enable Payroll." });
+                }
+
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsurePayrollSchemaAsync(tenantDb, companyId);
 
