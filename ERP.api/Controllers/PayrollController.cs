@@ -101,6 +101,13 @@ END";
                 record.CompanyId = companyId;
                 record.ProcessedAt = DateTime.UtcNow;
 
+                var existing = await tenantDb.PayrollRecords
+                    .FirstOrDefaultAsync(p => p.CompanyId == companyId && p.StaffId == record.StaffId && p.PeriodStart == record.PeriodStart && p.PeriodEnd == record.PeriodEnd);
+                if (existing != null)
+                {
+                    return Ok(existing);
+                }
+
                 tenantDb.PayrollRecords.Add(record);
                 await tenantDb.SaveChangesAsync();
 

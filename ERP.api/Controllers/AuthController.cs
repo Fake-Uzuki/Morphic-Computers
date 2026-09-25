@@ -80,7 +80,7 @@ namespace ERP.api.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to query Master DB for company '{CompanyInput}'.", companyInput);
-                return StatusCode(500, new { error = "Database connection error while verifying company." });
+                return StatusCode(503, new { error = "Master database is currently unavailable." });
             }
 
             if (company == null)

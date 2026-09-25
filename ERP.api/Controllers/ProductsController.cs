@@ -117,6 +117,36 @@ END";
         }
 
         /// <summary>
+        /// Retrieves all inventory stock records for the specified tenant.
+        /// </summary>
+        [HttpGet("~/api/tenant/{companyId:int}/inventories")]
+        public async Task<IActionResult> GetInventories(int companyId)
+        {
+            try
+            {
+                await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
+                var inventories = await tenantDb.Inventories
+                    .AsNoTracking()
+                    .Select(i => new Inventory
+                    {
+                        InventoryId = i.InventoryId,
+                        ProductId = i.ProductId,
+                        QuantityOnHand = i.QuantityOnHand,
+                        ReorderLevel = i.ReorderLevel,
+                        LastUpdatedAt = i.LastUpdatedAt
+                    })
+                    .ToListAsync();
+
+                return Ok(inventories);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"GetInventories error: {ex.Message}");
+                return Ok(new List<Inventory>());
+            }
+        }
+
+        /// <summary>
         /// Adds a new product to the tenant's database and initializes inventory stock.
         /// </summary>
         [HttpPost]
@@ -239,7 +269,7 @@ END";
                     return NotFound(new { error = $"Product with ID {productId} not found." });
                 }
 
-                await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
+                int affected = await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
                     UPDATE Products
                     SET ProductName = {product.ProductName},
                         ProductCode = {product.ProductCode},
@@ -249,6 +279,11 @@ END";
                         IsActive = {product.IsActive}
                     WHERE ProductId = {target.ProductId};
                 ");
+
+                if (affected == 0)
+                {
+                    return StatusCode(500, new { error = "Update failed: 0 rows affected in Products table." });
+                }
 
                 var inv = await tenantDb.Inventories
                     .FirstOrDefaultAsync(i => i.ProductId == target.ProductId);
@@ -302,12 +337,17 @@ END";
                     return NotFound(new { error = $"Product with ID {productId} not found." });
                 }
 
-                await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
+                int affected = await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
                     UPDATE Products
                     SET IsActive = 0,
                         ArchivedAt = {DateTime.UtcNow}
                     WHERE ProductId = {productId};
                 ");
+
+                if (affected == 0)
+                {
+                    return StatusCode(500, new { error = "Archive failed: 0 rows affected." });
+                }
 
                 return Ok(new { success = true, message = $"Product #{productId} archived successfully." });
             }
@@ -340,12 +380,17 @@ END";
                     return NotFound(new { error = $"Product with ID {productId} not found." });
                 }
 
-                await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
+                int affected = await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
                     UPDATE Products
                     SET IsActive = 1,
                         ArchivedAt = NULL
                     WHERE ProductId = {productId};
                 ");
+
+                if (affected == 0)
+                {
+                    return StatusCode(500, new { error = "Restore failed: 0 rows affected." });
+                }
 
                 return Ok(new { success = true, message = $"Product #{productId} restored successfully." });
             }

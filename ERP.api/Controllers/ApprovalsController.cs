@@ -121,6 +121,14 @@ END";
                 {
                     request.RequestNumber = $"REQ-{DateTime.UtcNow:yyyyMMdd}-{new Random().Next(100, 999)}";
                 }
+
+                var existing = await tenantDb.ApprovalRequests
+                    .FirstOrDefaultAsync(r => r.RequestNumber == request.RequestNumber && r.CompanyId == companyId);
+                if (existing != null)
+                {
+                    return Ok(existing);
+                }
+
                 request.CreatedAt = DateTime.UtcNow;
                 request.Status = "Pending";
 
@@ -165,7 +173,7 @@ END";
                 }
 
                 DateTime resolvedAt = DateTime.UtcNow;
-                await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
+                int affected = await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
                     UPDATE ApprovalRequests
                     SET Status = {dto.Status},
                         ReviewedBy = {dto.ReviewedBy},
@@ -173,6 +181,11 @@ END";
                         ResolvedAt = {resolvedAt}
                     WHERE RequestId = {id};
                 ");
+
+                if (affected == 0)
+                {
+                    return StatusCode(500, new { error = "Resolve failed: 0 rows affected." });
+                }
 
                 return Ok(new { success = true, requestId = id, dto.Status, dto.ReviewedBy, dto.ReviewNotes, resolvedAt });
             }

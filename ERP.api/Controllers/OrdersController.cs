@@ -142,12 +142,47 @@ END";
 
                 // Persist order in MonsterASP cloud database (only existing cloud columns, omitting CashierName)
                 bool exists = await tenantDb.Orders.AnyAsync(o => o.Id == order.Id);
-                if (!exists)
+                if (exists)
                 {
-                    await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
-                        INSERT INTO Orders (Id, CompanyId, CustomerName, CreatedAt, ItemsJson, Subtotal, Discount, Tax, TotalAmount, PaymentMethod)
-                        VALUES ({order.Id}, {order.CompanyId}, {order.CustomerName}, {order.CreatedAt}, {order.ItemsJson}, {order.Subtotal}, {order.Discount}, {order.Tax}, {order.TotalAmount}, {order.PaymentMethod});
-                    ");
+                    return Ok(order);
+                }
+
+                // Validate items and stock availability BEFORE making changes
+                foreach (var item in order.Items)
+                {
+                    var product = await tenantDb.Products
+                        .Where(p => p.ProductId == item.ProductId)
+                        .Select(p => new { p.ProductId, p.ProductName, p.IsActive })
+                        .FirstOrDefaultAsync();
+                    if (product == null)
+                    {
+                        return BadRequest(new { error = $"Product '{item.ProductName}' (ID: {item.ProductId}) does not exist." });
+                    }
+                    if (!product.IsActive)
+                    {
+                        return BadRequest(new { error = $"Product '{item.ProductName}' is inactive/archived and cannot be sold." });
+                    }
+
+                    var inv = await tenantDb.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId);
+                    int currentStock = (int)(inv?.QuantityOnHand ?? 0m);
+                    if (currentStock <= 0)
+                    {
+                        return BadRequest(new { error = $"Product '{item.ProductName}' is out of stock (Stock: 0)." });
+                    }
+                    if (currentStock < item.Quantity)
+                    {
+                        return BadRequest(new { error = $"Insufficient stock for '{item.ProductName}'. Requested: {item.Quantity}, Available: {currentStock}." });
+                    }
+                }
+
+                int orderAffected = await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
+                    INSERT INTO Orders (Id, CompanyId, CustomerName, CreatedAt, ItemsJson, Subtotal, Discount, Tax, TotalAmount, PaymentMethod)
+                    VALUES ({order.Id}, {order.CompanyId}, {order.CustomerName}, {order.CreatedAt}, {order.ItemsJson}, {order.Subtotal}, {order.Discount}, {order.Tax}, {order.TotalAmount}, {order.PaymentMethod});
+                ");
+
+                if (orderAffected == 0)
+                {
+                    return StatusCode(500, new { error = "Failed to record order in cloud database." });
                 }
 
                 // Deduct stock for purchased items
@@ -169,7 +204,7 @@ END";
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"ProcessOrder error: {ex.Message}");
+                Console.WriteLine($"[PROCESS ORDER ERROR] {ex.Message} -> {ex.InnerException?.Message}\n{ex.StackTrace}");
                 return StatusCode(503, new { error = $"Database offline or unreachable: {ex.Message}" });
             }
         }

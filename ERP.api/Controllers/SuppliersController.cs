@@ -67,7 +67,6 @@ END";
 
                 var suppliers = await tenantDb.Suppliers
                     .AsNoTracking()
-                    .Where(s => s.IsActive)
                     .OrderBy(s => s.SupplierName)
                     .ToListAsync();
 
@@ -97,6 +96,21 @@ END";
                 {
                     supplier.SupplierCode = $"SUP-{new Random().Next(1000, 9999)}";
                 }
+
+                var existing = await tenantDb.Suppliers
+                    .FirstOrDefaultAsync(s => s.SupplierCode == supplier.SupplierCode);
+                if (existing != null)
+                {
+                    existing.SupplierName = supplier.SupplierName;
+                    existing.ContactPerson = supplier.ContactPerson;
+                    existing.ContactNumber = supplier.ContactNumber;
+                    existing.EmailAddress = supplier.EmailAddress;
+                    existing.Address = supplier.Address;
+                    existing.IsActive = supplier.IsActive;
+                    await tenantDb.SaveChangesAsync();
+                    return Ok(existing);
+                }
+
                 supplier.CreatedAt = DateTime.UtcNow;
                 supplier.IsActive = true;
 
@@ -130,8 +144,13 @@ END";
                 supplier.ContactNumber = updated.ContactNumber;
                 supplier.EmailAddress = updated.EmailAddress;
                 supplier.Address = updated.Address;
+                supplier.IsActive = updated.IsActive;
 
-                await tenantDb.SaveChangesAsync();
+                int affected = await tenantDb.SaveChangesAsync();
+                if (affected == 0 && !tenantDb.Entry(supplier).State.HasFlag(EntityState.Unchanged))
+                {
+                    return StatusCode(500, new { error = "Update failed: 0 rows affected." });
+                }
                 return Ok(supplier);
             }
             catch (Exception ex)

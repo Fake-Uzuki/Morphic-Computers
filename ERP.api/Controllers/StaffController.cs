@@ -71,7 +71,6 @@ END";
 
                 var staff = await tenantDb.StaffMembers
                     .AsNoTracking()
-                    .Where(s => s.IsActive)
                     .OrderBy(s => s.FullName)
                     .ToListAsync();
 
@@ -102,6 +101,23 @@ END";
                 {
                     staff.StaffCode = $"EMP-{new Random().Next(1000, 9999)}";
                 }
+
+                var existing = await tenantDb.StaffMembers
+                    .FirstOrDefaultAsync(s => s.StaffCode == staff.StaffCode && s.CompanyId == companyId);
+                if (existing != null)
+                {
+                    existing.FullName = staff.FullName;
+                    existing.Role = staff.Role;
+                    existing.PositionTitle = staff.PositionTitle;
+                    existing.Email = staff.Email;
+                    existing.PhoneNumber = staff.PhoneNumber;
+                    existing.HourlyRate = staff.HourlyRate;
+                    existing.MonthlySalary = staff.MonthlySalary;
+                    existing.IsActive = staff.IsActive;
+                    await tenantDb.SaveChangesAsync();
+                    return Ok(existing);
+                }
+
                 staff.HiredDate = DateTime.UtcNow;
                 staff.IsActive = true;
 
@@ -137,8 +153,13 @@ END";
                 staff.PhoneNumber = updated.PhoneNumber;
                 staff.HourlyRate = updated.HourlyRate;
                 staff.MonthlySalary = updated.MonthlySalary;
+                staff.IsActive = updated.IsActive;
 
-                await tenantDb.SaveChangesAsync();
+                int affected = await tenantDb.SaveChangesAsync();
+                if (affected == 0 && !tenantDb.Entry(staff).State.HasFlag(EntityState.Unchanged))
+                {
+                    return StatusCode(500, new { error = "Update failed: 0 rows affected." });
+                }
                 return Ok(staff);
             }
             catch (Exception ex)

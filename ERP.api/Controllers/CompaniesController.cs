@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using ERP.domain.entities;
 using ERP.infrastructure.data;
 
@@ -14,54 +15,75 @@ namespace ERP.api.Controllers
     public class CompaniesController : ControllerBase
     {
         private readonly MasterErpDbContext _masterDb;
+        private readonly ILogger<CompaniesController> _logger;
 
-        public CompaniesController(MasterErpDbContext masterDb)
+        public CompaniesController(MasterErpDbContext masterDb, ILogger<CompaniesController> logger)
         {
             _masterDb = masterDb;
+            _logger = logger;
         }
 
         public record PlanUpgradeRequest(string PlanName);
 
         /// <summary>
         /// Retrieves all registered companies/tenants.
+        /// Returns HTTP 503 Service Unavailable when the cloud Master database is unreachable.
+        /// Does not return fake/demo companies.
         /// </summary>
         [HttpGet]
         public async Task<IActionResult> GetCompanies()
         {
-            var companies = await _masterDb.Companies
-                .AsNoTracking()
-                .OrderBy(c => c.CompanyId)
-                .ToListAsync();
+            try
+            {
+                var companies = await _masterDb.Companies
+                    .AsNoTracking()
+                    .OrderBy(c => c.CompanyId)
+                    .ToListAsync();
 
-            return Ok(companies);
+                return Ok(companies);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Master database is currently unreachable when querying companies.");
+                return StatusCode(503, new { error = "Master database is currently unavailable." });
+            }
         }
 
         /// <summary>
         /// Retrieves company subscription details and plan permissions.
+        /// Returns HTTP 503 Service Unavailable when the cloud Master database is unreachable.
         /// </summary>
         [HttpGet("{companyId:int}/subscription")]
         public async Task<IActionResult> GetSubscription(int companyId)
         {
-            var company = await _masterDb.Companies
-                .AsNoTracking()
-                .FirstOrDefaultAsync(c => c.CompanyId == companyId);
-
-            if (company == null)
+            try
             {
-                return NotFound(new { error = $"Company ID {companyId} not found." });
+                var company = await _masterDb.Companies
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.CompanyId == companyId);
+
+                if (company == null)
+                {
+                    return NotFound(new { error = $"Company ID {companyId} not found." });
+                }
+
+                return Ok(new
+                {
+                    company.CompanyId,
+                    company.CompanyCode,
+                    company.CompanyName,
+                    company.PlanName,
+                    company.IsPOSAllowed,
+                    company.IsInventoryAllowed,
+                    company.IsRepairAllowed,
+                    company.IsSupplierAllowed
+                });
             }
-
-            return Ok(new
+            catch (Exception ex)
             {
-                company.CompanyId,
-                company.CompanyCode,
-                company.CompanyName,
-                company.PlanName,
-                company.IsPOSAllowed,
-                company.IsInventoryAllowed,
-                company.IsRepairAllowed,
-                company.IsSupplierAllowed
-            });
+                _logger.LogError(ex, "Master database is currently unreachable when retrieving subscription for company {CompanyId}.", companyId);
+                return StatusCode(503, new { error = "Master database is currently unavailable." });
+            }
         }
 
         /// <summary>
@@ -70,26 +92,34 @@ namespace ERP.api.Controllers
         [HttpPost("{companyId:int}/upgrade-plan")]
         public async Task<IActionResult> UpgradePlan(int companyId, [FromBody] PlanUpgradeRequest request)
         {
-            var company = await _masterDb.Companies
-                .FirstOrDefaultAsync(c => c.CompanyId == companyId);
-
-            if (company == null)
+            try
             {
-                return NotFound(new { error = $"Company ID {companyId} not found." });
+                var company = await _masterDb.Companies
+                    .FirstOrDefaultAsync(c => c.CompanyId == companyId);
+
+                if (company == null)
+                {
+                    return NotFound(new { error = $"Company ID {companyId} not found." });
+                }
+
+                company.PlanName = request.PlanName;
+                await _masterDb.SaveChangesAsync();
+
+                return Ok(new
+                {
+                    message = $"Company plan updated to '{company.PlanName}' successfully.",
+                    company.CompanyId,
+                    company.CompanyName,
+                    company.PlanName,
+                    company.IsRepairAllowed,
+                    company.IsSupplierAllowed
+                });
             }
-
-            company.PlanName = request.PlanName;
-            await _masterDb.SaveChangesAsync();
-
-            return Ok(new
+            catch (Exception ex)
             {
-                message = $"Company plan updated to '{company.PlanName}' successfully.",
-                company.CompanyId,
-                company.CompanyName,
-                company.PlanName,
-                company.IsRepairAllowed,
-                company.IsSupplierAllowed
-            });
+                _logger.LogError(ex, "Master database is currently unreachable when upgrading plan for company {CompanyId}.", companyId);
+                return StatusCode(503, new { error = "Master database is currently unavailable." });
+            }
         }
     }
 }

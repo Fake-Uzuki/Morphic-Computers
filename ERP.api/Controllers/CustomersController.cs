@@ -66,7 +66,6 @@ END";
 
                 var customers = await tenantDb.Customers
                     .AsNoTracking()
-                    .Where(c => c.IsActive)
                     .OrderBy(c => c.CustomerName)
                     .ToListAsync();
 
@@ -96,6 +95,20 @@ END";
                 {
                     customer.CustomerCode = $"CUST-{new Random().Next(1000, 9999)}";
                 }
+
+                var existing = await tenantDb.Customers
+                    .FirstOrDefaultAsync(c => c.CustomerCode == customer.CustomerCode);
+                if (existing != null)
+                {
+                    existing.CustomerName = customer.CustomerName;
+                    existing.ContactNumber = customer.ContactNumber;
+                    existing.EmailAddress = customer.EmailAddress;
+                    existing.Address = customer.Address;
+                    existing.IsActive = customer.IsActive;
+                    await tenantDb.SaveChangesAsync();
+                    return Ok(existing);
+                }
+
                 customer.CreatedAt = DateTime.UtcNow;
                 customer.IsActive = true;
 
@@ -128,8 +141,13 @@ END";
                 customer.ContactNumber = updated.ContactNumber;
                 customer.EmailAddress = updated.EmailAddress;
                 customer.Address = updated.Address;
+                customer.IsActive = updated.IsActive;
 
-                await tenantDb.SaveChangesAsync();
+                int affected = await tenantDb.SaveChangesAsync();
+                if (affected == 0 && !tenantDb.Entry(customer).State.HasFlag(EntityState.Unchanged))
+                {
+                    return StatusCode(500, new { error = "Update failed: 0 rows affected." });
+                }
                 return Ok(customer);
             }
             catch (Exception ex)

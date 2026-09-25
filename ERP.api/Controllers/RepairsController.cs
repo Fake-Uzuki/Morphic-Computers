@@ -134,6 +134,23 @@ END";
                 {
                     ticket.TicketNumber = $"REP-{DateTime.UtcNow:yyyyMMdd}-{new Random().Next(1000, 9999)}";
                 }
+
+                var existing = await tenantDb.RepairTickets
+                    .Where(t => t.TicketNumber == ticket.TicketNumber && t.CompanyId == companyId)
+                    .Select(t => new RepairTicket
+                    {
+                        RepairTicketId = t.RepairTicketId,
+                        TicketNumber = t.TicketNumber,
+                        CompanyId = t.CompanyId,
+                        CustomerName = t.CustomerName,
+                        Status = t.Status
+                    })
+                    .FirstOrDefaultAsync();
+                if (existing != null)
+                {
+                    return Ok(existing);
+                }
+
                 ticket.CreatedAt = DateTime.UtcNow;
                 ticket.IsActive = true;
 
@@ -182,7 +199,7 @@ END";
                 }
 
                 DateTime? completedAt = dto.Status == "Completed" ? DateTime.UtcNow : null;
-                await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
+                int affectedStatus = await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
                     UPDATE RepairTickets
                     SET Status = {dto.Status},
                         DiagnosticNotes = CASE WHEN {dto.DiagnosticNotes} IS NOT NULL THEN {dto.DiagnosticNotes} ELSE DiagnosticNotes END,
@@ -190,6 +207,11 @@ END";
                         CompletedAt = CASE WHEN {dto.Status} = 'Completed' THEN {completedAt} ELSE CompletedAt END
                     WHERE RepairTicketId = {id};
                 ");
+
+                if (affectedStatus == 0)
+                {
+                    return StatusCode(500, new { error = "Update failed: 0 rows affected." });
+                }
 
                 return Ok(new { success = true, repairTicketId = id, status = dto.Status });
             }
@@ -215,13 +237,18 @@ END";
                     return NotFound(new { error = $"Repair ticket ID {id} not found." });
                 }
 
-                await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
+                int affectedBilling = await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
                     UPDATE RepairTickets
                     SET LaborFee = {dto.LaborFee},
                         PartsCost = {dto.PartsCost},
                         DepositAmount = {dto.DepositAmount}
                     WHERE RepairTicketId = {id};
                 ");
+
+                if (affectedBilling == 0)
+                {
+                    return StatusCode(500, new { error = "Update failed: 0 rows affected." });
+                }
 
                 return Ok(new { success = true, repairTicketId = id, dto.LaborFee, dto.PartsCost, dto.DepositAmount });
             }
