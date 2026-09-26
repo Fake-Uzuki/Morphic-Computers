@@ -89,11 +89,15 @@ namespace ERP.winforms.Services
         /// <summary>
         /// Retrieves all orders for the specified tenant from the local tenant database.
         /// </summary>
-        public async Task<List<Order>> GetOrdersAsync(int companyId)
+        public async Task<List<Order>> GetOrdersAsync(int companyId, int? branchId = null)
         {
             await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
-            return await context.Orders
-                .AsNoTracking()
+            var query = context.Orders.AsNoTracking().Where(o => o.CompanyId == companyId);
+            if (branchId.HasValue)
+            {
+                query = query.Where(o => o.BranchId == branchId.Value);
+            }
+            return await query
                 .OrderByDescending(o => o.CreatedAt)
                 .ToListAsync()
                 .ConfigureAwait(false);
@@ -128,11 +132,15 @@ namespace ERP.winforms.Services
         /// <summary>
         /// Retrieves all repair tickets for the specified tenant from the local tenant database.
         /// </summary>
-        public async Task<List<RepairTicket>> GetRepairsAsync(int companyId)
+        public async Task<List<RepairTicket>> GetRepairsAsync(int companyId, int? branchId = null)
         {
             await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
-            return await context.RepairTickets
-                .AsNoTracking()
+            var query = context.RepairTickets.AsNoTracking().Where(r => r.CompanyId == companyId);
+            if (branchId.HasValue)
+            {
+                query = query.Where(r => r.BranchId == branchId.Value);
+            }
+            return await query
                 .OrderByDescending(r => r.CreatedAt)
                 .ToListAsync()
                 .ConfigureAwait(false);
@@ -141,11 +149,15 @@ namespace ERP.winforms.Services
         /// <summary>
         /// Retrieves all staff members for the specified tenant from the local tenant database.
         /// </summary>
-        public async Task<List<StaffMember>> GetStaffAsync(int companyId)
+        public async Task<List<StaffMember>> GetStaffAsync(int companyId, int? branchId = null)
         {
             await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
-            return await context.StaffMembers
-                .AsNoTracking()
+            var query = context.StaffMembers.AsNoTracking().Where(s => s.CompanyId == companyId);
+            if (branchId.HasValue)
+            {
+                query = query.Where(s => s.BranchId == branchId.Value);
+            }
+            return await query
                 .OrderBy(s => s.FullName)
                 .ToListAsync()
                 .ConfigureAwait(false);
@@ -167,13 +179,17 @@ namespace ERP.winforms.Services
         /// <summary>
         /// Retrieves all expenses for the specified tenant from the local tenant database.
         /// </summary>
-        public async Task<List<ExpenseRecord>> GetExpensesAsync(int companyId, bool includeArchived = true)
+        public async Task<List<ExpenseRecord>> GetExpensesAsync(int companyId, bool includeArchived = true, int? branchId = null)
         {
             await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
             var query = context.Expenses.AsNoTracking().Where(e => e.CompanyId == companyId);
             if (!includeArchived)
             {
                 query = query.Where(e => e.IsActive);
+            }
+            if (branchId.HasValue)
+            {
+                query = query.Where(e => e.BranchId == branchId.Value);
             }
             return await query
                 .OrderByDescending(e => e.ExpenseDate)
@@ -309,7 +325,16 @@ namespace ERP.winforms.Services
                             throw new InvalidOperationException($"Product '{prod.ProductName}' is inactive/archived and cannot be sold.");
                         }
 
-                        var inv = await context.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId).ConfigureAwait(false);
+                        Inventory? inv = null;
+                        if (order.BranchId.HasValue)
+                        {
+                            inv = await context.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId && i.BranchId == order.BranchId.Value).ConfigureAwait(false);
+                        }
+                        if (inv == null)
+                        {
+                            inv = await context.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId && i.BranchId == null).ConfigureAwait(false);
+                        }
+
                         int currentStock = (int)(inv?.QuantityOnHand ?? 0);
                         if (currentStock <= 0)
                         {
@@ -327,7 +352,16 @@ namespace ERP.winforms.Services
                 // Atomic inventory deduction
                 foreach (var item in order.Items)
                 {
-                    var inv = await context.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId).ConfigureAwait(false);
+                    Inventory? inv = null;
+                    if (order.BranchId.HasValue)
+                    {
+                        inv = await context.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId && i.BranchId == order.BranchId.Value).ConfigureAwait(false);
+                    }
+                    if (inv == null)
+                    {
+                        inv = await context.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId && i.BranchId == null).ConfigureAwait(false);
+                    }
+
                     if (inv != null)
                     {
                         inv.QuantityOnHand = Math.Max(0, inv.QuantityOnHand - item.Quantity);
@@ -384,7 +418,16 @@ namespace ERP.winforms.Services
                     {
                         foreach (var item in items)
                         {
-                            var inv = await context.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId).ConfigureAwait(false);
+                            Inventory? inv = null;
+                            if (order.BranchId.HasValue)
+                            {
+                                inv = await context.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId && i.BranchId == order.BranchId.Value).ConfigureAwait(false);
+                            }
+                            if (inv == null)
+                            {
+                                inv = await context.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId && i.BranchId == null).ConfigureAwait(false);
+                            }
+
                             if (inv != null)
                             {
                                 inv.QuantityOnHand += item.Quantity;
@@ -427,7 +470,16 @@ namespace ERP.winforms.Services
                     {
                         foreach (var item in items)
                         {
-                            var inv = await context.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId).ConfigureAwait(false);
+                            Inventory? inv = null;
+                            if (order.BranchId.HasValue)
+                            {
+                                inv = await context.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId && i.BranchId == order.BranchId.Value).ConfigureAwait(false);
+                            }
+                            if (inv == null)
+                            {
+                                inv = await context.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId && i.BranchId == null).ConfigureAwait(false);
+                            }
+
                             if (inv != null)
                             {
                                 inv.QuantityOnHand = Math.Max(0, inv.QuantityOnHand - item.Quantity);
@@ -1038,6 +1090,7 @@ namespace ERP.winforms.Services
             existing.PhoneNumber = staff.PhoneNumber;
             existing.HourlyRate = staff.HourlyRate;
             existing.MonthlySalary = staff.MonthlySalary;
+            existing.BranchId = staff.BranchId;
             existing.IsActive = staff.IsActive;
 
             if (enqueueSync)
@@ -1390,6 +1443,7 @@ namespace ERP.winforms.Services
             existing.ReceiptRef = expense.ReceiptRef;
             existing.Notes = expense.Notes;
             existing.IsTaxDeductible = expense.IsTaxDeductible;
+            existing.BranchId = expense.BranchId;
             existing.IsActive = expense.IsActive;
             if (expense.ExpenseDate != default)
             {
@@ -2660,7 +2714,7 @@ namespace ERP.winforms.Services
         // =========================================================================
         // FINANCIAL STATEMENTS & P&L
         // =========================================================================
-        public async Task<FinancialStatementReport> GetFinancialStatementAsync(int companyId, DateTime? startDate = null, DateTime? endDate = null, string? period = null)
+        public async Task<FinancialStatementReport> GetFinancialStatementAsync(int companyId, DateTime? startDate = null, DateTime? endDate = null, string? period = null, int? branchId = null)
         {
             string periodLabel = "All Time";
             if (string.Equals(period, "current_month", StringComparison.OrdinalIgnoreCase) ||
@@ -2696,6 +2750,7 @@ namespace ERP.winforms.Services
             // 1. Retail Sales Revenue
             var ordersQuery = context.Orders.AsNoTracking()
                 .Where(o => o.CompanyId == companyId);
+            if (branchId.HasValue) ordersQuery = ordersQuery.Where(o => o.BranchId == branchId.Value);
             if (startDate.HasValue) ordersQuery = ordersQuery.Where(o => o.CreatedAt >= startDate.Value);
             if (endDate.HasValue) ordersQuery = ordersQuery.Where(o => o.CreatedAt <= endDate.Value);
             var orders = await ordersQuery.ToListAsync().ConfigureAwait(false);
@@ -2707,6 +2762,7 @@ namespace ERP.winforms.Services
             var repairsQuery = context.RepairTickets.AsNoTracking()
                 .Where(t => t.CompanyId == companyId && t.IsActive &&
                             (t.Status == "Completed" || t.Status == "Released"));
+            if (branchId.HasValue) repairsQuery = repairsQuery.Where(t => t.BranchId == branchId.Value);
             if (startDate.HasValue) repairsQuery = repairsQuery.Where(t => (t.CompletedAt ?? t.CreatedAt) >= startDate.Value);
             if (endDate.HasValue) repairsQuery = repairsQuery.Where(t => (t.CompletedAt ?? t.CreatedAt) <= endDate.Value);
             var repairs = await repairsQuery.ToListAsync().ConfigureAwait(false);
@@ -2715,6 +2771,7 @@ namespace ERP.winforms.Services
             // 3. Operating Overhead Expenses
             var expensesQuery = context.Expenses.AsNoTracking()
                 .Where(e => e.CompanyId == companyId && e.IsActive);
+            if (branchId.HasValue) expensesQuery = expensesQuery.Where(e => e.BranchId == branchId.Value);
             if (startDate.HasValue) expensesQuery = expensesQuery.Where(e => e.ExpenseDate >= startDate.Value);
             if (endDate.HasValue) expensesQuery = expensesQuery.Where(e => e.ExpenseDate <= endDate.Value);
             var expenses = await expensesQuery.ToListAsync().ConfigureAwait(false);
