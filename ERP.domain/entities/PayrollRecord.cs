@@ -16,8 +16,18 @@ namespace ERP.domain.entities
         public decimal BaseSalary { get; set; }
         public decimal OvertimePay { get; set; }
         public decimal CommissionAmount { get; set; }
+        public decimal GrossPay => BaseSalary + OvertimePay + CommissionAmount;
+
+        // Philippine Statutory Deductions
+        public decimal SssDeduction { get; set; }
+        public decimal PhilHealthDeduction { get; set; }
+        public decimal PagIbigDeduction { get; set; }
+        public decimal WithholdingTax { get; set; }
+        public decimal OtherDeductions { get; set; }
+
+        // Total Deductions (sum of statutory deductions + other deductions)
         public decimal Deductions { get; set; }
-        public decimal NetPay => (BaseSalary + OvertimePay + CommissionAmount) - Deductions;
+        public decimal NetPay => GrossPay - Deductions;
 
         public string Status { get; set; } = "Paid"; // Draft, Approved, Paid
         public string PaymentMethod { get; set; } = "Bank Transfer";

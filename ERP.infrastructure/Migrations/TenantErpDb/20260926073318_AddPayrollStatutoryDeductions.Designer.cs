@@ -4,6 +4,7 @@ using ERP.infrastructure.data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace ERP.infrastructure.Migrations.TenantErpDb
 {
     [DbContext(typeof(TenantErpDbContext))]
-    partial class TenantErpDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260926073318_AddPayrollStatutoryDeductions")]
+    partial class AddPayrollStatutoryDeductions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

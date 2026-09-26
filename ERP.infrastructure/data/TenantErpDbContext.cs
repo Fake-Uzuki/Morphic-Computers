@@ -203,10 +203,16 @@ namespace ERP.infrastructure.data
                 entity.Property(x => x.BaseSalary).HasPrecision(18, 2);
                 entity.Property(x => x.OvertimePay).HasPrecision(18, 2);
                 entity.Property(x => x.CommissionAmount).HasPrecision(18, 2);
+                entity.Property(x => x.SssDeduction).HasPrecision(18, 2);
+                entity.Property(x => x.PhilHealthDeduction).HasPrecision(18, 2);
+                entity.Property(x => x.PagIbigDeduction).HasPrecision(18, 2);
+                entity.Property(x => x.WithholdingTax).HasPrecision(18, 2);
+                entity.Property(x => x.OtherDeductions).HasPrecision(18, 2);
                 entity.Property(x => x.Deductions).HasPrecision(18, 2);
                 entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
                 entity.Property(x => x.PaymentMethod).HasMaxLength(100).IsRequired();
                 entity.Property(x => x.ProcessedBy).HasMaxLength(100).IsRequired();
+                entity.Ignore(x => x.GrossPay);
                 entity.Ignore(x => x.NetPay);
             });
 
