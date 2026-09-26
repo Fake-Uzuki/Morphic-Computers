@@ -34,6 +34,8 @@ namespace ERP.domain.entities
         public bool IsBranchAllowed => ModuleAccessService.IsModuleEnabled(PlanName, "BranchManagement");
         [NotMapped]
         public bool IsDashboardAllowed => ModuleAccessService.IsModuleEnabled(PlanName, "Dashboard");
+        [NotMapped]
+        public bool IsFinancialStatementsAllowed => ModuleAccessService.IsModuleEnabled(PlanName, "FinancialStatements");
 
         // Backward compatibility helpers for WinForms UI
         [NotMapped]

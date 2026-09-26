@@ -26,6 +26,7 @@ namespace ERP.api.Controllers
 
         private async Task<bool> IsPlanAllowedAsync(int companyId)
         {
+            if (companyId <= 0) return false;
             var company = await _masterDb.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.CompanyId == companyId);
             if (company == null) return false;
             return ModuleAccessService.IsModuleEnabled(company.PlanName, "FinancialStatements");
@@ -34,6 +35,11 @@ namespace ERP.api.Controllers
         [HttpGet]
         public async Task<IActionResult> GetExpenses(int companyId, [FromQuery] bool includeArchived = true)
         {
+            if (companyId <= 0)
+            {
+                return StatusCode(403, new { error = "Super Admin or platform-level callers cannot perform tenant operational expense operations." });
+            }
+
             var company = await _masterDb.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.CompanyId == companyId);
             if (company != null && !ModuleAccessService.IsModuleEnabled(company.PlanName, "FinancialStatements"))
             {

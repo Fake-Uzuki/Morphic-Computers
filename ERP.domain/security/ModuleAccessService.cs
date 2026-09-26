@@ -122,6 +122,14 @@ namespace ERP.domain.security
         }
 
         /// <summary>
+        /// Answers whether a specific module is enabled for a given plan name string and ErpModule.
+        /// </summary>
+        public static bool IsModuleEnabled(string? planName, ErpModule module)
+        {
+            return IsModuleEnabled(NormalizePlan(planName), module);
+        }
+
+        /// <summary>
         /// Answers whether a specific module is enabled for a given ErpPlan.
         /// </summary>
         public static bool IsModuleEnabled(ErpPlan plan, ErpModule module)
