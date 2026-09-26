@@ -365,6 +365,26 @@ namespace ERP.winforms.Services
                         return await _apiClient.ArchiveExpenseAsync(item.CompanyId, archExpId).ConfigureAwait(false);
                     }
                     break;
+
+                case "Branch":
+                    if (item.Operation == "Create")
+                    {
+                        var branch = JsonSerializer.Deserialize<Branch>(item.PayloadJson, _jsonOpts);
+                        if (branch == null) return false;
+                        var created = await _apiClient.CreateBranchAsync(item.CompanyId, branch).ConfigureAwait(false);
+                        return created != null;
+                    }
+                    else if (item.Operation == "Update" && int.TryParse(item.EntityId, out int bId))
+                    {
+                        var branch = JsonSerializer.Deserialize<Branch>(item.PayloadJson, _jsonOpts);
+                        if (branch == null) return false;
+                        return await _apiClient.UpdateBranchAsync(item.CompanyId, bId, branch).ConfigureAwait(false);
+                    }
+                    else if (item.Operation == "Archive" && int.TryParse(item.EntityId, out int archBId))
+                    {
+                        return await _apiClient.ArchiveBranchAsync(item.CompanyId, archBId).ConfigureAwait(false);
+                    }
+                    break;
             }
 
             return false;

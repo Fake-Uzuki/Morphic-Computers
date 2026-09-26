@@ -3,25 +3,13 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
+using ERP.domain.entities;
 using ERP.winforms.Services;
 using ERP.winforms.Theme;
 using ERP.winforms.UI.Components;
 
 namespace ERP.winforms.UI.Views
 {
-    public class BranchItem
-    {
-        public string BranchCode { get; set; } = string.Empty;
-        public string BranchName { get; set; } = string.Empty;
-        public string CityLocation { get; set; } = string.Empty;
-        public string Address { get; set; } = string.Empty;
-        public string ManagerName { get; set; } = string.Empty;
-        public string ContactNumber { get; set; } = string.Empty;
-        public int AssignedStaffCount { get; set; } = 4;
-        public string Status { get; set; } = "Active";
-        public DateTime EstablishedDate { get; set; } = DateTime.UtcNow.AddMonths(-12);
-    }
-
     public class BranchManagementView : UserControl
     {
         private readonly DataService _dataService = DataService.Instance;
@@ -33,57 +21,24 @@ namespace ERP.winforms.UI.Views
         private Label _lblTotalStaff = null!;
         private Label _lblMainHub = null!;
 
-        private readonly List<BranchItem> _branches = new();
-
         public BranchManagementView()
         {
             Dock = DockStyle.Fill;
             BackColor = AppTheme.AppBackground;
             AutoScroll = false;
 
-            InitializeDefaultBranches();
             InitializeLayout();
-        }
 
-        private void InitializeDefaultBranches()
-        {
-            _branches.Clear();
-            _branches.Add(new BranchItem
+            _dataService.BranchesChanged += () =>
             {
-                BranchCode = "BR-001",
-                BranchName = "TechStore Main Hub (Flagship)",
-                CityLocation = "Cebu City",
-                Address = "Unit 402 IT Park Hub, Lahug, Cebu City",
-                ManagerName = "Marcus V. (Manager)",
-                ContactNumber = "+63 32 238 9012",
-                AssignedStaffCount = 8,
-                Status = "Active",
-                EstablishedDate = DateTime.UtcNow.AddMonths(-24)
-            });
-            _branches.Add(new BranchItem
-            {
-                BranchCode = "BR-002",
-                BranchName = "TechStore Metro Hub",
-                CityLocation = "Mandaue City",
-                Address = "GF City Galleria, Subangdaku, Mandaue City",
-                ManagerName = "Sarah L. (Asst. Manager)",
-                ContactNumber = "+63 32 344 8821",
-                AssignedStaffCount = 5,
-                Status = "Active",
-                EstablishedDate = DateTime.UtcNow.AddMonths(-14)
-            });
-            _branches.Add(new BranchItem
-            {
-                BranchCode = "BR-003",
-                BranchName = "TechStore Express Depot",
-                CityLocation = "Lapu-Lapu City",
-                Address = "Stall 14 Island Mall, Basak, Lapu-Lapu City",
-                ManagerName = "Alex R. (Hardware Lead)",
-                ContactNumber = "+63 32 495 1102",
-                AssignedStaffCount = 3,
-                Status = "Active",
-                EstablishedDate = DateTime.UtcNow.AddMonths(-6)
-            });
+                if (IsHandleCreated && !IsDisposed)
+                {
+                    if (InvokeRequired) BeginInvoke(new Action(RefreshGrid));
+                    else RefreshGrid();
+                }
+            };
+
+            RefreshGrid();
         }
 
         private void InitializeLayout()
@@ -110,7 +65,7 @@ namespace ERP.winforms.UI.Views
 
             Label lblSubtitle = new Label
             {
-                Text = "Medium Enterprise Multi-Store Operations  |  Centralized Network Monitoring (Scaffolded / Local Preview)",
+                Text = "Medium Enterprise Multi-Store Operations  |  Centralized Network Monitoring",
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
                 ForeColor = AppTheme.TextMuted,
                 Location = new Point(24, 36),
@@ -134,19 +89,19 @@ namespace ERP.winforms.UI.Views
             int startX = 24;
 
             // KPI 1: Total Locations
-            Panel pnlCard1 = CreateKpiCard("TOTAL BRANCHES", _branches.Count.ToString(), "Active store locations", startX, cardW, out _lblTotalBranches);
+            Panel pnlCard1 = CreateKpiCard("TOTAL BRANCHES", "0", "Store locations", startX, cardW, out _lblTotalBranches);
             startX += cardW + cardGap;
 
             // KPI 2: Active Locations
-            Panel pnlCard2 = CreateKpiCard("OPERATIONAL STATUS", $"{_branches.Count(b => b.Status == "Active")} Online", "100% Network uptime", startX, cardW, out _lblActiveBranches);
+            Panel pnlCard2 = CreateKpiCard("OPERATIONAL STATUS", "0 Online", "Network status", startX, cardW, out _lblActiveBranches);
             startX += cardW + cardGap;
 
             // KPI 3: Assigned Staff
-            Panel pnlCard3 = CreateKpiCard("BRANCH STAFF", $"{_branches.Sum(b => b.AssignedStaffCount)} Staff Members", "Across all active locations", startX, cardW, out _lblTotalStaff);
+            Panel pnlCard3 = CreateKpiCard("BRANCH STAFF", "0 Staff Members", "Across all locations", startX, cardW, out _lblTotalStaff);
             startX += cardW + cardGap;
 
             // KPI 4: Primary Hub
-            Panel pnlCard4 = CreateKpiCard("PRIMARY HUB", "Cebu City Flagship", "Central Inventory Node", startX, cardW, out _lblMainHub);
+            Panel pnlCard4 = CreateKpiCard("PRIMARY HUB", "N/A", "Central Inventory Node", startX, cardW, out _lblMainHub);
 
             pnlKpis.Controls.Add(pnlCard1);
             pnlKpis.Controls.Add(pnlCard2);
@@ -180,9 +135,10 @@ namespace ERP.winforms.UI.Views
                 Font = new Font("Segoe UI", 9.5F, FontStyle.Regular),
                 ForeColor = AppTheme.TextDark,
                 Location = new Point(10, 8),
-                Width = 260
+                Width = 260,
+                PlaceholderText = "Search by code, name, city, manager..."
             };
-            _txtSearch.TextChanged += (s, e) => FilterBranches();
+            _txtSearch.TextChanged += (s, e) => RefreshGrid();
             pnlSearch.Controls.Add(_txtSearch);
 
             SunshineButton btnAddBranch = new SunshineButton
@@ -234,14 +190,63 @@ namespace ERP.winforms.UI.Views
             _gridBranches.DefaultCellStyle.SelectionBackColor = Color.FromArgb(244, 234, 185);
             _gridBranches.DefaultCellStyle.SelectionForeColor = AppTheme.TextDark;
 
-            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CODE", DataPropertyName = "BranchCode", FillWeight = 50 });
-            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "BRANCH NAME", DataPropertyName = "BranchName", FillWeight = 120 });
-            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CITY / REGION", DataPropertyName = "CityLocation", FillWeight = 60 });
-            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PHYSICAL ADDRESS", DataPropertyName = "Address", FillWeight = 130 });
-            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "BRANCH MANAGER", DataPropertyName = "ManagerName", FillWeight = 80 });
-            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CONTACT PHONE", DataPropertyName = "ContactNumber", FillWeight = 70 });
-            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STAFF", DataPropertyName = "AssignedStaffCount", FillWeight = 40 });
-            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STATUS", DataPropertyName = "Status", FillWeight = 45 });
+            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CODE", Name = "ColCode", FillWeight = 50 });
+            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "BRANCH NAME", Name = "ColName", FillWeight = 120 });
+            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CITY / REGION", Name = "ColCity", FillWeight = 65 });
+            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PHYSICAL ADDRESS", Name = "ColAddress", FillWeight = 120 });
+            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "BRANCH MANAGER", Name = "ColManager", FillWeight = 80 });
+            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CONTACT PHONE", Name = "ColContact", FillWeight = 70 });
+            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STAFF", Name = "ColStaff", FillWeight = 40 });
+            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STATUS", Name = "ColStatus", FillWeight = 45 });
+            _gridBranches.Columns.Add(new DataGridViewButtonColumn { HeaderText = "EDIT", Name = "ColEdit", FillWeight = 40 });
+            _gridBranches.Columns.Add(new DataGridViewButtonColumn { HeaderText = "ACTION", Name = "ColAction", FillWeight = 50 });
+
+            _gridBranches.CellContentClick += (s, e) =>
+            {
+                if (e.RowIndex >= 0)
+                {
+                    int branchId = Convert.ToInt32(_gridBranches.Rows[e.RowIndex].Tag);
+                    var branch = _dataService.Branches.FirstOrDefault(b => b.BranchId == branchId);
+                    if (branch == null) return;
+
+                    if (_gridBranches.Columns["ColEdit"] != null && e.ColumnIndex == _gridBranches.Columns["ColEdit"]!.Index)
+                    {
+                        ShowBranchEditDialog(branch);
+                    }
+                    else if (_gridBranches.Columns["ColAction"] != null && e.ColumnIndex == _gridBranches.Columns["ColAction"]!.Index)
+                    {
+                        string action = branch.IsActive ? "archive / deactivate" : "restore / activate";
+                        var res = MessageBox.Show(
+                            $"Are you sure you want to {action} branch '{branch.BranchName}' ({branch.BranchCode})?",
+                            $"Confirm {(branch.IsActive ? "Archive" : "Restore")}",
+                            MessageBoxButtons.YesNo,
+                            MessageBoxIcon.Question);
+
+                        if (res == DialogResult.Yes)
+                        {
+                            bool ok = _dataService.ToggleBranchArchive(branchId);
+                            if (!ok)
+                            {
+                                MessageBox.Show("Failed to update branch status. Please check network/database connectivity.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            }
+                            RefreshGrid();
+                        }
+                    }
+                }
+            };
+
+            _gridBranches.CellDoubleClick += (s, e) =>
+            {
+                if (e.RowIndex >= 0)
+                {
+                    int branchId = Convert.ToInt32(_gridBranches.Rows[e.RowIndex].Tag);
+                    var branch = _dataService.Branches.FirstOrDefault(b => b.BranchId == branchId);
+                    if (branch != null)
+                    {
+                        ShowBranchEditDialog(branch);
+                    }
+                }
+            };
 
             pnlGridContainer.Controls.Add(_gridBranches);
 
@@ -249,8 +254,6 @@ namespace ERP.winforms.UI.Views
             Controls.Add(pnlToolbar);
             Controls.Add(pnlKpis);
             Controls.Add(pnlHeader);
-
-            RefreshGrid();
         }
 
         private Panel CreateKpiCard(string title, string value, string subtitle, int x, int width, out Label lblVal)
@@ -301,32 +304,64 @@ namespace ERP.winforms.UI.Views
             return card;
         }
 
-        private void FilterBranches()
+        public void RefreshGrid()
         {
-            string query = _txtSearch.Text.Trim().ToLower();
-            if (string.IsNullOrEmpty(query))
-            {
-                _gridBranches.DataSource = _branches.ToList();
-            }
-            else
-            {
-                _gridBranches.DataSource = _branches
-                    .Where(b => b.BranchCode.ToLower().Contains(query) ||
-                                b.BranchName.ToLower().Contains(query) ||
-                                b.CityLocation.ToLower().Contains(query) ||
-                                b.ManagerName.ToLower().Contains(query))
-                    .ToList();
-            }
-        }
+            if (_gridBranches == null) return;
 
-        private void RefreshGrid()
-        {
-            _gridBranches.DataSource = null;
-            _gridBranches.DataSource = _branches.ToList();
+            string query = _txtSearch?.Text.Trim().ToLowerInvariant() ?? string.Empty;
+            var list = _dataService.Branches.AsEnumerable();
 
-            if (_lblTotalBranches != null) _lblTotalBranches.Text = _branches.Count.ToString();
-            if (_lblActiveBranches != null) _lblActiveBranches.Text = $"{_branches.Count(b => b.Status == "Active")} Online";
-            if (_lblTotalStaff != null) _lblTotalStaff.Text = $"{_branches.Sum(b => b.AssignedStaffCount)} Staff Members";
+            if (!string.IsNullOrEmpty(query))
+            {
+                list = list.Where(b =>
+                    b.BranchCode.ToLowerInvariant().Contains(query) ||
+                    b.BranchName.ToLowerInvariant().Contains(query) ||
+                    b.City.ToLowerInvariant().Contains(query) ||
+                    b.Address.ToLowerInvariant().Contains(query) ||
+                    b.ManagerName.ToLowerInvariant().Contains(query) ||
+                    b.ContactNumber.ToLowerInvariant().Contains(query));
+            }
+
+            _gridBranches.Rows.Clear();
+            foreach (var b in list.OrderBy(b => b.BranchCode))
+            {
+                int rIdx = _gridBranches.Rows.Add(
+                    b.BranchCode,
+                    b.BranchName,
+                    b.City,
+                    b.Address,
+                    string.IsNullOrWhiteSpace(b.ManagerName) ? "Unassigned" : b.ManagerName,
+                    string.IsNullOrWhiteSpace(b.ContactNumber) ? "N/A" : b.ContactNumber,
+                    b.AssignedStaffCount.ToString(),
+                    b.IsActive ? "Active" : "Archived",
+                    "✏️ Edit",
+                    b.IsActive ? "📁 Archive" : "♻️ Restore"
+                );
+
+                var row = _gridBranches.Rows[rIdx];
+                row.Tag = b.BranchId;
+
+                if (!b.IsActive)
+                {
+                    row.DefaultCellStyle.ForeColor = Color.FromArgb(145, 140, 130);
+                    row.Cells["ColAction"].Style.ForeColor = Color.FromArgb(27, 122, 79);
+                }
+                else
+                {
+                    row.Cells["ColAction"].Style.ForeColor = Color.FromArgb(184, 50, 38);
+                }
+            }
+
+            // Update KPI cards from real SQL data
+            int total = _dataService.Branches.Count;
+            int active = _dataService.Branches.Count(b => b.IsActive);
+            int staff = _dataService.Branches.Sum(b => b.AssignedStaffCount);
+            var hub = _dataService.Branches.FirstOrDefault(b => b.IsActive);
+
+            if (_lblTotalBranches != null) _lblTotalBranches.Text = total.ToString();
+            if (_lblActiveBranches != null) _lblActiveBranches.Text = $"{active} Online";
+            if (_lblTotalStaff != null) _lblTotalStaff.Text = $"{staff} Staff Members";
+            if (_lblMainHub != null) _lblMainHub.Text = hub != null ? hub.BranchName : "Central Hub";
         }
 
         private void BtnAddBranch_Click(object? sender, EventArgs e)
@@ -334,7 +369,7 @@ namespace ERP.winforms.UI.Views
             using var dlg = new Form
             {
                 Text = "Add Store Branch Location",
-                Size = new Size(420, 380),
+                Size = new Size(460, 480),
                 StartPosition = FormStartPosition.CenterParent,
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 MaximizeBox = false,
@@ -342,26 +377,39 @@ namespace ERP.winforms.UI.Views
                 BackColor = Color.White
             };
 
-            int y = 16;
+            int y = 14;
+            Label lblCode = new Label { Text = "Branch Code (leave empty to auto-generate)", Location = new Point(24, y), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
+            y += 20;
+            TextBox txtCode = new TextBox { Location = new Point(24, y), Width = 390, Font = new Font("Segoe UI", 9.5F), PlaceholderText = "e.g. BR-001" };
+            y += 34;
+
             Label lblName = new Label { Text = "Branch Name *", Location = new Point(24, y), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
             y += 20;
-            TextBox txtName = new TextBox { Location = new Point(24, y), Width = 350, Font = new Font("Segoe UI", 9.5F) };
+            TextBox txtName = new TextBox { Location = new Point(24, y), Width = 390, Font = new Font("Segoe UI", 9.5F), PlaceholderText = "e.g. TechStore Downtown Branch" };
             y += 34;
 
             Label lblCity = new Label { Text = "City / Region *", Location = new Point(24, y), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
             y += 20;
-            TextBox txtCity = new TextBox { Location = new Point(24, y), Width = 350, Font = new Font("Segoe UI", 9.5F) };
+            TextBox txtCity = new TextBox { Location = new Point(24, y), Width = 390, Font = new Font("Segoe UI", 9.5F), PlaceholderText = "e.g. Davao City" };
             y += 34;
 
             Label lblAddress = new Label { Text = "Address *", Location = new Point(24, y), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
             y += 20;
-            TextBox txtAddress = new TextBox { Location = new Point(24, y), Width = 350, Font = new Font("Segoe UI", 9.5F) };
+            TextBox txtAddress = new TextBox { Location = new Point(24, y), Width = 390, Font = new Font("Segoe UI", 9.5F), PlaceholderText = "e.g. Unit 101 Bajada Commercial Hub" };
             y += 34;
 
-            Label lblManager = new Label { Text = "Branch Manager *", Location = new Point(24, y), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
+            Label lblManager = new Label { Text = "Branch Manager", Location = new Point(24, y), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
             y += 20;
-            TextBox txtManager = new TextBox { Location = new Point(24, y), Width = 350, Font = new Font("Segoe UI", 9.5F) };
-            y += 40;
+            TextBox txtManager = new TextBox { Location = new Point(24, y), Width = 390, Font = new Font("Segoe UI", 9.5F), PlaceholderText = "e.g. Marcus Vance" };
+            y += 34;
+
+            Label lblContact = new Label { Text = "Contact Phone", Location = new Point(24, y), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
+            y += 20;
+            TextBox txtContact = new TextBox { Location = new Point(24, y), Width = 230, Font = new Font("Segoe UI", 9.5F), PlaceholderText = "+63 82 299 1234" };
+
+            Label lblStaff = new Label { Text = "Assigned Staff", Location = new Point(270, y - 20), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
+            NumericUpDown numStaff = new NumericUpDown { Location = new Point(270, y), Width = 144, Font = new Font("Segoe UI", 9.5F), Minimum = 0, Maximum = 500, Value = 4 };
+            y += 44;
 
             SunshineButton btnSave = new SunshineButton
             {
@@ -378,23 +426,42 @@ namespace ERP.winforms.UI.Views
                     return;
                 }
 
-                _branches.Add(new BranchItem
+                var branch = new Branch
                 {
-                    BranchCode = $"BR-{_branches.Count + 1:D3}",
+                    BranchCode = txtCode.Text.Trim(),
                     BranchName = txtName.Text.Trim(),
-                    CityLocation = txtCity.Text.Trim(),
+                    City = txtCity.Text.Trim(),
                     Address = txtAddress.Text.Trim(),
                     ManagerName = txtManager.Text.Trim(),
-                    ContactNumber = "+63 32 800 0000",
-                    AssignedStaffCount = 4,
-                    Status = "Active",
-                    EstablishedDate = DateTime.UtcNow
-                });
-                RefreshGrid();
-                dlg.DialogResult = DialogResult.OK;
-                dlg.Close();
+                    ContactNumber = txtContact.Text.Trim(),
+                    AssignedStaffCount = (int)numStaff.Value,
+                    IsActive = true
+                };
+
+                bool ok = _dataService.AddBranch(branch);
+                if (ok)
+                {
+                    RefreshGrid();
+                    dlg.DialogResult = DialogResult.OK;
+                    dlg.Close();
+                }
+                else
+                {
+                    MessageBox.Show("Failed to save branch. Please check for duplicate branch code or connectivity issues.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             };
 
+            Button btnCancel = new Button
+            {
+                Text = "Cancel",
+                Location = new Point(200, y),
+                Size = new Size(100, 36),
+                FlatStyle = FlatStyle.Flat
+            };
+            btnCancel.Click += (s, ev) => { dlg.DialogResult = DialogResult.Cancel; dlg.Close(); };
+
+            dlg.Controls.Add(lblCode);
+            dlg.Controls.Add(txtCode);
             dlg.Controls.Add(lblName);
             dlg.Controls.Add(txtName);
             dlg.Controls.Add(lblCity);
@@ -403,7 +470,124 @@ namespace ERP.winforms.UI.Views
             dlg.Controls.Add(txtAddress);
             dlg.Controls.Add(lblManager);
             dlg.Controls.Add(txtManager);
+            dlg.Controls.Add(lblContact);
+            dlg.Controls.Add(txtContact);
+            dlg.Controls.Add(lblStaff);
+            dlg.Controls.Add(numStaff);
             dlg.Controls.Add(btnSave);
+            dlg.Controls.Add(btnCancel);
+
+            dlg.ShowDialog(this);
+        }
+
+        private void ShowBranchEditDialog(Branch branch)
+        {
+            using var dlg = new Form
+            {
+                Text = $"Edit Branch - {branch.BranchCode}",
+                Size = new Size(460, 480),
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false,
+                MinimizeBox = false,
+                BackColor = Color.White
+            };
+
+            int y = 14;
+            Label lblCode = new Label { Text = "Branch Code *", Location = new Point(24, y), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
+            y += 20;
+            TextBox txtCode = new TextBox { Location = new Point(24, y), Width = 390, Font = new Font("Segoe UI", 9.5F), Text = branch.BranchCode };
+            y += 34;
+
+            Label lblName = new Label { Text = "Branch Name *", Location = new Point(24, y), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
+            y += 20;
+            TextBox txtName = new TextBox { Location = new Point(24, y), Width = 390, Font = new Font("Segoe UI", 9.5F), Text = branch.BranchName };
+            y += 34;
+
+            Label lblCity = new Label { Text = "City / Region *", Location = new Point(24, y), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
+            y += 20;
+            TextBox txtCity = new TextBox { Location = new Point(24, y), Width = 390, Font = new Font("Segoe UI", 9.5F), Text = branch.City };
+            y += 34;
+
+            Label lblAddress = new Label { Text = "Address *", Location = new Point(24, y), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
+            y += 20;
+            TextBox txtAddress = new TextBox { Location = new Point(24, y), Width = 390, Font = new Font("Segoe UI", 9.5F), Text = branch.Address };
+            y += 34;
+
+            Label lblManager = new Label { Text = "Branch Manager", Location = new Point(24, y), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
+            y += 20;
+            TextBox txtManager = new TextBox { Location = new Point(24, y), Width = 390, Font = new Font("Segoe UI", 9.5F), Text = branch.ManagerName };
+            y += 34;
+
+            Label lblContact = new Label { Text = "Contact Phone", Location = new Point(24, y), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
+            y += 20;
+            TextBox txtContact = new TextBox { Location = new Point(24, y), Width = 230, Font = new Font("Segoe UI", 9.5F), Text = branch.ContactNumber };
+
+            Label lblStaff = new Label { Text = "Assigned Staff", Location = new Point(270, y - 20), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
+            NumericUpDown numStaff = new NumericUpDown { Location = new Point(270, y), Width = 144, Font = new Font("Segoe UI", 9.5F), Minimum = 0, Maximum = 500, Value = branch.AssignedStaffCount };
+            y += 44;
+
+            SunshineButton btnSave = new SunshineButton
+            {
+                Text = "Update Branch",
+                IsPrimary = true,
+                Location = new Point(24, y),
+                Size = new Size(160, 36)
+            };
+            btnSave.Click += (s, ev) =>
+            {
+                if (string.IsNullOrWhiteSpace(txtName.Text) || string.IsNullOrWhiteSpace(txtCity.Text))
+                {
+                    MessageBox.Show("Please provide branch name and city.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                branch.BranchCode = txtCode.Text.Trim();
+                branch.BranchName = txtName.Text.Trim();
+                branch.City = txtCity.Text.Trim();
+                branch.Address = txtAddress.Text.Trim();
+                branch.ManagerName = txtManager.Text.Trim();
+                branch.ContactNumber = txtContact.Text.Trim();
+                branch.AssignedStaffCount = (int)numStaff.Value;
+
+                bool ok = _dataService.UpdateBranch(branch);
+                if (ok)
+                {
+                    RefreshGrid();
+                    dlg.DialogResult = DialogResult.OK;
+                    dlg.Close();
+                }
+                else
+                {
+                    MessageBox.Show("Failed to update branch. Please check for duplicate branch code or connectivity issues.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+
+            Button btnCancel = new Button
+            {
+                Text = "Cancel",
+                Location = new Point(200, y),
+                Size = new Size(100, 36),
+                FlatStyle = FlatStyle.Flat
+            };
+            btnCancel.Click += (s, ev) => { dlg.DialogResult = DialogResult.Cancel; dlg.Close(); };
+
+            dlg.Controls.Add(lblCode);
+            dlg.Controls.Add(txtCode);
+            dlg.Controls.Add(lblName);
+            dlg.Controls.Add(txtName);
+            dlg.Controls.Add(lblCity);
+            dlg.Controls.Add(txtCity);
+            dlg.Controls.Add(lblAddress);
+            dlg.Controls.Add(txtAddress);
+            dlg.Controls.Add(lblManager);
+            dlg.Controls.Add(txtManager);
+            dlg.Controls.Add(lblContact);
+            dlg.Controls.Add(txtContact);
+            dlg.Controls.Add(lblStaff);
+            dlg.Controls.Add(numStaff);
+            dlg.Controls.Add(btnSave);
+            dlg.Controls.Add(btnCancel);
 
             dlg.ShowDialog(this);
         }

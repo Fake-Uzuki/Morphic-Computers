@@ -887,5 +887,88 @@ namespace ERP.winforms.Services
                 return false;
             }
         }
+
+        // ==========================================
+        // BRANCHES (Medium Enterprise Multi-Store)
+        // ==========================================
+        public async Task<List<Branch>?> GetBranchesAsync(int companyId, bool includeArchived = true)
+        {
+            try
+            {
+                var response = await _http.GetAsync($"/api/tenant/{companyId}/branches?includeArchived={includeArchived}").ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    var records = await response.Content.ReadFromJsonAsync<List<Branch>>(_jsonOptions).ConfigureAwait(false);
+                    return records ?? new List<Branch>();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient GetBranches error: {ex.Message}");
+            }
+            return null;
+        }
+
+        public async Task<Branch?> GetBranchByIdAsync(int companyId, int branchId)
+        {
+            try
+            {
+                var response = await _http.GetAsync($"/api/tenant/{companyId}/branches/{branchId}").ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadFromJsonAsync<Branch>(_jsonOptions).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient GetBranchById error: {ex.Message}");
+            }
+            return null;
+        }
+
+        public async Task<Branch?> CreateBranchAsync(int companyId, Branch branch)
+        {
+            try
+            {
+                var response = await _http.PostAsJsonAsync($"/api/tenant/{companyId}/branches", branch).ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadFromJsonAsync<Branch>(_jsonOptions).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient CreateBranch error: {ex.Message}");
+            }
+            return null;
+        }
+
+        public async Task<bool> UpdateBranchAsync(int companyId, int branchId, Branch branch)
+        {
+            try
+            {
+                var response = await _http.PutAsJsonAsync($"/api/tenant/{companyId}/branches/{branchId}", branch).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient UpdateBranch error: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<bool> ArchiveBranchAsync(int companyId, int branchId)
+        {
+            try
+            {
+                var response = await _http.DeleteAsync($"/api/tenant/{companyId}/branches/{branchId}").ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient ArchiveBranch error: {ex.Message}");
+                return false;
+            }
+        }
     }
 }

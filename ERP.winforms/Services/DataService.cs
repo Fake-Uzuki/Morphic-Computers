@@ -34,6 +34,7 @@ namespace ERP.winforms.Services
         public List<PayrollRecord> PayrollRecords { get; private set; } = new();
         public List<StorePolicy> StorePolicies { get; private set; } = new();
         public List<ExpenseRecord> ExpenseRecords { get; private set; } = new();
+        public List<Branch> Branches { get; private set; } = new();
 
         public Action? CategoriesChanged;
         public Action? ProductsChanged;
@@ -45,6 +46,7 @@ namespace ERP.winforms.Services
         public Action? PayrollRecordsChanged;
         public Action? StorePoliciesChanged;
         public Action? ExpensesChanged;
+        public Action? BranchesChanged;
         public Action? OrdersChanged;
         public Action<bool>? ConnectionStatusChanged;
 
@@ -90,6 +92,7 @@ namespace ERP.winforms.Services
             PayrollRecords.Clear();
             StorePolicies.Clear();
             ExpenseRecords.Clear();
+            Branches.Clear();
 
             if (ActiveCompanyId <= 0 || string.Equals(CurrentCompany?.PlanName, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
             {
@@ -103,6 +106,7 @@ namespace ERP.winforms.Services
                 PayrollRecordsChanged?.Invoke();
                 StorePoliciesChanged?.Invoke();
                 ExpensesChanged?.Invoke();
+                BranchesChanged?.Invoke();
                 return;
             }
 
@@ -123,6 +127,7 @@ namespace ERP.winforms.Services
                 {
                     MigrateJsonExpensesIfAvailable(ActiveCompanyId);
                 }
+                Branches = Task.Run(() => _localDb.GetBranchesAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
             }
             catch (Exception ex)
             {
@@ -139,6 +144,7 @@ namespace ERP.winforms.Services
             PayrollRecordsChanged?.Invoke();
             StorePoliciesChanged?.Invoke();
             ExpensesChanged?.Invoke();
+            BranchesChanged?.Invoke();
 
             Task.Run(() => LoadFromDatabase());
         }
@@ -189,6 +195,7 @@ namespace ERP.winforms.Services
                 {
                     MigrateJsonExpensesIfAvailable(ActiveCompanyId);
                 }
+                Branches = Task.Run(() => _localDb.GetBranchesAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
             }
             catch (Exception ex)
             {
@@ -831,6 +838,56 @@ namespace ERP.winforms.Services
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"DataService Expenses loading note: {ex.Message}");
+            }
+
+            if (ActiveCompanyId != targetCompanyId) return;
+
+            // 12. Fetch live branches for the active tenant via API (fallback to local DB)
+            try
+            {
+                List<Branch>? liveBranches = null;
+                if (networkUp)
+                {
+                    try
+                    {
+                        liveBranches = Task.Run(() => _apiClient.GetBranchesAsync(targetCompanyId)).GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"API GetBranches note: {ex.Message}");
+                        liveBranches = null;
+                    }
+                }
+
+                if (liveBranches != null)
+                {
+                    anyApiSucceeded = true;
+                    if (ActiveCompanyId == targetCompanyId)
+                    {
+                        Branches = liveBranches;
+                        BranchesChanged?.Invoke();
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        var localBranches = Task.Run(() => _localDb.GetBranchesAsync(targetCompanyId)).GetAwaiter().GetResult();
+                        if (localBranches != null && ActiveCompanyId == targetCompanyId)
+                        {
+                            Branches = localBranches;
+                            BranchesChanged?.Invoke();
+                        }
+                    }
+                    catch (Exception dbEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Local DB GetBranches fallback error: {dbEx.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DataService Branches loading note: {ex.Message}");
             }
 
             if (ActiveCompanyId != targetCompanyId) return;
@@ -3651,6 +3708,169 @@ namespace ERP.winforms.Services
         }
 
         public bool DeleteExpense(int expenseId) => ToggleExpenseArchive(expenseId);
+
+        // =========================================================================
+        // TENANT C / MEDIUM ENTERPRISE: BRANCH MANAGEMENT CRUD
+        // =========================================================================
+        public bool AddBranch(Branch branch)
+        {
+            if (branch == null) return false;
+            branch.CompanyId = ActiveCompanyId;
+            if (string.IsNullOrWhiteSpace(branch.BranchCode))
+            {
+                int count = Branches.Count;
+                branch.BranchCode = $"BR-{(count + 1):D3}";
+            }
+            branch.CreatedAt = DateTime.UtcNow;
+
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                Branch? apiCreated = null;
+                try
+                {
+                    apiCreated = Task.Run(() => _apiClient.CreateBranchAsync(ActiveCompanyId, branch)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"AddBranch API error: {ex.Message}");
+                    apiCreated = null;
+                }
+
+                if (apiCreated != null)
+                {
+                    try
+                    {
+                        Task.Run(() => _localDb.SaveBranchAsync(ActiveCompanyId, apiCreated, enqueueSync: false)).GetAwaiter().GetResult();
+                    }
+                    catch { }
+
+                    Branches.RemoveAll(b => b.BranchId == apiCreated.BranchId);
+                    Branches.Add(apiCreated);
+                    BranchesChanged?.Invoke();
+                    return true;
+                }
+            }
+
+            // Offline or API failure: persist locally and enqueue SyncOutbox
+            try
+            {
+                var saved = Task.Run(() => _localDb.SaveBranchAsync(ActiveCompanyId, branch, enqueueSync: true)).GetAwaiter().GetResult();
+                if (saved != null)
+                {
+                    branch.BranchId = saved.BranchId;
+                }
+                Branches.RemoveAll(b => b.BranchId == branch.BranchId);
+                Branches.Add(branch);
+                BranchesChanged?.Invoke();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"AddBranch localDb error: {ex.Message}");
+                return false;
+            }
+        }
+
+        public bool UpdateBranch(Branch branch)
+        {
+            if (branch == null || branch.BranchId <= 0) return false;
+            branch.CompanyId = ActiveCompanyId;
+
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
+                {
+                    apiSuccess = Task.Run(() => _apiClient.UpdateBranchAsync(ActiveCompanyId, branch.BranchId, branch)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdateBranch API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (apiSuccess)
+                {
+                    try
+                    {
+                        Task.Run(() => _localDb.UpdateBranchAsync(ActiveCompanyId, branch, enqueueSync: false)).GetAwaiter().GetResult();
+                    }
+                    catch { }
+
+                    int idx = Branches.FindIndex(b => b.BranchId == branch.BranchId);
+                    if (idx >= 0) Branches[idx] = branch;
+                    BranchesChanged?.Invoke();
+                    return true;
+                }
+            }
+
+            // Offline or API failure: persist locally and enqueue SyncOutbox
+            try
+            {
+                Task.Run(() => _localDb.UpdateBranchAsync(ActiveCompanyId, branch, enqueueSync: true)).GetAwaiter().GetResult();
+                int idx = Branches.FindIndex(b => b.BranchId == branch.BranchId);
+                if (idx >= 0) Branches[idx] = branch;
+                BranchesChanged?.Invoke();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"UpdateBranch localDb error: {ex.Message}");
+                return false;
+            }
+        }
+
+        public bool ToggleBranchArchive(int branchId)
+        {
+            var branch = Branches.FirstOrDefault(b => b.BranchId == branchId);
+            if (branch == null) return false;
+
+            bool targetActive = !branch.IsActive;
+
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
+                {
+                    apiSuccess = Task.Run(() => _apiClient.ArchiveBranchAsync(ActiveCompanyId, branchId)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"ToggleBranchArchive API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (apiSuccess)
+                {
+                    try
+                    {
+                        Task.Run(() => _localDb.ToggleBranchArchiveAsync(ActiveCompanyId, branchId, enqueueSync: false)).GetAwaiter().GetResult();
+                    }
+                    catch { }
+
+                    branch.IsActive = targetActive;
+                    BranchesChanged?.Invoke();
+                    return true;
+                }
+            }
+
+            // Offline or API failure: persist locally and enqueue SyncOutbox
+            try
+            {
+                Task.Run(() => _localDb.ToggleBranchArchiveAsync(ActiveCompanyId, branchId, enqueueSync: true)).GetAwaiter().GetResult();
+                branch.IsActive = targetActive;
+                BranchesChanged?.Invoke();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ToggleBranchArchive localDb error: {ex.Message}");
+                return false;
+            }
+        }
 
         public decimal GetTotalRetailSalesRevenue()
         {

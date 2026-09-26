@@ -161,6 +161,23 @@ namespace ERP.winforms.Services
         }
 
         /// <summary>
+        /// Retrieves all branches for the specified tenant from the local tenant database.
+        /// </summary>
+        public async Task<List<Branch>> GetBranchesAsync(int companyId, bool includeArchived = true)
+        {
+            await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
+            var query = context.Branches.AsNoTracking().Where(b => b.CompanyId == companyId);
+            if (!includeArchived)
+            {
+                query = query.Where(b => b.IsActive);
+            }
+            return await query
+                .OrderBy(b => b.BranchCode)
+                .ToListAsync()
+                .ConfigureAwait(false);
+        }
+
+        /// <summary>
         /// Retrieves all approval requests for the specified tenant from the local tenant database.
         /// </summary>
         public async Task<List<ApprovalRequest>> GetApprovalsAsync(int companyId)
@@ -1330,6 +1347,108 @@ namespace ERP.winforms.Services
                     EntityId = expenseId.ToString(),
                     Operation = "Archive",
                     PayloadJson = System.Text.Json.JsonSerializer.Serialize(new { ExpenseId = expenseId, IsActive = existing.IsActive }),
+                    CreatedAt = DateTime.UtcNow,
+                    SyncStatus = "Pending"
+                });
+            }
+
+            await context.SaveChangesAsync().ConfigureAwait(false);
+            return true;
+        }
+
+        // =========================================================================
+        // BRANCH OPERATIONS (Medium Enterprise)
+        // =========================================================================
+        public async Task<Branch?> SaveBranchAsync(int companyId, Branch branch, bool enqueueSync = true)
+        {
+            if (branch == null) return null;
+            await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
+
+            branch.CompanyId = companyId;
+            branch.BranchId = 0;
+            if (string.IsNullOrWhiteSpace(branch.BranchCode))
+            {
+                int count = await context.Branches.CountAsync(b => b.CompanyId == companyId).ConfigureAwait(false);
+                branch.BranchCode = $"BR-{(count + 1):D3}";
+            }
+            branch.CreatedAt = DateTime.UtcNow;
+
+            context.Branches.Add(branch);
+            await context.SaveChangesAsync().ConfigureAwait(false);
+
+            if (enqueueSync)
+            {
+                context.SyncOutbox.Add(new SyncOutboxItem
+                {
+                    SyncId = Guid.NewGuid().ToString("N"),
+                    CompanyId = companyId,
+                    EntityType = "Branch",
+                    EntityId = branch.BranchId.ToString(),
+                    Operation = "Create",
+                    PayloadJson = System.Text.Json.JsonSerializer.Serialize(branch),
+                    CreatedAt = DateTime.UtcNow,
+                    SyncStatus = "Pending"
+                });
+                await context.SaveChangesAsync().ConfigureAwait(false);
+            }
+
+            return branch;
+        }
+
+        public async Task<Branch?> UpdateBranchAsync(int companyId, Branch branch, bool enqueueSync = true)
+        {
+            if (branch == null) return null;
+            await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
+
+            var existing = await context.Branches.FirstOrDefaultAsync(b => b.BranchId == branch.BranchId && b.CompanyId == companyId).ConfigureAwait(false);
+            if (existing == null) return null;
+
+            existing.BranchCode = branch.BranchCode;
+            existing.BranchName = branch.BranchName;
+            existing.Address = branch.Address;
+            existing.City = branch.City;
+            existing.ContactNumber = branch.ContactNumber;
+            existing.ManagerName = branch.ManagerName;
+            existing.AssignedStaffCount = branch.AssignedStaffCount;
+            existing.IsActive = branch.IsActive;
+
+            if (enqueueSync)
+            {
+                context.SyncOutbox.Add(new SyncOutboxItem
+                {
+                    SyncId = Guid.NewGuid().ToString("N"),
+                    CompanyId = companyId,
+                    EntityType = "Branch",
+                    EntityId = existing.BranchId.ToString(),
+                    Operation = "Update",
+                    PayloadJson = System.Text.Json.JsonSerializer.Serialize(existing),
+                    CreatedAt = DateTime.UtcNow,
+                    SyncStatus = "Pending"
+                });
+            }
+
+            await context.SaveChangesAsync().ConfigureAwait(false);
+            return existing;
+        }
+
+        public async Task<bool> ToggleBranchArchiveAsync(int companyId, int branchId, bool enqueueSync = true)
+        {
+            await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
+            var existing = await context.Branches.FirstOrDefaultAsync(b => b.BranchId == branchId && b.CompanyId == companyId).ConfigureAwait(false);
+            if (existing == null) return false;
+
+            existing.IsActive = !existing.IsActive;
+
+            if (enqueueSync)
+            {
+                context.SyncOutbox.Add(new SyncOutboxItem
+                {
+                    SyncId = Guid.NewGuid().ToString("N"),
+                    CompanyId = companyId,
+                    EntityType = "Branch",
+                    EntityId = branchId.ToString(),
+                    Operation = "Archive",
+                    PayloadJson = System.Text.Json.JsonSerializer.Serialize(new { BranchId = branchId, IsActive = existing.IsActive }),
                     CreatedAt = DateTime.UtcNow,
                     SyncStatus = "Pending"
                 });
