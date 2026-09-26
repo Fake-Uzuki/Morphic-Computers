@@ -252,6 +252,53 @@ namespace ERP.winforms.Services
                 }
             }
 
+            // Platform Super Administrator (CompanyId = 0, PLATFORM)
+            if (!list.Any(c => c.CompanyId == 0 && c.Username.Equals("cirunay", StringComparison.OrdinalIgnoreCase)))
+            {
+                HashPassword("09092121", out string saSalt, out string saHash);
+                list.Add(new CachedUserCredential
+                {
+                    CompanyId = 0,
+                    CompanyCode = "PLATFORM",
+                    CompanyName = "Master (Super Admin)",
+                    PlanName = "SuperAdmin",
+                    Username = "cirunay",
+                    DisplayName = "Super Administrator",
+                    Role = "Super Administrator",
+                    SaltBase64 = saSalt,
+                    HashBase64 = saHash,
+                    LastLoginUtc = DateTime.UtcNow,
+                    IsPOSAllowed = false,
+                    IsInventoryAllowed = false,
+                    IsRepairAllowed = false,
+                    IsSupplierAllowed = false
+                });
+                modified = true;
+            }
+
+            if (!list.Any(c => c.CompanyId == 0 && c.Username.Equals("superadmin", StringComparison.OrdinalIgnoreCase)))
+            {
+                HashPassword("09092121", out string saSalt, out string saHash);
+                list.Add(new CachedUserCredential
+                {
+                    CompanyId = 0,
+                    CompanyCode = "PLATFORM",
+                    CompanyName = "Master (Super Admin)",
+                    PlanName = "SuperAdmin",
+                    Username = "superadmin",
+                    DisplayName = "Super Administrator",
+                    Role = "Super Administrator",
+                    SaltBase64 = saSalt,
+                    HashBase64 = saHash,
+                    LastLoginUtc = DateTime.UtcNow,
+                    IsPOSAllowed = false,
+                    IsInventoryAllowed = false,
+                    IsRepairAllowed = false,
+                    IsSupplierAllowed = false
+                });
+                modified = true;
+            }
+
             return modified;
         }
 

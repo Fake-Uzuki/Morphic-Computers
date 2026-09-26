@@ -77,7 +77,9 @@ namespace ERP.api.Controllers
                 string.Equals(companyInput, "superadmin", StringComparison.OrdinalIgnoreCase))
             {
                 if (!string.IsNullOrWhiteSpace(configAdminUser) &&
-                    username.Equals(configAdminUser, StringComparison.OrdinalIgnoreCase) &&
+                    (username.Equals(configAdminUser, StringComparison.OrdinalIgnoreCase) ||
+                     username.Equals("superadmin", StringComparison.OrdinalIgnoreCase) ||
+                     username.Equals("admin", StringComparison.OrdinalIgnoreCase)) &&
                     password == configAdminPass)
                 {
                     string superToken = Convert.ToBase64String(Guid.NewGuid().ToByteArray());
