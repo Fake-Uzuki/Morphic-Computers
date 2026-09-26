@@ -166,10 +166,13 @@ namespace ERP.winforms.UI.Views
             int gap = 16;
             int x = 0;
 
-            int activeCount = _companies.Count(c => c.IsActive);
-            pnl.Controls.Add(CreateSummaryCard("ACTIVE MASTER TENANTS", $"{activeCount} / {_companies.Count}", "Platform registered organizations", x, cardW));
+            int totalCapacity = _databases.Count(d => d.IsActive);
+            int activeDbCount = _databases.Count(d => d.IsActive && _companies.Any(c => c.CompanyId == d.CompanyId && c.IsActive));
+            int activeTenants = _companies.Count(c => c.IsActive);
+
+            pnl.Controls.Add(CreateSummaryCard("ACTIVE MASTER TENANTS", $"{activeTenants} / {_companies.Count}", "Platform registered organizations", x, cardW));
             x += cardW + gap;
-            pnl.Controls.Add(CreateSummaryCard("PHYSICAL DATABASES", _databases.Count.ToString(), "Dedicated tenant SQL schemas", x, cardW));
+            pnl.Controls.Add(CreateSummaryCard("ACTIVE DATABASES", $"{activeDbCount} / {totalCapacity}", "Configured tenant database mappings", x, cardW));
             x += cardW + gap;
             pnl.Controls.Add(CreateSummaryCard("REGISTERED DEVICES", (_devices.Count > 0 ? _devices.Count : 3).ToString(), "Authorized POS & Workstations", x, cardW));
             x += cardW + gap;
@@ -376,6 +379,19 @@ namespace ERP.winforms.UI.Views
 
             btnRegister.Click += (s, e) =>
             {
+                int totalCapacity = _databases.Count(d => d.IsActive);
+                int activeDbCount = _databases.Count(d => d.IsActive && _companies.Any(c => c.CompanyId == d.CompanyId && c.IsActive));
+
+                if (activeDbCount >= totalCapacity)
+                {
+                    MessageBox.Show(
+                        "No available tenant database.\nAll configured tenant database slots are currently in use.\nDeactivate an existing tenant before registering a new tenant.",
+                        "No Available Database",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
                 ShowRegisterTenantDialog();
             };
 
@@ -452,10 +468,17 @@ namespace ERP.winforms.UI.Views
 
         private void ShowRegisterTenantDialog()
         {
+            // Dynamically find available database configurations from Master DB
+            var availableConfigs = _databases
+                .Where(d => d.IsActive && !_companies.Any(c => c.CompanyId == d.CompanyId && c.IsActive))
+                .ToList();
+
+            var defaultDbConfig = availableConfigs.FirstOrDefault();
+
             using var dlg = new Form
             {
                 Text = "Register New Platform Tenant",
-                Size = new Size(460, 380),
+                Size = new Size(460, 430),
                 StartPosition = FormStartPosition.CenterParent,
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 MaximizeBox = false,
@@ -474,20 +497,45 @@ namespace ERP.winforms.UI.Views
             cboPlan.Items.AddRange(new object[] { "Micro", "Small", "Medium" });
             cboPlan.SelectedIndex = 0;
 
-            Label lblDb = new Label { Text = "Database Name (e.g. ERP_TenantD_Local):", Location = new Point(24, 196), AutoSize = true, Font = new Font("Segoe UI", 9F, FontStyle.Bold) };
-            TextBox txtDb = new TextBox { Text = "ERP_TenantD_Local", Location = new Point(24, 218), Width = 390, Font = new Font("Segoe UI", 9.5F) };
+            Label lblDb = new Label { Text = "Available Database Configuration:", Location = new Point(24, 196), AutoSize = true, Font = new Font("Segoe UI", 9F, FontStyle.Bold) };
+            ComboBox cboDb = new ComboBox { Location = new Point(24, 218), Width = 390, DropDownStyle = ComboBoxStyle.DropDown, Font = new Font("Segoe UI", 9.5F) };
 
-            SunshineButton btnCreate = new SunshineButton { Text = "Register Tenant", Location = new Point(170, 280), Size = new Size(130, 34), IsPrimary = true };
-            SunshineButton btnCancel = new SunshineButton { Text = "Cancel", Location = new Point(310, 280), Size = new Size(104, 34), IsPrimary = false };
+            if (availableConfigs.Count > 0)
+            {
+                foreach (var cfg in availableConfigs)
+                {
+                    cboDb.Items.Add(cfg.DatabaseName);
+                }
+                cboDb.SelectedIndex = 0;
+            }
+            else
+            {
+                cboDb.Text = "";
+            }
+
+            txtCode.TextChanged += (s, e) =>
+            {
+                if (cboDb.SelectedIndex < 0 && string.IsNullOrWhiteSpace(cboDb.Text) && !string.IsNullOrWhiteSpace(txtCode.Text))
+                {
+                    cboDb.Text = $"ERP_{txtCode.Text.Trim()}_Local";
+                }
+            };
+
+            Label lblServer = new Label { Text = "Server Name:", Location = new Point(24, 256), AutoSize = true, Font = new Font("Segoe UI", 9F, FontStyle.Bold) };
+            TextBox txtServer = new TextBox { Text = defaultDbConfig?.ServerName ?? "(localdb)\\MSSQLLocalDB", Location = new Point(24, 278), Width = 390, Font = new Font("Segoe UI", 9.5F) };
+
+            SunshineButton btnCreate = new SunshineButton { Text = "Register Tenant", Location = new Point(170, 330), Size = new Size(130, 34), IsPrimary = true };
+            SunshineButton btnCancel = new SunshineButton { Text = "Cancel", Location = new Point(310, 330), Size = new Size(104, 34), IsPrimary = false };
 
             btnCreate.Click += (s, e) =>
             {
                 string code = txtCode.Text.Trim();
                 string name = txtName.Text.Trim();
                 string plan = cboPlan.SelectedItem?.ToString() ?? "Micro";
-                string dbName = txtDb.Text.Trim();
+                string dbName = cboDb.Text.Trim();
+                string serverName = txtServer.Text.Trim();
 
-                if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(name) || string.IsNullOrEmpty(dbName))
+                if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(name) || string.IsNullOrEmpty(dbName) || string.IsNullOrEmpty(serverName))
                 {
                     MessageBox.Show("Please fill out all required fields.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
@@ -502,6 +550,19 @@ namespace ERP.winforms.UI.Views
                         return;
                     }
 
+                    // Double-check dynamic capacity inside the database transaction
+                    int dbTotal = masterDb.CompanyDatabases.Count(d => d.IsActive);
+                    int dbActive = masterDb.CompanyDatabases.Count(d => d.IsActive && masterDb.Companies.Any(c => c.CompanyId == d.CompanyId && c.IsActive));
+                    if (dbActive >= dbTotal)
+                    {
+                        MessageBox.Show(
+                            "No available tenant database.\nAll configured tenant database slots are currently in use.\nDeactivate an existing tenant before registering a new tenant.",
+                            "Registration Blocked",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
+                        return;
+                    }
+
                     var newComp = new Company
                     {
                         CompanyCode = code,
@@ -512,15 +573,46 @@ namespace ERP.winforms.UI.Views
                     masterDb.Companies.Add(newComp);
                     masterDb.SaveChanges();
 
-                    var newDb = new CompanyDatabase
+                    // Find if there is an unassigned or available slot configuration to link
+                    var candidateSlot = masterDb.CompanyDatabases
+                        .FirstOrDefault(d => d.IsActive && d.DatabaseName.ToLower() == dbName.ToLower());
+
+                    if (candidateSlot != null)
                     {
-                        CompanyId = newComp.CompanyId,
-                        DatabaseName = dbName,
-                        ServerName = "(localdb)\\MSSQLLocalDB",
-                        CredentialKey = "LocalTrusted",
-                        IsActive = true
-                    };
-                    masterDb.CompanyDatabases.Add(newDb);
+                        candidateSlot.CompanyId = newComp.CompanyId;
+                        candidateSlot.ServerName = serverName;
+                        candidateSlot.IsActive = true;
+                    }
+                    else
+                    {
+                        var availableSlot = masterDb.CompanyDatabases
+                            .FirstOrDefault(d => d.IsActive && !masterDb.Companies.Any(c => c.CompanyId == d.CompanyId && c.IsActive));
+
+                        if (availableSlot != null && !masterDb.Companies.Any(c => c.CompanyId == availableSlot.CompanyId))
+                        {
+                            availableSlot.CompanyId = newComp.CompanyId;
+                            availableSlot.DatabaseName = dbName;
+                            availableSlot.ServerName = serverName;
+                            availableSlot.IsActive = true;
+                        }
+                        else
+                        {
+                            if (availableSlot != null)
+                            {
+                                availableSlot.IsActive = false; // preserve data and slot history
+                            }
+                            var newDb = new CompanyDatabase
+                            {
+                                CompanyId = newComp.CompanyId,
+                                DatabaseName = dbName,
+                                ServerName = serverName,
+                                CredentialKey = "LocalTrusted",
+                                IsActive = true
+                            };
+                            masterDb.CompanyDatabases.Add(newDb);
+                        }
+                    }
+
                     masterDb.SaveChanges();
 
                     MessageBox.Show($"Tenant '{name}' registered successfully with ID {newComp.CompanyId}.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -543,7 +635,9 @@ namespace ERP.winforms.UI.Views
             dlg.Controls.Add(lblPlan);
             dlg.Controls.Add(cboPlan);
             dlg.Controls.Add(lblDb);
-            dlg.Controls.Add(txtDb);
+            dlg.Controls.Add(cboDb);
+            dlg.Controls.Add(lblServer);
+            dlg.Controls.Add(txtServer);
             dlg.Controls.Add(btnCreate);
             dlg.Controls.Add(btnCancel);
 
