@@ -47,6 +47,7 @@ namespace ERP.winforms
 
         // Navigation tab buttons
         private Button? _btnNavDashboard;
+        private Button? _btnNavSupportIncome;
         private Button? _btnNavBI;
         private Button? _btnNavProducts;
         private Button? _btnNavPOS;
@@ -427,6 +428,7 @@ namespace ERP.winforms
             _pnlTabsTrack.MouseWheel += HandleWheel;
 
             int tabX = 10;
+            _dataService.RefreshCompanyPlan();
             var plan = ModuleAccessService.NormalizePlan(_dataService.CurrentCompany?.PlanName);
 
             bool isAdmin = _currentRole.Contains("Admin", StringComparison.OrdinalIgnoreCase) || 
@@ -465,16 +467,27 @@ namespace ERP.winforms
             }
             else
             {
-                // 1. Dashboard (Medium Enterprise only)
-                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Dashboard))
+                // 1. Dashboard (Standardized name for all tenants; layout is plan-aware)
+                _btnNavDashboard = CreateEnterpriseTab("Dashboard", tabX, 130);
+                _btnNavDashboard.Click += (s, e) =>
                 {
-                    _btnNavDashboard = CreateEnterpriseTab("Dashboard", tabX, 130);
-                    _btnNavDashboard.Click += (s, e) => SwitchView(_dashboardView, _btnNavDashboard);
-                    _pnlTabsTrack.Controls.Add(_btnNavDashboard);
-                    tabX += 132;
+                    _dashboardView.SetDashboardMode(DashboardMode.StoreOperations);
+                    SwitchView(_dashboardView, _btnNavDashboard);
+                };
+                _pnlTabsTrack.Controls.Add(_btnNavDashboard);
+                tabX += 132;
+
+                // 2. Support Generative Income (Small & Medium only)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.SupportGenerativeIncome))
+                {
+                    _btnNavSupportIncome = CreateEnterpriseTab("Support Generative Income", tabX, 195);
+                    _btnNavSupportIncome.Click += (s, e) => SwitchView(_repairsView, _btnNavSupportIncome);
+                    _pnlTabsTrack.Controls.Add(_btnNavSupportIncome);
+                    tabX += 197;
                 }
-                // 2. Business Intelligence (Small Business tier)
-                else if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.BusinessIntelligence))
+
+                // 3. Business Intelligence (Small & Medium only, separate module)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.BusinessIntelligence))
                 {
                     _btnNavBI = CreateEnterpriseTab("Business Intelligence", tabX, 175);
                     _btnNavBI.Click += (s, e) =>
@@ -772,6 +785,16 @@ namespace ERP.winforms
             if (view is FinanceView && !ModuleAccessService.IsModuleEnabled(_dataService.CurrentCompany?.PlanName, ErpModule.FinancialStatements))
             {
                 MessageBox.Show("Financial Statements & Executive P&L is restricted to Medium Enterprise plans.", "Plan Restricted", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (navButton == _btnNavSupportIncome && !ModuleAccessService.IsModuleEnabled(_dataService.CurrentCompany?.PlanName, ErpModule.SupportGenerativeIncome))
+            {
+                MessageBox.Show("Support Generative Income is restricted to Small and Medium plans.", "Plan Restricted", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (navButton == _btnNavBI && !ModuleAccessService.IsModuleEnabled(_dataService.CurrentCompany?.PlanName, ErpModule.BusinessIntelligence))
+            {
+                MessageBox.Show("Business Intelligence Analytics is restricted to Small and Medium plans.", "Plan Restricted", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 

@@ -91,6 +91,35 @@ namespace ERP.winforms.Services
             }
         }
 
+        public void RefreshCompanyPlan()
+        {
+            if (ActiveCompanyId > 0 && !string.Equals(_currentCompany?.PlanName, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    using var masterDb = LocalTenantDbContextProvider.CreateMasterDbContext();
+                    var company = masterDb.Companies.AsNoTracking().FirstOrDefault(c => c.CompanyId == ActiveCompanyId);
+                    if (company != null)
+                    {
+                        if (_currentCompany != null)
+                        {
+                            _currentCompany.PlanName = company.PlanName;
+                            _currentCompany.CompanyName = company.CompanyName;
+                            _currentCompany.CompanyCode = company.CompanyCode;
+                        }
+                        var inList = Companies.FirstOrDefault(c => c.CompanyId == ActiveCompanyId);
+                        if (inList != null)
+                        {
+                            inList.PlanName = company.PlanName;
+                            inList.CompanyName = company.CompanyName;
+                            inList.CompanyCode = company.CompanyCode;
+                        }
+                    }
+                }
+                catch { }
+            }
+        }
+
         public void SwitchActiveTenantData()
         {
             Categories.Clear();

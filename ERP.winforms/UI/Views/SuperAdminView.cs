@@ -43,6 +43,7 @@ namespace ERP.winforms.UI.Views
             Subscriptions
         }
 
+        private readonly DataService _dataService = DataService.Instance;
         private SuperAdminSection _activeSection = SuperAdminSection.AdminPanel;
 
         // Content Host
@@ -851,6 +852,7 @@ namespace ERP.winforms.UI.Views
                         match.PlanName = newPlan;
                         masterDb.SaveChanges();
                     }
+                    _dataService.RefreshCompanyPlan();
                     string summary = GetPlanModulesSummary(newPlan);
                     MessageBox.Show($"Company '{selectedRow.CompanyName}' updated to '{newPlan}' plan.\n\nEntitled Modules:\n{summary}", "Plan Updated", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     LoadMasterData();
