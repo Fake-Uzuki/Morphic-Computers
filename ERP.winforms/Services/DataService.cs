@@ -4135,29 +4135,117 @@ namespace ERP.winforms.Services
             }
         }
 
-        public decimal GetTotalRetailSalesRevenue()
+        public FinancialStatementReport GetFinancialStatement(DateTime? startDate = null, DateTime? endDate = null, string? period = null)
         {
-            return Orders.Where(o => !string.Equals(o.Status, "Voided", StringComparison.OrdinalIgnoreCase)).Sum(o => o.TotalAmount);
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                try
+                {
+                    var liveReport = Task.Run(() => _apiClient.GetFinancialStatementAsync(ActiveCompanyId, startDate, endDate, period)).GetAwaiter().GetResult();
+                    if (liveReport != null)
+                    {
+                        return liveReport;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"GetFinancialStatement API error: {ex.Message}");
+                }
+            }
+
+            try
+            {
+                return Task.Run(() => _localDb.GetFinancialStatementAsync(ActiveCompanyId, startDate, endDate, period)).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"GetFinancialStatement localDb error: {ex.Message}");
+                return CalculateFinancialStatementFromMemory(startDate, endDate, period);
+            }
         }
 
-        public decimal GetTotalRepairServicesRevenue()
+        private FinancialStatementReport CalculateFinancialStatementFromMemory(DateTime? startDate, DateTime? endDate, string? period)
         {
-            return RepairTickets.Where(t => string.Equals(t.Status, "Completed", StringComparison.OrdinalIgnoreCase) || string.Equals(t.Status, "Released", StringComparison.OrdinalIgnoreCase)).Sum(t => t.TotalAmount);
+            var orders = Orders.Where(o => !string.Equals(o.Status, "Voided", StringComparison.OrdinalIgnoreCase) && !string.Equals(o.Status, "Cancelled", StringComparison.OrdinalIgnoreCase));
+            if (startDate.HasValue) orders = orders.Where(o => o.CreatedAt >= startDate.Value);
+            if (endDate.HasValue) orders = orders.Where(o => o.CreatedAt <= endDate.Value);
+            var ordersList = orders.ToList();
+
+            var repairs = RepairTickets.Where(t => t.IsActive && (string.Equals(t.Status, "Completed", StringComparison.OrdinalIgnoreCase) || string.Equals(t.Status, "Released", StringComparison.OrdinalIgnoreCase)));
+            if (startDate.HasValue) repairs = repairs.Where(t => (t.CompletedAt ?? t.CreatedAt) >= startDate.Value);
+            if (endDate.HasValue) repairs = repairs.Where(t => (t.CompletedAt ?? t.CreatedAt) <= endDate.Value);
+            var repairsList = repairs.ToList();
+
+            var expenses = ExpenseRecords.Where(e => e.IsActive);
+            if (startDate.HasValue) expenses = expenses.Where(e => e.ExpenseDate >= startDate.Value);
+            if (endDate.HasValue) expenses = expenses.Where(e => e.ExpenseDate <= endDate.Value);
+            var expensesList = expenses.ToList();
+
+            var payroll = PayrollRecords.Where(p => !string.Equals(p.Status, "Voided", StringComparison.OrdinalIgnoreCase));
+            if (startDate.HasValue) payroll = payroll.Where(p => p.PeriodEnd >= startDate.Value);
+            if (endDate.HasValue) payroll = payroll.Where(p => p.PeriodStart <= endDate.Value);
+            var payrollList = payroll.ToList();
+
+            return new FinancialStatementReport
+            {
+                CompanyId = ActiveCompanyId,
+                PeriodStart = startDate,
+                PeriodEnd = endDate,
+                PeriodLabel = period ?? "Custom / All Time",
+                RetailSalesRevenue = ordersList.Sum(o => o.TotalAmount),
+                RepairServicesRevenue = repairsList.Sum(t => t.TotalAmount),
+                CostOfGoodsSold = 0.00m,
+                CogsStatus = "Unrecorded (Historical unit purchase cost is not tracked in product inventory catalog)",
+                PayrollExpenses = payrollList.Sum(p => p.GrossPay),
+                OperatingOverhead = expensesList.Sum(e => e.Amount),
+                VatLiability = ordersList.Sum(o => o.Tax),
+                CompletedOrdersCount = ordersList.Count,
+                CompletedRepairsCount = repairsList.Count,
+                ActiveExpensesCount = expensesList.Count,
+                PayrollDisbursementsCount = payrollList.Count,
+                GeneratedAt = DateTime.UtcNow
+            };
         }
 
-        public decimal GetTotalPayrollExpense()
+        public decimal GetTotalRetailSalesRevenue(DateTime? startDate = null, DateTime? endDate = null)
         {
-            return PayrollRecords.Sum(p => p.NetPay);
+            var query = Orders.Where(o => !string.Equals(o.Status, "Voided", StringComparison.OrdinalIgnoreCase) && !string.Equals(o.Status, "Cancelled", StringComparison.OrdinalIgnoreCase));
+            if (startDate.HasValue) query = query.Where(o => o.CreatedAt >= startDate.Value);
+            if (endDate.HasValue) query = query.Where(o => o.CreatedAt <= endDate.Value);
+            return query.Sum(o => o.TotalAmount);
         }
 
-        public decimal GetTotalOperatingExpenses()
+        public decimal GetTotalRepairServicesRevenue(DateTime? startDate = null, DateTime? endDate = null)
         {
-            return ExpenseRecords.Where(e => e.IsActive).Sum(e => e.Amount);
+            var query = RepairTickets.Where(t => t.IsActive && (string.Equals(t.Status, "Completed", StringComparison.OrdinalIgnoreCase) || string.Equals(t.Status, "Released", StringComparison.OrdinalIgnoreCase)));
+            if (startDate.HasValue) query = query.Where(t => (t.CompletedAt ?? t.CreatedAt) >= startDate.Value);
+            if (endDate.HasValue) query = query.Where(t => (t.CompletedAt ?? t.CreatedAt) <= endDate.Value);
+            return query.Sum(t => t.TotalAmount);
         }
 
-        public decimal GetTotalVatCollected()
+        public decimal GetTotalPayrollExpense(DateTime? startDate = null, DateTime? endDate = null)
         {
-            return Orders.Where(o => !string.Equals(o.Status, "Voided", StringComparison.OrdinalIgnoreCase)).Sum(o => o.Tax);
+            var query = PayrollRecords.Where(p => !string.Equals(p.Status, "Voided", StringComparison.OrdinalIgnoreCase));
+            if (startDate.HasValue) query = query.Where(p => p.PeriodEnd >= startDate.Value);
+            if (endDate.HasValue) query = query.Where(p => p.PeriodStart <= endDate.Value);
+            return query.Sum(p => p.GrossPay);
+        }
+
+        public decimal GetTotalOperatingExpenses(DateTime? startDate = null, DateTime? endDate = null)
+        {
+            var query = ExpenseRecords.Where(e => e.IsActive);
+            if (startDate.HasValue) query = query.Where(e => e.ExpenseDate >= startDate.Value);
+            if (endDate.HasValue) query = query.Where(e => e.ExpenseDate <= endDate.Value);
+            return query.Sum(e => e.Amount);
+        }
+
+        public decimal GetTotalVatCollected(DateTime? startDate = null, DateTime? endDate = null)
+        {
+            var query = Orders.Where(o => !string.Equals(o.Status, "Voided", StringComparison.OrdinalIgnoreCase) && !string.Equals(o.Status, "Cancelled", StringComparison.OrdinalIgnoreCase));
+            if (startDate.HasValue) query = query.Where(o => o.CreatedAt >= startDate.Value);
+            if (endDate.HasValue) query = query.Where(o => o.CreatedAt <= endDate.Value);
+            return query.Sum(o => o.Tax);
         }
     }
 }

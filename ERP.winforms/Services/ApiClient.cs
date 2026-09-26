@@ -921,6 +921,34 @@ namespace ERP.winforms.Services
         }
 
         // ==========================================
+        // FINANCIAL STATEMENTS & P&L (Medium Enterprise)
+        // ==========================================
+        public async Task<FinancialStatementReport?> GetFinancialStatementAsync(int companyId, DateTime? startDate = null, DateTime? endDate = null, string? period = null)
+        {
+            try
+            {
+                var queryParams = new List<string>();
+                if (startDate.HasValue) queryParams.Add($"startDate={Uri.EscapeDataString(startDate.Value.ToString("o"))}");
+                if (endDate.HasValue) queryParams.Add($"endDate={Uri.EscapeDataString(endDate.Value.ToString("o"))}");
+                if (!string.IsNullOrEmpty(period)) queryParams.Add($"period={Uri.EscapeDataString(period)}");
+
+                string url = $"/api/tenant/{companyId}/financial-statements";
+                if (queryParams.Count > 0) url += "?" + string.Join("&", queryParams);
+
+                var response = await _http.GetAsync(url).ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadFromJsonAsync<FinancialStatementReport>(_jsonOptions).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient GetFinancialStatement error: {ex.Message}");
+            }
+            return null;
+        }
+
+        // ==========================================
         // BRANCHES (Medium Enterprise Multi-Store)
         // ==========================================
         public async Task<List<Branch>?> GetBranchesAsync(int companyId, bool includeArchived = true)

@@ -2562,6 +2562,98 @@ namespace ERP.winforms.Services
             }
         }
 
+        // =========================================================================
+        // FINANCIAL STATEMENTS & P&L
+        // =========================================================================
+        public async Task<FinancialStatementReport> GetFinancialStatementAsync(int companyId, DateTime? startDate = null, DateTime? endDate = null, string? period = null)
+        {
+            string periodLabel = "All Time";
+            if (string.Equals(period, "current_month", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(period, "this_month", StringComparison.OrdinalIgnoreCase))
+            {
+                startDate = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+                endDate = startDate.Value.AddMonths(1).AddTicks(-1);
+                periodLabel = $"{startDate.Value:MMMM yyyy} (Current Month)";
+            }
+            else if (string.Equals(period, "previous_month", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(period, "last_month", StringComparison.OrdinalIgnoreCase))
+            {
+                var firstThisMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+                startDate = firstThisMonth.AddMonths(-1);
+                endDate = firstThisMonth.AddTicks(-1);
+                periodLabel = $"{startDate.Value:MMMM yyyy} (Previous Month)";
+            }
+            else if (startDate.HasValue && endDate.HasValue)
+            {
+                periodLabel = $"{startDate.Value:MMM dd, yyyy} — {endDate.Value:MMM dd, yyyy}";
+            }
+            else if (startDate.HasValue)
+            {
+                periodLabel = $"From {startDate.Value:MMM dd, yyyy}";
+            }
+            else if (endDate.HasValue)
+            {
+                periodLabel = $"Until {endDate.Value:MMM dd, yyyy}";
+            }
+
+            await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
+
+            // 1. Retail Sales Revenue
+            var ordersQuery = context.Orders.AsNoTracking()
+                .Where(o => o.CompanyId == companyId);
+            if (startDate.HasValue) ordersQuery = ordersQuery.Where(o => o.CreatedAt >= startDate.Value);
+            if (endDate.HasValue) ordersQuery = ordersQuery.Where(o => o.CreatedAt <= endDate.Value);
+            var orders = await ordersQuery.ToListAsync().ConfigureAwait(false);
+            var validOrders = orders.Where(o => o.Status != "Voided" && o.Status != "Cancelled").ToList();
+            decimal retailSales = validOrders.Sum(o => o.TotalAmount);
+            decimal vatLiability = validOrders.Sum(o => o.Tax);
+
+            // 2. Repair Services Revenue
+            var repairsQuery = context.RepairTickets.AsNoTracking()
+                .Where(t => t.CompanyId == companyId && t.IsActive &&
+                            (t.Status == "Completed" || t.Status == "Released"));
+            if (startDate.HasValue) repairsQuery = repairsQuery.Where(t => (t.CompletedAt ?? t.CreatedAt) >= startDate.Value);
+            if (endDate.HasValue) repairsQuery = repairsQuery.Where(t => (t.CompletedAt ?? t.CreatedAt) <= endDate.Value);
+            var repairs = await repairsQuery.ToListAsync().ConfigureAwait(false);
+            decimal repairSales = repairs.Sum(t => t.TotalAmount);
+
+            // 3. Operating Overhead Expenses
+            var expensesQuery = context.Expenses.AsNoTracking()
+                .Where(e => e.CompanyId == companyId && e.IsActive);
+            if (startDate.HasValue) expensesQuery = expensesQuery.Where(e => e.ExpenseDate >= startDate.Value);
+            if (endDate.HasValue) expensesQuery = expensesQuery.Where(e => e.ExpenseDate <= endDate.Value);
+            var expenses = await expensesQuery.ToListAsync().ConfigureAwait(false);
+            decimal operatingOverhead = expenses.Sum(e => e.Amount);
+
+            // 4. Labor & Payroll Compensation (Gross Pay represents employer liability)
+            var payrollQuery = context.PayrollRecords.AsNoTracking()
+                .Where(p => p.CompanyId == companyId && p.Status != "Voided");
+            if (startDate.HasValue) payrollQuery = payrollQuery.Where(p => p.PeriodEnd >= startDate.Value);
+            if (endDate.HasValue) payrollQuery = payrollQuery.Where(p => p.PeriodStart <= endDate.Value);
+            var payrolls = await payrollQuery.ToListAsync().ConfigureAwait(false);
+            decimal payrollCosts = payrolls.Sum(p => p.GrossPay);
+
+            return new FinancialStatementReport
+            {
+                CompanyId = companyId,
+                PeriodStart = startDate,
+                PeriodEnd = endDate,
+                PeriodLabel = periodLabel,
+                RetailSalesRevenue = retailSales,
+                RepairServicesRevenue = repairSales,
+                CostOfGoodsSold = 0.00m,
+                CogsStatus = "Unrecorded (Historical unit purchase cost is not tracked in product inventory catalog)",
+                PayrollExpenses = payrollCosts,
+                OperatingOverhead = operatingOverhead,
+                VatLiability = vatLiability,
+                CompletedOrdersCount = validOrders.Count,
+                CompletedRepairsCount = repairs.Count,
+                ActiveExpensesCount = expenses.Count,
+                PayrollDisbursementsCount = payrolls.Count,
+                GeneratedAt = DateTime.UtcNow
+            };
+        }
+
 #pragma warning disable EF1002
         private static async Task InsertWithIdentityAsync<TEntity>(TenantErpDbContext context, string tableName, IEnumerable<TEntity> entities) where TEntity : class
         {

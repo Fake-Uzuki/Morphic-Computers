@@ -716,6 +716,27 @@ namespace ERP.winforms
 
         private void SwitchView(UserControl view, Button? navButton)
         {
+            if (view is BranchManagementView && !ModuleAccessService.IsModuleEnabled(_dataService.CurrentCompany?.PlanName, ErpModule.BranchManagement))
+            {
+                MessageBox.Show("Branch Management is restricted to Medium Enterprise plans.", "Plan Restricted", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (view is ProcurementView && !ModuleAccessService.IsModuleEnabled(_dataService.CurrentCompany?.PlanName, ErpModule.Procurement))
+            {
+                MessageBox.Show("Procurement & Supply Chain is restricted to Medium Enterprise plans.", "Plan Restricted", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (view is PayrollView && !ModuleAccessService.IsModuleEnabled(_dataService.CurrentCompany?.PlanName, ErpModule.Payroll))
+            {
+                MessageBox.Show("Store Payroll is restricted to Medium Enterprise plans.", "Plan Restricted", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (view is FinanceView && !ModuleAccessService.IsModuleEnabled(_dataService.CurrentCompany?.PlanName, ErpModule.FinancialStatements))
+            {
+                MessageBox.Show("Financial Statements & Executive P&L is restricted to Medium Enterprise plans.", "Plan Restricted", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             if (_notificationFlyout != null) _notificationFlyout.Visible = false;
 
             if (_activeNavButton != null)

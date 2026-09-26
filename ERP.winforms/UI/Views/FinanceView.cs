@@ -4,6 +4,7 @@ using System.Drawing.Printing;
 using System.Linq;
 using System.Windows.Forms;
 using ERP.domain.entities;
+using ERP.domain.security;
 using ERP.winforms.Services;
 using ERP.winforms.Theme;
 using ERP.winforms.UI.Components;
@@ -16,6 +17,19 @@ namespace ERP.winforms.UI.Views
         private readonly DataService _dataService = DataService.Instance;
         private readonly string _currentUser;
         private readonly string _currentRole;
+
+        // Period Filtering Controls
+        private ComboBox _cboPeriodFilter = null!;
+        private DateTimePicker _dtpFrom = null!;
+        private DateTimePicker _dtpTo = null!;
+        private Label _lblToSep = null!;
+        private Label _lblPlPeriod = null!;
+
+        // Layout Containers
+        private TableLayoutPanel _tlpKpis = null!;
+        private TableLayoutPanel _tlpSplit = null!;
+        private Panel _pnlPlanRestricted = null!;
+        private Label _lblRestrictedMsg = null!;
 
         // KPI Summary Cards
         private Label _lblKpiGrossRevenue = null!;
@@ -38,6 +52,9 @@ namespace ERP.winforms.UI.Views
         private TextBox _txtSearch = null!;
         private FlowLayoutPanel _flpFilterPills = null!;
         private string _currentCategoryFilter = "All";
+
+        // Current Report Cache
+        private FinancialStatementReport? _lastReport;
 
         public FinanceView(string currentUser = "Admin", string currentRole = "Store Administrator")
         {
@@ -82,25 +99,105 @@ namespace ERP.winforms.UI.Views
             {
                 Dock = DockStyle.Top,
                 Height = 44,
-                Padding = new Padding(20, 10, 20, 8),
+                Padding = new Padding(20, 6, 20, 6),
                 BackColor = Color.FromArgb(24, 25, 20)
             };
 
             Label lblBannerTitle = new Label
             {
-                Text = "Store Finance",
+                Text = "Store Finance & Statements",
                 Font = new Font("Segoe UI", 12F, FontStyle.Bold),
                 ForeColor = AppTheme.HeaderBrandGold,
                 Location = new Point(20, 10),
                 AutoSize = true
             };
 
+            // Period Filter Controls (Right-aligned)
+            FlowLayoutPanel flpPeriod = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Right,
+                AutoSize = true,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                BackColor = Color.Transparent,
+                Margin = new Padding(0),
+                Padding = new Padding(0, 4, 10, 0)
+            };
+
+            Label lblPeriodPrompt = new Label
+            {
+                Text = "Period:",
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(200, 200, 190),
+                AutoSize = true,
+                Margin = new Padding(0, 6, 6, 0)
+            };
+
+            _cboPeriodFilter = new ComboBox
+            {
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
+                Width = 115,
+                Margin = new Padding(0, 2, 8, 0)
+            };
+            _cboPeriodFilter.Items.AddRange(new object[] { "All Time", "This Month", "Last Month", "Custom Range" });
+            _cboPeriodFilter.SelectedIndex = 0; // Default All Time
+
+            _dtpFrom = new DateTimePicker
+            {
+                Format = DateTimePickerFormat.Short,
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
+                Width = 95,
+                Visible = false,
+                Value = DateTime.Today.AddMonths(-1),
+                Margin = new Padding(0, 2, 4, 0)
+            };
+
+            _lblToSep = new Label
+            {
+                Text = "to",
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
+                ForeColor = Color.FromArgb(200, 200, 190),
+                AutoSize = true,
+                Visible = false,
+                Margin = new Padding(0, 6, 4, 0)
+            };
+
+            _dtpTo = new DateTimePicker
+            {
+                Format = DateTimePickerFormat.Short,
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
+                Width = 95,
+                Visible = false,
+                Value = DateTime.Today,
+                Margin = new Padding(0, 2, 8, 0)
+            };
+
+            _cboPeriodFilter.SelectedIndexChanged += (s, e) =>
+            {
+                bool isCustom = _cboPeriodFilter.SelectedItem?.ToString() == "Custom Range";
+                _dtpFrom.Visible = isCustom;
+                _lblToSep.Visible = isCustom;
+                _dtpTo.Visible = isCustom;
+                RefreshData();
+            };
+
+            _dtpFrom.ValueChanged += (s, e) => { if (_cboPeriodFilter.SelectedItem?.ToString() == "Custom Range") RefreshData(); };
+            _dtpTo.ValueChanged += (s, e) => { if (_cboPeriodFilter.SelectedItem?.ToString() == "Custom Range") RefreshData(); };
+
+            flpPeriod.Controls.Add(lblPeriodPrompt);
+            flpPeriod.Controls.Add(_cboPeriodFilter);
+            flpPeriod.Controls.Add(_dtpFrom);
+            flpPeriod.Controls.Add(_lblToSep);
+            flpPeriod.Controls.Add(_dtpTo);
+
+            pnlHeader.Controls.Add(flpPeriod);
             pnlHeader.Controls.Add(lblBannerTitle);
 
             // ========================================================
             // 2. FINANCIAL KPI CARDS ROW (Height: 78px)
             // ========================================================
-            TableLayoutPanel tlpKpis = new TableLayoutPanel
+            _tlpKpis = new TableLayoutPanel
             {
                 Dock = DockStyle.Top,
                 Height = 78,
@@ -109,10 +206,10 @@ namespace ERP.winforms.UI.Views
                 Padding = new Padding(20, 8, 20, 4),
                 BackColor = Color.Transparent
             };
-            tlpKpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
-            tlpKpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
-            tlpKpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
-            tlpKpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
+            _tlpKpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
+            _tlpKpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
+            _tlpKpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
+            _tlpKpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
 
             // Card 1: Gross Inflow
             var (card1, val1) = CreateKpiCard("TOTAL STORE REVENUE", "₱0.00", Color.FromArgb(27, 122, 79));
@@ -130,15 +227,15 @@ namespace ERP.winforms.UI.Views
             var (card4, val4) = CreateKpiCard("12% STATUTORY VAT", "₱0.00", Color.FromArgb(140, 100, 10));
             _lblKpiTaxVat = val4;
 
-            tlpKpis.Controls.Add(card1, 0, 0);
-            tlpKpis.Controls.Add(card2, 1, 0);
-            tlpKpis.Controls.Add(card3, 2, 0);
-            tlpKpis.Controls.Add(card4, 3, 0);
+            _tlpKpis.Controls.Add(card1, 0, 0);
+            _tlpKpis.Controls.Add(card2, 1, 0);
+            _tlpKpis.Controls.Add(card3, 2, 0);
+            _tlpKpis.Controls.Add(card4, 3, 0);
 
             // ========================================================
             // 3. MAIN SPLIT WORKSPACE: Expenses Ledger (Left) + P&L Statement (Right)
             // ========================================================
-            TableLayoutPanel tlpSplit = new TableLayoutPanel
+            _tlpSplit = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
@@ -146,8 +243,8 @@ namespace ERP.winforms.UI.Views
                 Padding = new Padding(20, 6, 20, 14),
                 BackColor = Color.Transparent
             };
-            tlpSplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 64f));
-            tlpSplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 36f));
+            _tlpSplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 64f));
+            _tlpSplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 36f));
 
             // ----------------------------------------------------
             // LEFT: OPERATING EXPENSES LEDGER
@@ -292,7 +389,7 @@ namespace ERP.winforms.UI.Views
             cardGrid.Controls.Add(_gridExpenses);
             pnlLeftContainer.Controls.Add(cardGrid);
             pnlLeftContainer.Controls.Add(pnlGridToolbar);
-            tlpSplit.Controls.Add(pnlLeftContainer, 0, 0);
+            _tlpSplit.Controls.Add(pnlLeftContainer, 0, 0);
 
             // ----------------------------------------------------
             // RIGHT: EXECUTIVE PROFIT & LOSS STATEMENT (P&L)
@@ -305,11 +402,13 @@ namespace ERP.winforms.UI.Views
                 CustomBorderColor = AppTheme.CardBorder
             };
 
-            Panel pnlPlHeader = new Panel { Dock = DockStyle.Top, Height = 32 };
-            Label lblPlTitle = new Label { Text = "STORE INCOME STATEMENT (P&L)", Font = new Font("Segoe UI", 10.5F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Location = new Point(0, 4), AutoSize = true };
+            Panel pnlPlHeader = new Panel { Dock = DockStyle.Top, Height = 42 };
+            Label lblPlTitle = new Label { Text = "STORE INCOME STATEMENT (P&L)", Font = new Font("Segoe UI", 10.5F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Location = new Point(0, 2), AutoSize = true };
+            _lblPlPeriod = new Label { Text = "Period: All Time", Font = new Font("Segoe UI", 8F, FontStyle.Regular), ForeColor = AppTheme.TextMuted, Location = new Point(0, 22), AutoSize = true };
             pnlPlHeader.Controls.Add(lblPlTitle);
+            pnlPlHeader.Controls.Add(_lblPlPeriod);
 
-            Panel pnlPlBody = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(0, 8, 0, 0) };
+            Panel pnlPlBody = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(0, 6, 0, 0) };
 
             int y = 6;
             _lblPlRetailSales = AddPlRow(pnlPlBody, "(+) POS Hardware Sales", "₱0.00", ref y, Color.FromArgb(27, 122, 79));
@@ -325,7 +424,18 @@ namespace ERP.winforms.UI.Views
             pnlPlBody.Controls.Add(div2);
             y += 14;
 
-            _lblPlCogs = AddPlRow(pnlPlBody, "(-) Cost of Goods Sold (Inventory Sourcing)", "-₱0.00", ref y, Color.FromArgb(184, 50, 38));
+            _lblPlCogs = AddPlRow(pnlPlBody, "(-) Cost of Goods Sold (Unrecorded)", "₱0.00", ref y, Color.FromArgb(140, 140, 140));
+            Label lblCogsNote = new Label
+            {
+                Text = "* Historical unit purchase cost is not tracked in catalog",
+                Font = new Font("Segoe UI", 7F, FontStyle.Italic),
+                ForeColor = Color.FromArgb(150, 150, 150),
+                Location = new Point(0, y - 2),
+                AutoSize = true
+            };
+            pnlPlBody.Controls.Add(lblCogsNote);
+            y += 14;
+
             _lblPlPayroll = AddPlRow(pnlPlBody, "(-) Labor & Staff Payroll Liabilities", "-₱0.00", ref y, Color.FromArgb(184, 50, 38));
             _lblPlOverhead = AddPlRow(pnlPlBody, "(-) Store Operating Overhead & Utilities", "-₱0.00", ref y, Color.FromArgb(184, 50, 38));
 
@@ -362,10 +472,65 @@ namespace ERP.winforms.UI.Views
             cardPl.Controls.Add(pnlPlBody);
             cardPl.Controls.Add(pnlPlHeader);
             cardPl.Controls.Add(pnlPlActions);
-            tlpSplit.Controls.Add(cardPl, 1, 0);
+            _tlpSplit.Controls.Add(cardPl, 1, 0);
 
-            Controls.Add(tlpSplit);
-            Controls.Add(tlpKpis);
+            // ========================================================
+            // 4. PLAN RESTRICTED BANNER / OVERLAY
+            // ========================================================
+            _pnlPlanRestricted = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Visible = false,
+                BackColor = Color.FromArgb(245, 243, 238)
+            };
+
+            Panel cardRestricted = new Panel
+            {
+                Size = new Size(580, 240),
+                BackColor = Color.White,
+                Location = new Point(50, 50)
+            };
+            cardRestricted.Paint += (s, e) =>
+            {
+                using var p = new Pen(Color.FromArgb(210, 205, 195), 1);
+                e.Graphics.DrawRectangle(p, 0, 0, cardRestricted.Width - 1, cardRestricted.Height - 1);
+            };
+
+            Label lblRestrictedTitle = new Label
+            {
+                Text = "🔒 Medium Enterprise Plan Required",
+                Font = new Font("Segoe UI", 13F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(184, 50, 38),
+                Location = new Point(24, 24),
+                AutoSize = true
+            };
+
+            _lblRestrictedMsg = new Label
+            {
+                Text = "Financial Statements & Executive P&L is exclusive to the Medium Enterprise Plan.\nPlease upgrade your subscription to access this module.",
+                Font = new Font("Segoe UI", 9.5F, FontStyle.Regular),
+                ForeColor = Color.FromArgb(60, 60, 60),
+                Location = new Point(24, 65),
+                Size = new Size(530, 80)
+            };
+
+            Label lblRestrictedHint = new Label
+            {
+                Text = "Plan Entitlements: Micro (Generative Income, Reports) | Small (+Support Income) | Medium (+Procurement, +Payroll, +Financial Statements, +Dashboard)",
+                Font = new Font("Segoe UI", 8F, FontStyle.Italic),
+                ForeColor = Color.FromArgb(120, 120, 120),
+                Location = new Point(24, 160),
+                Size = new Size(530, 40)
+            };
+
+            cardRestricted.Controls.Add(lblRestrictedTitle);
+            cardRestricted.Controls.Add(_lblRestrictedMsg);
+            cardRestricted.Controls.Add(lblRestrictedHint);
+            _pnlPlanRestricted.Controls.Add(cardRestricted);
+
+            Controls.Add(_pnlPlanRestricted);
+            Controls.Add(_tlpSplit);
+            Controls.Add(_tlpKpis);
             Controls.Add(pnlHeader);
         }
 
@@ -457,45 +622,81 @@ namespace ERP.winforms.UI.Views
 
         public void RefreshData()
         {
-            // 1. Calculate Real Financial Metrics
-            decimal retailSales = _dataService.GetTotalRetailSalesRevenue();
-            decimal repairSales = _dataService.GetTotalRepairServicesRevenue();
-            decimal grossRevenue = retailSales + repairSales;
+            var plan = _dataService.CurrentCompany?.PlanName;
+            bool isAllowed = ModuleAccessService.IsModuleEnabled(plan, ErpModule.FinancialStatements);
 
-            // Estimated Cost of Goods Sold (approx 68% hardware sourcing cost)
-            decimal estimatedCogs = Math.Round(retailSales * 0.68m, 2);
-            decimal payrollCosts = _dataService.GetTotalPayrollExpense();
-            decimal operatingOverhead = _dataService.GetTotalOperatingExpenses();
-            decimal totalExpenses = estimatedCogs + payrollCosts + operatingOverhead;
+            if (!isAllowed)
+            {
+                _tlpKpis.Visible = false;
+                _tlpSplit.Visible = false;
+                _pnlPlanRestricted.Visible = true;
+                _lblRestrictedMsg.Text = $"Financial Statements & Executive P&L is exclusive to the Medium Enterprise Plan.\nYour current plan is '{plan ?? "Micro"}'. Please upgrade your subscription to access this module.";
+                return;
+            }
 
-            decimal netProfit = grossRevenue - totalExpenses;
-            decimal vatLiability = _dataService.GetTotalVatCollected();
+            _tlpKpis.Visible = true;
+            _tlpSplit.Visible = true;
+            _pnlPlanRestricted.Visible = false;
+
+            // Determine active period filter
+            string selectedPeriod = _cboPeriodFilter?.SelectedItem?.ToString() ?? "All Time";
+            DateTime? startDate = null;
+            DateTime? endDate = null;
+            string periodLabel = selectedPeriod;
+
+            DateTime now = DateTime.Now;
+            if (selectedPeriod == "This Month")
+            {
+                startDate = new DateTime(now.Year, now.Month, 1);
+                endDate = startDate.Value.AddMonths(1).AddTicks(-1);
+                periodLabel = $"This Month ({startDate.Value:MMM yyyy})";
+            }
+            else if (selectedPeriod == "Last Month")
+            {
+                DateTime prev = now.AddMonths(-1);
+                startDate = new DateTime(prev.Year, prev.Month, 1);
+                endDate = new DateTime(now.Year, now.Month, 1).AddTicks(-1);
+                periodLabel = $"Last Month ({startDate.Value:MMM yyyy})";
+            }
+            else if (selectedPeriod == "Custom Range")
+            {
+                startDate = _dtpFrom.Value.Date;
+                endDate = _dtpTo.Value.Date.AddDays(1).AddTicks(-1);
+                periodLabel = $"Custom ({startDate.Value:MMM dd, yyyy} - {_dtpTo.Value.Date:MMM dd, yyyy})";
+            }
+
+            // 1. Fetch Real Statement from DataService (API / Local SQL / Memory)
+            var report = _dataService.GetFinancialStatement(startDate, endDate, periodLabel);
+            _lastReport = report;
 
             // 2. Update Top KPI Cards
-            _lblKpiGrossRevenue.Text = $"₱{grossRevenue:N2}";
-            _lblKpiTotalExpenses.Text = $"₱{operatingOverhead:N2}";
-            _lblKpiNetProfit.Text = $"₱{netProfit:N2}";
-            _lblKpiNetProfit.ForeColor = netProfit >= 0 ? Color.FromArgb(34, 197, 94) : Color.FromArgb(239, 68, 68);
-            _lblKpiTaxVat.Text = $"₱{vatLiability:N2}";
+            _lblKpiGrossRevenue.Text = $"₱{report.GrossRevenue:N2}";
+            _lblKpiTotalExpenses.Text = $"₱{report.OperatingOverhead:N2}";
+            _lblKpiNetProfit.Text = $"₱{report.NetOperatingProfit:N2}";
+            _lblKpiNetProfit.ForeColor = report.NetOperatingProfit >= 0 ? Color.FromArgb(34, 197, 94) : Color.FromArgb(239, 68, 68);
+            _lblKpiTaxVat.Text = $"₱{report.VatLiability:N2}";
 
             // 3. Update P&L Statement
-            _lblPlRetailSales.Text = $"₱{retailSales:N2}";
-            _lblPlRepairSales.Text = $"₱{repairSales:N2}";
-            _lblPlGrossRevenue.Text = $"₱{grossRevenue:N2}";
-            _lblPlCogs.Text = $"-₱{estimatedCogs:N2}";
-            _lblPlPayroll.Text = $"-₱{payrollCosts:N2}";
-            _lblPlOverhead.Text = $"-₱{operatingOverhead:N2}";
-            _lblPlNetProfit.Text = $"₱{netProfit:N2}";
-            _lblPlNetProfit.ForeColor = netProfit >= 0 ? Color.FromArgb(27, 122, 79) : Color.FromArgb(184, 50, 38);
-            _lblPlVat.Text = $"₱{vatLiability:N2}";
+            _lblPlPeriod.Text = $"Period: {report.PeriodLabel}";
+            _lblPlRetailSales.Text = $"₱{report.RetailSalesRevenue:N2}";
+            _lblPlRepairSales.Text = $"₱{report.RepairServicesRevenue:N2}";
+            _lblPlGrossRevenue.Text = $"₱{report.GrossRevenue:N2}";
+            _lblPlCogs.Text = $"₱0.00 (Unrecorded)";
+            _lblPlPayroll.Text = $"-₱{report.PayrollExpenses:N2}";
+            _lblPlOverhead.Text = $"-₱{report.OperatingOverhead:N2}";
+            _lblPlNetProfit.Text = $"₱{report.NetOperatingProfit:N2}";
+            _lblPlNetProfit.ForeColor = report.NetOperatingProfit >= 0 ? Color.FromArgb(27, 122, 79) : Color.FromArgb(184, 50, 38);
+            _lblPlVat.Text = $"₱{report.VatLiability:N2}";
 
-            // 4. Update Grid
-            ApplyExpenseFilters();
+            // 4. Update Grid with active period
+            ApplyExpenseFilters(startDate, endDate);
         }
 
-        private void ApplyExpenseFilters()
+        private void ApplyExpenseFilters(DateTime? startDate = null, DateTime? endDate = null)
         {
-            string q = _txtSearch.Text.Trim().ToLowerInvariant();
+            if (_gridExpenses == null) return;
+
+            string q = _txtSearch?.Text.Trim().ToLowerInvariant() ?? "";
             var filtered = _dataService.ExpenseRecords.AsEnumerable();
 
             if (_currentCategoryFilter == "Archived")
@@ -509,6 +710,15 @@ namespace ERP.winforms.UI.Views
                 {
                     filtered = filtered.Where(e => e.Category.Contains(_currentCategoryFilter, StringComparison.OrdinalIgnoreCase));
                 }
+            }
+
+            if (startDate.HasValue)
+            {
+                filtered = filtered.Where(e => e.ExpenseDate >= startDate.Value);
+            }
+            if (endDate.HasValue)
+            {
+                filtered = filtered.Where(e => e.ExpenseDate <= endDate.Value);
             }
 
             if (!string.IsNullOrWhiteSpace(q))
@@ -540,6 +750,7 @@ namespace ERP.winforms.UI.Views
 
         private void PrintStatement()
         {
+            var r = _lastReport ?? _dataService.GetFinancialStatement();
             try
             {
                 PrintDocument pd = new PrintDocument();
@@ -554,28 +765,28 @@ namespace ERP.winforms.UI.Views
                     using var pen = new Pen(Color.FromArgb(200, 200, 200), 1);
 
                     int py = 40;
-                    ev.Graphics?.DrawString("MONTHLY STORE INCOME STATEMENT (PROFIT & LOSS)", fontTitle, brush, 40, py);
+                    ev.Graphics?.DrawString("STORE FINANCIAL STATEMENT (PROFIT & LOSS)", fontTitle, brush, 40, py);
                     py += 26;
-                    ev.Graphics?.DrawString($"Store: {_dataService.CurrentCompany?.CompanyName ?? "Morphic Computers"} | Period: {DateTime.Now:MMMM yyyy} | Generated by: {_currentUser}", fontSub, brush, 40, py);
+                    ev.Graphics?.DrawString($"Store: {_dataService.CurrentCompany?.CompanyName ?? "Morphic Computers"} | Period: {r.PeriodLabel} | Generated: {r.GeneratedAt.ToLocalTime():MMM dd, yyyy HH:mm} | By: {_currentUser}", fontSub, brush, 40, py);
                     py += 24;
                     ev.Graphics?.DrawLine(pen, 40, py, 750, py);
                     py += 15;
 
                     ev.Graphics?.DrawString("1. REVENUE / CASH INFLOW", fontHdr, brush, 40, py); py += 22;
-                    ev.Graphics?.DrawString($"   Retail Hardware Sales (POS): {_lblPlRetailSales.Text}", fontRow, brush, 40, py); py += 20;
-                    ev.Graphics?.DrawString($"   Repair Bench Services: {_lblPlRepairSales.Text}", fontRow, brush, 40, py); py += 20;
-                    ev.Graphics?.DrawString($"   TOTAL GROSS INFLOW: {_lblPlGrossRevenue.Text}", fontTotal, brush, 40, py); py += 30;
+                    ev.Graphics?.DrawString($"   Retail Hardware Sales (POS): ₱{r.RetailSalesRevenue:N2} ({r.CompletedOrdersCount} completed orders)", fontRow, brush, 40, py); py += 20;
+                    ev.Graphics?.DrawString($"   Repair Bench Services: ₱{r.RepairServicesRevenue:N2} ({r.CompletedRepairsCount} completed tickets)", fontRow, brush, 40, py); py += 20;
+                    ev.Graphics?.DrawString($"   TOTAL GROSS INFLOW: ₱{r.GrossRevenue:N2}", fontTotal, brush, 40, py); py += 30;
 
                     ev.Graphics?.DrawString("2. EXPENDITURES & COST OF SALES", fontHdr, brush, 40, py); py += 22;
-                    ev.Graphics?.DrawString($"   Hardware Sourcing / COGS (Inventory): {_lblPlCogs.Text}", fontRow, brush, 40, py); py += 20;
-                    ev.Graphics?.DrawString($"   Labor, Salaries & Payroll Liabilities: {_lblPlPayroll.Text}", fontRow, brush, 40, py); py += 20;
-                    ev.Graphics?.DrawString($"   Store Overhead, Rent & Utilities: {_lblPlOverhead.Text}", fontRow, brush, 40, py); py += 20;
+                    ev.Graphics?.DrawString($"   Hardware Sourcing / COGS (Inventory): ₱{r.CostOfGoodsSold:N2} [{r.CogsStatus}]", fontRow, brush, 40, py); py += 20;
+                    ev.Graphics?.DrawString($"   Labor, Salaries & Payroll Liabilities: ₱{r.PayrollExpenses:N2} ({r.PayrollDisbursementsCount} staff payroll disbursements)", fontRow, brush, 40, py); py += 20;
+                    ev.Graphics?.DrawString($"   Store Overhead, Rent & Utilities: ₱{r.OperatingOverhead:N2} ({r.ActiveExpensesCount} active expenses)", fontRow, brush, 40, py); py += 20;
                     py += 10;
                     ev.Graphics?.DrawLine(pen, 40, py, 750, py);
                     py += 15;
 
-                    ev.Graphics?.DrawString($"NET STORE OPERATING PROFIT: {_lblPlNetProfit.Text}", fontTitle, brush, 40, py); py += 28;
-                    ev.Graphics?.DrawString($"12% Statutory VAT Collected for Remittance: {_lblPlVat.Text}", fontSub, brush, 40, py);
+                    ev.Graphics?.DrawString($"NET STORE OPERATING PROFIT: ₱{r.NetOperatingProfit:N2}", fontTitle, brush, 40, py); py += 28;
+                    ev.Graphics?.DrawString($"12% Statutory VAT Collected for Remittance: ₱{r.VatLiability:N2}", fontSub, brush, 40, py);
                 };
 
                 using var pdlg = new PrintDialog { Document = pd };
