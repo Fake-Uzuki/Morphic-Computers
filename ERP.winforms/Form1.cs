@@ -337,13 +337,18 @@ namespace ERP.winforms
             _pnlTopRight.Controls.Add(pnlUser);
             _pnlTopRight.Controls.Add(_btnLogout);
 
-            // Branch Selector (Tenant Operations only, hidden for Super Admin)
+            // Branch Selector (Visible only for plans with Branch Management entitlement)
+            var currentTenantPlan = ModuleAccessService.NormalizePlan(_dataService.CurrentCompany?.PlanName);
+            bool isBranchAllowed = !isPlatformAdmin &&
+                                   ModuleAccessService.IsTenantOperationalAllowed(currentTenantPlan) &&
+                                   ModuleAccessService.IsModuleEnabled(currentTenantPlan, ErpModule.BranchManagement);
+
             _pnlBranchSelector = new Panel
             {
                 Location = new Point(56 + lblBrandName.PreferredSize.Width + lblTagline.PreferredSize.Width + 24, 11),
                 Size = new Size(245, 32),
                 BackColor = Color.FromArgb(32, 34, 28),
-                Visible = !isPlatformAdmin
+                Visible = isBranchAllowed
             };
 
             Label lblBranchTitle = new Label
@@ -1274,8 +1279,13 @@ namespace ERP.winforms
         {
             if (_cboBranchSelector == null || _pnlBranchSelector == null) return;
 
-            bool isPlatformAdmin = ModuleAccessService.NormalizePlan(_dataService.CurrentCompany?.PlanName) == ErpPlan.SuperAdmin;
-            if (isPlatformAdmin)
+            var currentPlan = ModuleAccessService.NormalizePlan(_dataService.CurrentCompany?.PlanName);
+            bool isPlatformAdmin = currentPlan == ErpPlan.SuperAdmin;
+            bool isBranchAllowed = !isPlatformAdmin &&
+                                   ModuleAccessService.IsTenantOperationalAllowed(currentPlan) &&
+                                   ModuleAccessService.IsModuleEnabled(currentPlan, ErpModule.BranchManagement);
+
+            if (!isBranchAllowed)
             {
                 _pnlBranchSelector.Visible = false;
                 return;
