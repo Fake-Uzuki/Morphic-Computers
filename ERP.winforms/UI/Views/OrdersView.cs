@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using ERP.domain.entities;
+using ERP.domain.services;
 using ERP.winforms.Services;
 using ERP.winforms.Theme;
 using ERP.winforms.UI.Components;
@@ -48,6 +49,8 @@ namespace ERP.winforms.UI.Views
             public decimal Tax { get; set; }
             public decimal Total { get; set; }
             public string Status { get; set; } = "Completed";
+            public int? BranchId { get; set; }
+            public string BranchName { get; set; } = "Historical / Unassigned";
         }
 
         private readonly List<SalesRecord> _allTransactions = new();
@@ -60,6 +63,23 @@ namespace ERP.winforms.UI.Views
 
             InitializeSampleTransactions();
             InitializeLayout();
+
+            BranchContextService.Instance.ContextChanged += ctx =>
+            {
+                if (IsHandleCreated && !IsDisposed)
+                {
+                    if (InvokeRequired)
+                    {
+                        BeginInvoke(new Action(() => { InitializeSampleTransactions(); _currentPage = 1; ApplyFilters(); }));
+                    }
+                    else
+                    {
+                        InitializeSampleTransactions();
+                        _currentPage = 1;
+                        ApplyFilters();
+                    }
+                }
+            };
         }
 
         private void InitializeSampleTransactions()
@@ -69,6 +89,13 @@ namespace ERP.winforms.UI.Views
             // Include any live POS orders created
             foreach (var o in _dataService.Orders)
             {
+                string bName = "Historical / Unassigned";
+                if (o.BranchId.HasValue)
+                {
+                    var b = _dataService.Branches.FirstOrDefault(br => br.BranchId == o.BranchId.Value);
+                    bName = b?.BranchName ?? $"Branch #{o.BranchId.Value}";
+                }
+
                 _allTransactions.Insert(0, new SalesRecord
                 {
                     OrderId = o.Id.StartsWith("#") ? o.Id : $"#{o.Id}",
@@ -79,7 +106,9 @@ namespace ERP.winforms.UI.Views
                     Cashier = string.IsNullOrWhiteSpace(o.CashierName) ? "Alex M. (Cashier)" : o.CashierName,
                     Tax = o.Tax,
                     Total = o.TotalAmount,
-                    Status = string.IsNullOrWhiteSpace(o.Status) ? "Completed" : o.Status
+                    Status = string.IsNullOrWhiteSpace(o.Status) ? "Completed" : o.Status,
+                    BranchId = o.BranchId,
+                    BranchName = bName
                 });
             }
         }
@@ -369,7 +398,8 @@ namespace ERP.winforms.UI.Views
             };
 
             _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ORDER ID", FillWeight = 8, MinimumWidth = 75, Name = "ColId" });
-            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CUSTOMER NAME", FillWeight = 15, MinimumWidth = 110, Name = "ColCust" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CUSTOMER NAME", FillWeight = 14, MinimumWidth = 100, Name = "ColCust" });
+            _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "BRANCH", FillWeight = 11, MinimumWidth = 90, Name = "ColBranch" });
             _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "DATE & TIME", FillWeight = 11, MinimumWidth = 100, Name = "ColDate" });
             _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ITEMS", FillWeight = 12, MinimumWidth = 95, Name = "ColItems" });
             _gridOrders.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PAYMENT", FillWeight = 10, MinimumWidth = 85, Name = "ColPay" });
@@ -583,13 +613,21 @@ namespace ERP.winforms.UI.Views
                                          t.PaymentMethod.Contains("Invoice", StringComparison.OrdinalIgnoreCase));
             }
 
-            // 3. Search text
+            // 3. Branch filter
+            if (BranchContextService.Instance.CurrentBranchId.HasValue)
+            {
+                int activeBranchId = BranchContextService.Instance.CurrentBranchId.Value;
+                query = query.Where(t => t.BranchId == activeBranchId);
+            }
+
+            // 4. Search text
             string search = _txtSearch?.Text.Trim() ?? "";
             if (!string.IsNullOrEmpty(search))
             {
                 query = query.Where(t => t.OrderId.Contains(search, StringComparison.OrdinalIgnoreCase) ||
                                          t.Customer.Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                                         t.PaymentMethod.Contains(search, StringComparison.OrdinalIgnoreCase));
+                                         t.PaymentMethod.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                                         t.BranchName.Contains(search, StringComparison.OrdinalIgnoreCase));
             }
 
             var results = query.ToList();
@@ -608,6 +646,7 @@ namespace ERP.winforms.UI.Views
                 int rowIdx = _gridOrders.Rows.Add(
                     t.OrderId,
                     t.Customer,
+                    t.BranchName,
                     t.Date.ToString("yyyy-MM-dd HH:mm"),
                     t.ItemsSummary,
                     t.PaymentMethod,

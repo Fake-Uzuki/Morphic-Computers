@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using ERP.domain.entities;
+using ERP.domain.services;
 using ERP.winforms.Services;
 using ERP.winforms.Theme;
 using ERP.winforms.UI.Components;
@@ -314,6 +315,7 @@ namespace ERP.winforms.UI.Dialogs
                     LaborFee = _numLabor.Value,
                     PartsCost = _numParts.Value,
                     DepositAmount = _numDeposit.Value,
+                    BranchId = BranchContextService.Instance.CurrentBranchId,
                     CreatedAt = DateTime.UtcNow,
                     EstimatedCompletionDate = DateTime.UtcNow.AddDays(2)
                 };

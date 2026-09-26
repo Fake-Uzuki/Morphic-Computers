@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows.Forms;
 using ERP.domain.entities;
 using ERP.domain.security;
+using ERP.domain.services;
 using ERP.winforms.Services;
 using ERP.winforms.Theme;
 using ERP.winforms.UI.Components;
@@ -77,6 +78,15 @@ namespace ERP.winforms.UI.Views
             };
 
             _dataService.OrdersChanged += () =>
+            {
+                if (IsHandleCreated && !IsDisposed)
+                {
+                    if (InvokeRequired) BeginInvoke(new Action(RefreshData));
+                    else RefreshData();
+                }
+            };
+
+            BranchContextService.Instance.ContextChanged += ctx =>
             {
                 if (IsHandleCreated && !IsDisposed)
                 {
@@ -358,12 +368,13 @@ namespace ERP.winforms.UI.Views
                 Padding = new Padding(6, 0, 0, 0)
             };
 
-            _gridExpenses.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "EXP #", FillWeight = 14, MinimumWidth = 90, Name = "ColNum" });
-            _gridExpenses.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "DATE", FillWeight = 13, MinimumWidth = 85, Name = "ColDate" });
-            _gridExpenses.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CLASSIFICATION", FillWeight = 22, MinimumWidth = 120, Name = "ColCat" });
-            _gridExpenses.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "VENDOR / PAYEE", FillWeight = 23, MinimumWidth = 120, Name = "ColPaidTo" });
-            _gridExpenses.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "AMOUNT (PHP)", FillWeight = 16, MinimumWidth = 95, Name = "ColAmt" });
-            _gridExpenses.Columns.Add(new DataGridViewButtonColumn { HeaderText = "ACTION", FillWeight = 12, MinimumWidth = 70, Name = "ColAction" });
+            _gridExpenses.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "EXP #", FillWeight = 12, MinimumWidth = 80, Name = "ColNum" });
+            _gridExpenses.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "DATE", FillWeight = 12, MinimumWidth = 80, Name = "ColDate" });
+            _gridExpenses.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "BRANCH", FillWeight = 13, MinimumWidth = 85, Name = "ColBranch" });
+            _gridExpenses.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CLASSIFICATION", FillWeight = 19, MinimumWidth = 110, Name = "ColCat" });
+            _gridExpenses.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "VENDOR / PAYEE", FillWeight = 20, MinimumWidth = 110, Name = "ColPaidTo" });
+            _gridExpenses.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "AMOUNT (PHP)", FillWeight = 14, MinimumWidth = 90, Name = "ColAmt" });
+            _gridExpenses.Columns.Add(new DataGridViewButtonColumn { HeaderText = "ACTION", FillWeight = 10, MinimumWidth = 65, Name = "ColAction" });
 
             _gridExpenses.CellContentClick += (s, e) =>
             {
@@ -666,7 +677,7 @@ namespace ERP.winforms.UI.Views
             }
 
             // 1. Fetch Real Statement from DataService (API / Local SQL / Memory)
-            var report = _dataService.GetFinancialStatement(startDate, endDate, periodLabel);
+            var report = _dataService.GetFinancialStatement(startDate, endDate, periodLabel, BranchContextService.Instance.CurrentBranchId);
             _lastReport = report;
 
             // 2. Update Top KPI Cards
@@ -698,6 +709,12 @@ namespace ERP.winforms.UI.Views
 
             string q = _txtSearch?.Text.Trim().ToLowerInvariant() ?? "";
             var filtered = _dataService.ExpenseRecords.AsEnumerable();
+
+            if (BranchContextService.Instance.CurrentBranchId.HasValue)
+            {
+                int activeBranchId = BranchContextService.Instance.CurrentBranchId.Value;
+                filtered = filtered.Where(e => e.BranchId == activeBranchId);
+            }
 
             if (_currentCategoryFilter == "Archived")
             {
@@ -734,9 +751,17 @@ namespace ERP.winforms.UI.Views
             foreach (var exp in filtered.OrderByDescending(e => e.ExpenseDate))
             {
                 string actionText = exp.IsActive ? "📁 Archive" : "♻️ Restore";
+                string branchDisplay = "Historical / Unassigned";
+                if (exp.BranchId.HasValue)
+                {
+                    var br = _dataService.Branches.FirstOrDefault(b => b.BranchId == exp.BranchId.Value);
+                    branchDisplay = br?.BranchName ?? $"Branch #{exp.BranchId.Value}";
+                }
+
                 int rIdx = _gridExpenses.Rows.Add(
                     exp.ExpenseNumber,
                     exp.ExpenseDate.ToLocalTime().ToString("MMM dd, yyyy"),
+                    branchDisplay,
                     exp.Category,
                     exp.PaidTo,
                     $"₱{exp.Amount:N2}",

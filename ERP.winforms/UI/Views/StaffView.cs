@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using ERP.domain.entities;
+using ERP.domain.services;
 using ERP.winforms.Services;
 using ERP.winforms.Theme;
 using ERP.winforms.UI.Components;
@@ -32,6 +33,15 @@ namespace ERP.winforms.UI.Views
             {
                 if (InvokeRequired) Invoke(new Action(RefreshData));
                 else RefreshData();
+            };
+
+            BranchContextService.Instance.ContextChanged += ctx =>
+            {
+                if (IsHandleCreated && !IsDisposed)
+                {
+                    if (InvokeRequired) Invoke(new Action(RefreshData));
+                    else RefreshData();
+                }
             };
 
             RefreshData();
@@ -169,10 +179,11 @@ namespace ERP.winforms.UI.Views
                 Padding = new Padding(6, 0, 0, 0)
             };
 
-            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STAFF ID", FillWeight = 11, MinimumWidth = 75, Name = "ColCode" });
-            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "FULL NAME", FillWeight = 18, MinimumWidth = 120, Name = "ColName" });
-            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "USERNAME", FillWeight = 12, MinimumWidth = 85, Name = "ColUser" });
-            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "LOGIN PASSWORD", FillWeight = 12, MinimumWidth = 90, Name = "ColPwd" });
+            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STAFF ID", FillWeight = 10, MinimumWidth = 70, Name = "ColCode" });
+            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "FULL NAME", FillWeight = 16, MinimumWidth = 110, Name = "ColName" });
+            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ASSIGNED BRANCH", FillWeight = 14, MinimumWidth = 100, Name = "ColBranch" });
+            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "USERNAME", FillWeight = 11, MinimumWidth = 80, Name = "ColUser" });
+            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "LOGIN PASSWORD", FillWeight = 11, MinimumWidth = 85, Name = "ColPwd" });
             _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ROLE", FillWeight = 16, MinimumWidth = 110, Name = "ColRole" });
             _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "POSITION TITLE", FillWeight = 18, MinimumWidth = 120, Name = "ColPos" });
             _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CONTACT NUMBER", FillWeight = 14, MinimumWidth = 95, Name = "ColPhone" });
@@ -269,6 +280,12 @@ namespace ERP.winforms.UI.Views
             string query = _txtSearch.Text.Trim().ToLowerInvariant();
             var filtered = _dataService.StaffMembers.AsEnumerable();
 
+            if (BranchContextService.Instance.CurrentBranchId.HasValue)
+            {
+                int activeBranchId = BranchContextService.Instance.CurrentBranchId.Value;
+                filtered = filtered.Where(s => s.BranchId == activeBranchId);
+            }
+
             if (_currentRoleFilter == "Archived")
             {
                 filtered = filtered.Where(s => !s.IsActive);
@@ -293,9 +310,17 @@ namespace ERP.winforms.UI.Views
             {
                 string displayName = s.IsActive ? s.FullName : $"[ARCHIVED] {s.FullName}";
                 string pwdDisplay = string.IsNullOrWhiteSpace(s.InitialPassword) ? "staff123" : s.InitialPassword;
+                string branchDisplay = "Historical / Unassigned";
+                if (s.BranchId.HasValue)
+                {
+                    var br = _dataService.Branches.FirstOrDefault(b => b.BranchId == s.BranchId.Value);
+                    branchDisplay = br?.BranchName ?? $"Branch #{s.BranchId.Value}";
+                }
+
                 int rowIdx = _gridStaff.Rows.Add(
                     s.StaffCode,
                     displayName,
+                    branchDisplay,
                     s.Username,
                     pwdDisplay,
                     s.Role,

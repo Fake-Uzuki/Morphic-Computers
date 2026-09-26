@@ -19,5 +19,7 @@ namespace ERP.domain.entities
         public bool IsTaxDeductible { get; set; } = true;
         public bool IsActive { get; set; } = true;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public int? BranchId { get; set; }
+        public Branch? Branch { get; set; }
     }
 }

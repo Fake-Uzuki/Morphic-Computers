@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using ERP.domain.entities;
+using ERP.domain.services;
 using ERP.winforms.Services;
 using ERP.winforms.Theme;
 using ERP.winforms.UI.Components;
@@ -42,6 +43,15 @@ namespace ERP.winforms.UI.Views
             {
                 if (InvokeRequired) Invoke(new Action(RefreshData));
                 else RefreshData();
+            };
+
+            BranchContextService.Instance.ContextChanged += ctx =>
+            {
+                if (IsHandleCreated && !IsDisposed)
+                {
+                    if (InvokeRequired) Invoke(new Action(RefreshData));
+                    else RefreshData();
+                }
             };
 
             RefreshData();
@@ -190,12 +200,13 @@ namespace ERP.winforms.UI.Views
                 Padding = new Padding(6, 0, 0, 0)
             };
 
-            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TICKET #", FillWeight = 14, MinimumWidth = 90, Name = "ColTicket" });
-            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CUSTOMER", FillWeight = 16, MinimumWidth = 110, Name = "ColCust" });
-            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "DEVICE / MODEL", FillWeight = 18, MinimumWidth = 120, Name = "ColDevice" });
-            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "SYMPTOMS", FillWeight = 18, MinimumWidth = 120, Name = "ColIssue" });
-            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TECHNICIAN", FillWeight = 12, MinimumWidth = 100, Name = "ColTech" });
-            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STATUS", FillWeight = 11, MinimumWidth = 85, Name = "ColStatus" });
+            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TICKET #", FillWeight = 13, MinimumWidth = 85, Name = "ColTicket" });
+            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CUSTOMER", FillWeight = 15, MinimumWidth = 100, Name = "ColCust" });
+            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "BRANCH", FillWeight = 12, MinimumWidth = 90, Name = "ColBranch" });
+            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "DEVICE / MODEL", FillWeight = 17, MinimumWidth = 110, Name = "ColDevice" });
+            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "SYMPTOMS", FillWeight = 17, MinimumWidth = 110, Name = "ColIssue" });
+            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TECHNICIAN", FillWeight = 12, MinimumWidth = 95, Name = "ColTech" });
+            _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STATUS", FillWeight = 11, MinimumWidth = 80, Name = "ColStatus" });
             _gridRepairs.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TOTAL (PHP)", FillWeight = 11, MinimumWidth = 85, Name = "ColTotal" });
 
             _gridRepairs.SelectionChanged += (s, e) =>
@@ -461,6 +472,12 @@ namespace ERP.winforms.UI.Views
             string query = _txtSearch.Text.Trim().ToLowerInvariant();
             var filtered = _dataService.RepairTickets.AsEnumerable();
 
+            if (BranchContextService.Instance.CurrentBranchId.HasValue)
+            {
+                int activeBranchId = BranchContextService.Instance.CurrentBranchId.Value;
+                filtered = filtered.Where(t => t.BranchId == activeBranchId);
+            }
+
             if (_currentStatusFilter != "All")
             {
                 filtered = filtered.Where(t => t.Status.Equals(_currentStatusFilter, StringComparison.OrdinalIgnoreCase));
@@ -479,9 +496,17 @@ namespace ERP.winforms.UI.Views
             _gridRepairs.Rows.Clear();
             foreach (var t in filtered)
             {
+                string branchDisplay = "Historical / Unassigned";
+                if (t.BranchId.HasValue)
+                {
+                    var br = _dataService.Branches.FirstOrDefault(b => b.BranchId == t.BranchId.Value);
+                    branchDisplay = br?.BranchName ?? $"Branch #{t.BranchId.Value}";
+                }
+
                 int rowIdx = _gridRepairs.Rows.Add(
                     t.TicketNumber,
                     t.CustomerName,
+                    branchDisplay,
                     $"{t.DeviceBrandModel} ({t.DeviceType})",
                     t.ReportedIssue,
                     t.AssignedTechnician ?? "Unassigned",

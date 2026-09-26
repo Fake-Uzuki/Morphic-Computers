@@ -21,5 +21,7 @@ namespace ERP.domain.entities
         public string InitialPassword { get; set; } = "staff123";
         public bool IsActive { get; set; } = true;
         public DateTime HiredDate { get; set; } = DateTime.UtcNow;
+        public int? BranchId { get; set; }
+        public Branch? Branch { get; set; }
     }
 }

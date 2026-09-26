@@ -923,7 +923,7 @@ namespace ERP.winforms.Services
         // ==========================================
         // FINANCIAL STATEMENTS & P&L (Medium Enterprise)
         // ==========================================
-        public async Task<FinancialStatementReport?> GetFinancialStatementAsync(int companyId, DateTime? startDate = null, DateTime? endDate = null, string? period = null)
+        public async Task<FinancialStatementReport?> GetFinancialStatementAsync(int companyId, DateTime? startDate = null, DateTime? endDate = null, string? period = null, int? branchId = null)
         {
             try
             {
@@ -931,6 +931,7 @@ namespace ERP.winforms.Services
                 if (startDate.HasValue) queryParams.Add($"startDate={Uri.EscapeDataString(startDate.Value.ToString("o"))}");
                 if (endDate.HasValue) queryParams.Add($"endDate={Uri.EscapeDataString(endDate.Value.ToString("o"))}");
                 if (!string.IsNullOrEmpty(period)) queryParams.Add($"period={Uri.EscapeDataString(period)}");
+                if (branchId.HasValue) queryParams.Add($"branchId={branchId.Value}");
 
                 string url = $"/api/tenant/{companyId}/financial-statements";
                 if (queryParams.Count > 0) url += "?" + string.Join("&", queryParams);

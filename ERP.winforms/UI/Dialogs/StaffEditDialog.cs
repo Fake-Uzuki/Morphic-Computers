@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using ERP.domain.entities;
+using ERP.domain.services;
 using ERP.winforms.Services;
 using ERP.winforms.Theme;
 using ERP.winforms.UI.Components;
@@ -247,6 +248,7 @@ namespace ERP.winforms.UI.Dialogs
                     Email = _txtEmail.Text.Trim(),
                     HourlyRate = _numHourlyRate.Value,
                     MonthlySalary = _numMonthlySalary.Value,
+                    BranchId = BranchContextService.Instance.CurrentBranchId,
                     IsActive = true,
                     HiredDate = DateTime.UtcNow
                 };

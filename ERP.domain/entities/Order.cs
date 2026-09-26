@@ -19,5 +19,7 @@ namespace ERP.domain.entities
         public string? CashierName { get; set; }
         public string Status { get; set; } = "Completed";
         public DateTime? ArchivedAt { get; set; }
+        public int? BranchId { get; set; }
+        public Branch? Branch { get; set; }
     }
 }

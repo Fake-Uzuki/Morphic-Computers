@@ -4205,14 +4205,15 @@ namespace ERP.winforms.Services
             }
         }
 
-        public FinancialStatementReport GetFinancialStatement(DateTime? startDate = null, DateTime? endDate = null, string? period = null)
+        public FinancialStatementReport GetFinancialStatement(DateTime? startDate = null, DateTime? endDate = null, string? period = null, int? branchId = null)
         {
+            int? activeBranchId = branchId ?? BranchContextService.Instance.CurrentBranchId;
             bool isOnline = IsApiReachable();
             if (isOnline)
             {
                 try
                 {
-                    var liveReport = Task.Run(() => _apiClient.GetFinancialStatementAsync(ActiveCompanyId, startDate, endDate, period)).GetAwaiter().GetResult();
+                    var liveReport = Task.Run(() => _apiClient.GetFinancialStatementAsync(ActiveCompanyId, startDate, endDate, period, activeBranchId)).GetAwaiter().GetResult();
                     if (liveReport != null)
                     {
                         return liveReport;
@@ -4226,28 +4227,31 @@ namespace ERP.winforms.Services
 
             try
             {
-                return Task.Run(() => _localDb.GetFinancialStatementAsync(ActiveCompanyId, startDate, endDate, period)).GetAwaiter().GetResult();
+                return Task.Run(() => _localDb.GetFinancialStatementAsync(ActiveCompanyId, startDate, endDate, period, activeBranchId)).GetAwaiter().GetResult();
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"GetFinancialStatement localDb error: {ex.Message}");
-                return CalculateFinancialStatementFromMemory(startDate, endDate, period);
+                return CalculateFinancialStatementFromMemory(startDate, endDate, period, activeBranchId);
             }
         }
 
-        private FinancialStatementReport CalculateFinancialStatementFromMemory(DateTime? startDate, DateTime? endDate, string? period)
+        private FinancialStatementReport CalculateFinancialStatementFromMemory(DateTime? startDate, DateTime? endDate, string? period, int? branchId = null)
         {
             var orders = Orders.Where(o => !string.Equals(o.Status, "Voided", StringComparison.OrdinalIgnoreCase) && !string.Equals(o.Status, "Cancelled", StringComparison.OrdinalIgnoreCase));
+            if (branchId.HasValue) orders = orders.Where(o => o.BranchId == branchId.Value);
             if (startDate.HasValue) orders = orders.Where(o => o.CreatedAt >= startDate.Value);
             if (endDate.HasValue) orders = orders.Where(o => o.CreatedAt <= endDate.Value);
             var ordersList = orders.ToList();
 
             var repairs = RepairTickets.Where(t => t.IsActive && (string.Equals(t.Status, "Completed", StringComparison.OrdinalIgnoreCase) || string.Equals(t.Status, "Released", StringComparison.OrdinalIgnoreCase)));
+            if (branchId.HasValue) repairs = repairs.Where(t => t.BranchId == branchId.Value);
             if (startDate.HasValue) repairs = repairs.Where(t => (t.CompletedAt ?? t.CreatedAt) >= startDate.Value);
             if (endDate.HasValue) repairs = repairs.Where(t => (t.CompletedAt ?? t.CreatedAt) <= endDate.Value);
             var repairsList = repairs.ToList();
 
             var expenses = ExpenseRecords.Where(e => e.IsActive);
+            if (branchId.HasValue) expenses = expenses.Where(e => e.BranchId == branchId.Value);
             if (startDate.HasValue) expenses = expenses.Where(e => e.ExpenseDate >= startDate.Value);
             if (endDate.HasValue) expenses = expenses.Where(e => e.ExpenseDate <= endDate.Value);
             var expensesList = expenses.ToList();

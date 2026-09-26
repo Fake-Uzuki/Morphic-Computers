@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using ERP.domain.entities;
+using ERP.domain.services;
 using ERP.winforms.Services;
 using ERP.winforms.Theme;
 using ERP.winforms.UI.Components;
@@ -229,6 +230,7 @@ namespace ERP.winforms.UI.Dialogs
                 PaymentMethod = _cboPaymentMethod.SelectedItem?.ToString() ?? "Cash",
                 ReceiptRef = string.IsNullOrWhiteSpace(_txtReceiptRef.Text) ? "N/A" : _txtReceiptRef.Text.Trim(),
                 RecordedBy = _currentUser,
+                BranchId = BranchContextService.Instance.CurrentBranchId,
                 ExpenseDate = DateTime.UtcNow
             };
 

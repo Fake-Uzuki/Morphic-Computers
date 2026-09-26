@@ -40,5 +40,7 @@ namespace ERP.domain.entities
         public DateTime? CompletedAt { get; set; }
         public string? WarrantyTerms { get; set; } = "30-Day Service Warranty on replaced parts and labor.";
         public bool IsActive { get; set; } = true;
+        public int? BranchId { get; set; }
+        public Branch? Branch { get; set; }
     }
 }

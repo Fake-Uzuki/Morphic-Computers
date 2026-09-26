@@ -143,6 +143,12 @@ namespace ERP.infrastructure.data
                 entity.Ignore(x => x.Items);
                 entity.Ignore(x => x.Status);
                 entity.Ignore(x => x.ArchivedAt);
+                entity.Property(x => x.BranchId).IsRequired(false);
+                entity.HasOne(x => x.Branch)
+                    .WithMany()
+                    .HasForeignKey(x => x.BranchId)
+                    .OnDelete(DeleteBehavior.Restrict)
+                    .IsRequired(false);
             });
 
             builder.Entity<Category>(entity =>
@@ -174,6 +180,12 @@ namespace ERP.infrastructure.data
                 entity.Ignore(x => x.TotalAmount);
                 entity.Ignore(x => x.BalanceDue);
                 entity.Property(x => x.PartsSupplier).HasMaxLength(200).IsRequired(false);
+                entity.Property(x => x.BranchId).IsRequired(false);
+                entity.HasOne(x => x.Branch)
+                    .WithMany()
+                    .HasForeignKey(x => x.BranchId)
+                    .OnDelete(DeleteBehavior.Restrict)
+                    .IsRequired(false);
             });
 
             builder.Entity<StaffMember>(entity =>
@@ -187,6 +199,12 @@ namespace ERP.infrastructure.data
                 entity.Property(x => x.HourlyRate).HasPrecision(18, 2);
                 entity.Property(x => x.MonthlySalary).HasPrecision(18, 2);
                 entity.Ignore(x => x.InitialPassword);
+                entity.Property(x => x.BranchId).IsRequired(false);
+                entity.HasOne(x => x.Branch)
+                    .WithMany()
+                    .HasForeignKey(x => x.BranchId)
+                    .OnDelete(DeleteBehavior.Restrict)
+                    .IsRequired(false);
             });
 
             builder.Entity<ApprovalRequest>(entity =>
@@ -247,6 +265,12 @@ namespace ERP.infrastructure.data
                 entity.Property(x => x.RecordedBy).HasMaxLength(100).IsRequired();
                 entity.Property(x => x.ReceiptRef).HasMaxLength(100).IsRequired(false);
                 entity.Property(x => x.Notes).HasMaxLength(1000).IsRequired(false);
+                entity.Property(x => x.BranchId).IsRequired(false);
+                entity.HasOne(x => x.Branch)
+                    .WithMany()
+                    .HasForeignKey(x => x.BranchId)
+                    .OnDelete(DeleteBehavior.Restrict)
+                    .IsRequired(false);
             });
 
             builder.Entity<Branch>(entity =>

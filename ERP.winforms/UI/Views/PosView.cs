@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using ERP.domain.entities;
+using ERP.domain.services;
 using ERP.winforms.Services;
 using ERP.winforms.Theme;
 using ERP.winforms.UI.Components;
@@ -37,11 +38,28 @@ namespace ERP.winforms.UI.Views
         private string _selectedCategory = "All";
         private string _searchQuery = "";
 
+        private Label _lblBranchBadge = null!;
+
         public PosView()
         {
             Dock = DockStyle.Fill;
             BackColor = AppTheme.AppBackground;
             InitializeLayout();
+
+            BranchContextService.Instance.ContextChanged += ctx =>
+            {
+                if (IsHandleCreated && !IsDisposed)
+                {
+                    if (InvokeRequired)
+                    {
+                        BeginInvoke(new Action(() => UpdateBranchBadge()));
+                    }
+                    else
+                    {
+                        UpdateBranchBadge();
+                    }
+                }
+            };
 
             _dataService.CategoriesChanged += () =>
             {
@@ -181,14 +199,23 @@ namespace ERP.winforms.UI.Views
             };
 
             // 1. Cart Header: Title & TRANS #
-            Panel pnlCartHeader = new Panel { Dock = DockStyle.Top, Height = 36 };
+            Panel pnlCartHeader = new Panel { Dock = DockStyle.Top, Height = 56 };
             Label lblCartTitle = new Label { Text = "Active Cashier Cart", Font = new Font("Segoe UI", 12F, FontStyle.Bold), ForeColor = AppTheme.TextDark, Location = new Point(0, 4), AutoSize = true };
+
+            _lblBranchBadge = new Label
+            {
+                Location = new Point(0, 30),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                ForeColor = AppTheme.TextMuted
+            };
 
             Panel pnlTrans = new Panel { Anchor = AnchorStyles.Top | AnchorStyles.Right, Location = new Point(cardCart.Width - 140, 4), Size = new Size(115, 26), BackColor = Color.FromArgb(20, 21, 17) };
             Label lblTrans = new Label { Text = $"TRANS #{DateTime.Now:fff}", Font = new Font("Segoe UI", 7.5F, FontStyle.Bold), ForeColor = AppTheme.Primary, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter };
             pnlTrans.Controls.Add(lblTrans);
 
             pnlCartHeader.Controls.Add(lblCartTitle);
+            pnlCartHeader.Controls.Add(_lblBranchBadge);
             pnlCartHeader.Controls.Add(pnlTrans);
 
             // 2. Cashier & Customer Selection Bar (Stacked neatly)
@@ -434,7 +461,24 @@ namespace ERP.winforms.UI.Views
             Controls.Add(tlpMain);
             ResumeLayout(false);
 
+            UpdateBranchBadge();
             PopulateCatalog();
+        }
+
+        private void UpdateBranchBadge()
+        {
+            if (_lblBranchBadge == null) return;
+            var ctx = BranchContextService.Instance.CurrentContext;
+            if (ctx.IsAllBranches)
+            {
+                _lblBranchBadge.Text = "⚠️ Scope: All Branches (Select specific branch to checkout)";
+                _lblBranchBadge.ForeColor = Color.FromArgb(180, 110, 10);
+            }
+            else
+            {
+                _lblBranchBadge.Text = $"📍 Branch: {ctx.BranchName}";
+                _lblBranchBadge.ForeColor = Color.FromArgb(27, 122, 79);
+            }
         }
 
         public void PopulateCatalog()
@@ -694,6 +738,16 @@ namespace ERP.winforms.UI.Views
                 return;
             }
 
+            if (!BranchContextService.Instance.CurrentBranchId.HasValue)
+            {
+                MessageBox.Show(
+                    "Please select a specific active branch from the top header selector before processing checkout.\n\nSales transactions deduct inventory from the designated active branch.",
+                    "Branch Selection Required",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
             decimal subtotal = _cart.Sum(c => c.TotalPrice);
             decimal netSubtotal = Math.Max(0, subtotal - _appliedDiscount);
             decimal tax = Math.Round(netSubtotal * 0.12m, 2);
@@ -705,6 +759,7 @@ namespace ERP.winforms.UI.Views
             Order order = new Order
             {
                 CompanyId = _dataService.ActiveCompanyId,
+                BranchId = BranchContextService.Instance.CurrentBranchId,
                 CustomerName = custName,
                 CashierName = cashier,
                 CreatedAt = DateTime.Now,
