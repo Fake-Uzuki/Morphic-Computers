@@ -44,6 +44,10 @@ END
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Products') AND name = 'ArchivedAt')
 BEGIN
     ALTER TABLE Products ADD ArchivedAt DATETIME2 NULL;
+END
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Inventories' AND COLUMN_NAME = 'BranchId')
+BEGIN
+    ALTER TABLE Inventories ADD BranchId INT NULL;
 END";
                 await db.Database.ExecuteSqlRawAsync(sql);
                 _ensuredSchemas.TryAdd(companyId, true);
@@ -56,9 +60,11 @@ END";
 
         /// <summary>
         /// Retrieves all products with live stock quantity for the specified tenant.
+        /// When branchId is provided, stock quantity reflects only that branch.
+        /// When branchId is omitted, stock quantity reflects total consolidated stock.
         /// </summary>
         [HttpGet]
-        public async Task<IActionResult> GetProducts(int companyId)
+        public async Task<IActionResult> GetProducts(int companyId, [FromQuery] int? branchId = null)
         {
             if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
             {
@@ -69,6 +75,15 @@ END";
             {
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureProductsSchemaAsync(tenantDb, companyId);
+
+                if (branchId.HasValue)
+                {
+                    bool branchValid = await tenantDb.Branches.AnyAsync(b => b.BranchId == branchId.Value && b.CompanyId == companyId);
+                    if (!branchValid)
+                    {
+                        return BadRequest(new { error = $"Branch ID {branchId.Value} does not belong to Company {companyId}." });
+                    }
+                }
 
                 var products = await tenantDb.Products
                     .AsNoTracking()
@@ -91,13 +106,18 @@ END";
                     .AsNoTracking()
                     .ToListAsync();
 
-                // Populate live StockQuantity from Inventory records
+                // Populate live StockQuantity from Inventory records based on branch context
                 foreach (var p in products)
                 {
-                    var inv = inventories.FirstOrDefault(i => i.ProductId == p.ProductId);
-                    if (inv != null)
+                    if (branchId.HasValue)
                     {
-                        p.StockQuantity = (int)inv.QuantityOnHand;
+                        var inv = inventories.FirstOrDefault(i => i.ProductId == p.ProductId && i.BranchId == branchId.Value);
+                        p.StockQuantity = inv != null ? (int)inv.QuantityOnHand : 0;
+                    }
+                    else
+                    {
+                        var prodInvs = inventories.Where(i => i.ProductId == p.ProductId).ToList();
+                        p.StockQuantity = prodInvs.Any() ? (int)prodInvs.Sum(i => i.QuantityOnHand) : 0;
                     }
                 }
 
@@ -133,7 +153,8 @@ END";
                         ProductId = i.ProductId,
                         QuantityOnHand = i.QuantityOnHand,
                         ReorderLevel = i.ReorderLevel,
-                        LastUpdatedAt = i.LastUpdatedAt
+                        LastUpdatedAt = i.LastUpdatedAt,
+                        BranchId = i.BranchId
                     })
                     .ToListAsync();
 
@@ -155,6 +176,11 @@ END";
             if (product == null)
             {
                 return BadRequest(new { error = "Product payload is required." });
+            }
+
+            if (product.CompanyId != 0 && product.CompanyId != companyId)
+            {
+                return BadRequest(new { error = $"Cross-tenant product creation rejected. Product company ID {product.CompanyId} does not match route company ID {companyId}." });
             }
 
             if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())

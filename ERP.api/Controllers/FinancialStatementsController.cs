@@ -51,7 +51,8 @@ namespace ERP.api.Controllers
             int companyId,
             [FromQuery] DateTime? startDate = null,
             [FromQuery] DateTime? endDate = null,
-            [FromQuery] string? period = null)
+            [FromQuery] string? period = null,
+            [FromQuery] int? branchId = null)
         {
             var access = await CheckPlanAccessAsync(companyId);
             if (!access.Allowed)
@@ -93,10 +94,20 @@ namespace ERP.api.Controllers
             {
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
 
+                if (branchId.HasValue)
+                {
+                    bool branchValid = await tenantDb.Branches.AnyAsync(b => b.BranchId == branchId.Value && b.CompanyId == companyId);
+                    if (!branchValid)
+                    {
+                        return BadRequest(new { error = $"Branch ID {branchId.Value} does not belong to Company {companyId}." });
+                    }
+                }
+
                 // 1. Retail Sales Revenue (exclude Voided and Cancelled orders)
                 var ordersQuery = tenantDb.Orders.AsNoTracking()
                     .Where(o => o.CompanyId == companyId);
 
+                if (branchId.HasValue) ordersQuery = ordersQuery.Where(o => o.BranchId == branchId.Value);
                 if (startDate.HasValue) ordersQuery = ordersQuery.Where(o => o.CreatedAt >= startDate.Value);
                 if (endDate.HasValue) ordersQuery = ordersQuery.Where(o => o.CreatedAt <= endDate.Value);
 
@@ -110,6 +121,7 @@ namespace ERP.api.Controllers
                     .Where(t => t.CompanyId == companyId && t.IsActive &&
                                 (t.Status == "Completed" || t.Status == "Released"));
 
+                if (branchId.HasValue) repairsQuery = repairsQuery.Where(t => t.BranchId == branchId.Value);
                 if (startDate.HasValue) repairsQuery = repairsQuery.Where(t => (t.CompletedAt ?? t.CreatedAt) >= startDate.Value);
                 if (endDate.HasValue) repairsQuery = repairsQuery.Where(t => (t.CompletedAt ?? t.CreatedAt) <= endDate.Value);
 
@@ -120,6 +132,7 @@ namespace ERP.api.Controllers
                 var expensesQuery = tenantDb.Expenses.AsNoTracking()
                     .Where(e => e.CompanyId == companyId && e.IsActive);
 
+                if (branchId.HasValue) expensesQuery = expensesQuery.Where(e => e.BranchId == branchId.Value);
                 if (startDate.HasValue) expensesQuery = expensesQuery.Where(e => e.ExpenseDate >= startDate.Value);
                 if (endDate.HasValue) expensesQuery = expensesQuery.Where(e => e.ExpenseDate <= endDate.Value);
 

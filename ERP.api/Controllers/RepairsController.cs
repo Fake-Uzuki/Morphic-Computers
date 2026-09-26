@@ -54,6 +54,10 @@ BEGIN
         WarrantyTerms NVARCHAR(500) NULL,
         IsActive BIT NOT NULL DEFAULT 1
     );
+END
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'RepairTickets' AND COLUMN_NAME = 'BranchId')
+BEGIN
+    ALTER TABLE RepairTickets ADD BranchId INT NULL;
 END";
                 await db.Database.ExecuteSqlRawAsync(sql);
                 _ensuredSchemas.TryAdd(companyId, true);
@@ -65,7 +69,7 @@ END";
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetRepairs(int companyId)
+        public async Task<IActionResult> GetRepairs(int companyId, [FromQuery] int? branchId = null)
         {
             if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
             {
@@ -77,15 +81,29 @@ END";
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureRepairsSchemaAsync(tenantDb, companyId);
 
-                var tickets = await tenantDb.RepairTickets
-                    .AsNoTracking()
-                    .Where(t => t.IsActive)
+                if (branchId.HasValue)
+                {
+                    bool branchValid = await tenantDb.Branches.AnyAsync(b => b.BranchId == branchId.Value && b.CompanyId == companyId);
+                    if (!branchValid)
+                    {
+                        return BadRequest(new { error = $"Branch ID {branchId.Value} does not belong to Company {companyId}." });
+                    }
+                }
+
+                var query = tenantDb.RepairTickets.AsNoTracking().Where(t => t.CompanyId == companyId && t.IsActive);
+                if (branchId.HasValue)
+                {
+                    query = query.Where(t => t.BranchId == branchId.Value);
+                }
+
+                var tickets = await query
                     .OrderByDescending(t => t.CreatedAt)
                     .Select(t => new RepairTicket
                     {
                         RepairTicketId = t.RepairTicketId,
                         TicketNumber = t.TicketNumber,
                         CompanyId = t.CompanyId,
+                        BranchId = t.BranchId,
                         CustomerName = t.CustomerName,
                         CustomerPhone = t.CustomerPhone,
                         CustomerEmail = t.CustomerEmail,
@@ -124,10 +142,24 @@ END";
                 return BadRequest(new { error = "Repair ticket payload is required." });
             }
 
+            if (ticket.CompanyId != 0 && ticket.CompanyId != companyId)
+            {
+                return BadRequest(new { error = $"Cross-tenant repair ticket creation rejected. Ticket company ID {ticket.CompanyId} does not match route company ID {companyId}." });
+            }
+
             try
             {
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureRepairsSchemaAsync(tenantDb, companyId);
+
+                if (ticket.BranchId.HasValue)
+                {
+                    bool branchValid = await tenantDb.Branches.AnyAsync(b => b.BranchId == ticket.BranchId.Value && b.CompanyId == companyId);
+                    if (!branchValid)
+                    {
+                        return BadRequest(new { error = $"Cross-branch or unauthorized branch assignment rejected. Branch ID {ticket.BranchId.Value} does not belong to Company {companyId}." });
+                    }
+                }
 
                 ticket.CompanyId = companyId;
                 if (string.IsNullOrWhiteSpace(ticket.TicketNumber))
@@ -142,6 +174,7 @@ END";
                         RepairTicketId = t.RepairTicketId,
                         TicketNumber = t.TicketNumber,
                         CompanyId = t.CompanyId,
+                        BranchId = t.BranchId,
                         CustomerName = t.CustomerName,
                         Status = t.Status
                     })
@@ -159,12 +192,12 @@ END";
                         TicketNumber, CompanyId, CustomerName, CustomerPhone, CustomerEmail,
                         DeviceType, DeviceBrandModel, SerialNumber, ReportedIssue, DiagnosticNotes,
                         AssignedTechnician, Status, LaborFee, PartsCost, DepositAmount,
-                        CreatedAt, EstimatedCompletionDate, CompletedAt, WarrantyTerms, IsActive
+                        CreatedAt, EstimatedCompletionDate, CompletedAt, WarrantyTerms, IsActive, BranchId
                     ) VALUES (
                         {ticket.TicketNumber}, {ticket.CompanyId}, {ticket.CustomerName}, {ticket.CustomerPhone}, {ticket.CustomerEmail},
                         {ticket.DeviceType}, {ticket.DeviceBrandModel}, {ticket.SerialNumber}, {ticket.ReportedIssue}, {ticket.DiagnosticNotes},
                         {ticket.AssignedTechnician}, {ticket.Status}, {ticket.LaborFee}, {ticket.PartsCost}, {ticket.DepositAmount},
-                        {ticket.CreatedAt}, {ticket.EstimatedCompletionDate}, {ticket.CompletedAt}, {ticket.WarrantyTerms}, {ticket.IsActive}
+                        {ticket.CreatedAt}, {ticket.EstimatedCompletionDate}, {ticket.CompletedAt}, {ticket.WarrantyTerms}, {ticket.IsActive}, {ticket.BranchId}
                     );
                 ");
 
@@ -192,7 +225,7 @@ END";
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureRepairsSchemaAsync(tenantDb, companyId);
 
-                bool exists = await tenantDb.RepairTickets.AnyAsync(t => t.RepairTicketId == id);
+                bool exists = await tenantDb.RepairTickets.AnyAsync(t => t.RepairTicketId == id && t.CompanyId == companyId);
                 if (!exists)
                 {
                     return NotFound(new { error = $"Repair ticket ID {id} not found." });
@@ -205,7 +238,7 @@ END";
                         DiagnosticNotes = CASE WHEN {dto.DiagnosticNotes} IS NOT NULL THEN {dto.DiagnosticNotes} ELSE DiagnosticNotes END,
                         AssignedTechnician = CASE WHEN {dto.AssignedTechnician} IS NOT NULL THEN {dto.AssignedTechnician} ELSE AssignedTechnician END,
                         CompletedAt = CASE WHEN {dto.Status} = 'Completed' THEN {completedAt} ELSE CompletedAt END
-                    WHERE RepairTicketId = {id};
+                    WHERE RepairTicketId = {id} AND CompanyId = {companyId};
                 ");
 
                 if (affectedStatus == 0)
@@ -231,7 +264,7 @@ END";
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureRepairsSchemaAsync(tenantDb, companyId);
 
-                bool exists = await tenantDb.RepairTickets.AnyAsync(t => t.RepairTicketId == id);
+                bool exists = await tenantDb.RepairTickets.AnyAsync(t => t.RepairTicketId == id && t.CompanyId == companyId);
                 if (!exists)
                 {
                     return NotFound(new { error = $"Repair ticket ID {id} not found." });
@@ -242,7 +275,7 @@ END";
                     SET LaborFee = {dto.LaborFee},
                         PartsCost = {dto.PartsCost},
                         DepositAmount = {dto.DepositAmount}
-                    WHERE RepairTicketId = {id};
+                    WHERE RepairTicketId = {id} AND CompanyId = {companyId};
                 ");
 
                 if (affectedBilling == 0)

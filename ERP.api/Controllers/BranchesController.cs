@@ -106,6 +106,11 @@ namespace ERP.api.Controllers
                 return BadRequest(new { error = "Branch payload is required." });
             }
 
+            if (branch.CompanyId != 0 && branch.CompanyId != companyId)
+            {
+                return BadRequest(new { error = $"Cross-tenant branch creation rejected. Company ID {branch.CompanyId} does not match route company ID {companyId}." });
+            }
+
             var access = await CheckPlanAccessAsync(companyId);
             if (!access.Allowed)
             {
@@ -165,6 +170,11 @@ namespace ERP.api.Controllers
             if (branch == null)
             {
                 return BadRequest(new { error = "Branch payload is required." });
+            }
+
+            if (branch.CompanyId != 0 && branch.CompanyId != companyId)
+            {
+                return BadRequest(new { error = $"Cross-tenant branch update rejected. Company ID {branch.CompanyId} does not match route company ID {companyId}." });
             }
 
             var access = await CheckPlanAccessAsync(companyId);

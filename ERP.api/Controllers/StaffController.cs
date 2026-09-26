@@ -46,6 +46,10 @@ BEGIN
         IsActive BIT NOT NULL DEFAULT 1,
         HiredDate DATETIME2 NOT NULL DEFAULT GETUTCDATE()
     );
+END
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'StaffMembers' AND COLUMN_NAME = 'BranchId')
+BEGIN
+    ALTER TABLE StaffMembers ADD BranchId INT NULL;
 END";
                 await db.Database.ExecuteSqlRawAsync(sql);
                 _ensuredSchemas.TryAdd(companyId, true);
@@ -57,7 +61,7 @@ END";
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetStaff(int companyId)
+        public async Task<IActionResult> GetStaff(int companyId, [FromQuery] int? branchId = null)
         {
             if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
             {
@@ -69,8 +73,22 @@ END";
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureStaffSchemaAsync(tenantDb, companyId);
 
-                var staff = await tenantDb.StaffMembers
-                    .AsNoTracking()
+                if (branchId.HasValue)
+                {
+                    bool branchValid = await tenantDb.Branches.AnyAsync(b => b.BranchId == branchId.Value && b.CompanyId == companyId);
+                    if (!branchValid)
+                    {
+                        return BadRequest(new { error = $"Branch ID {branchId.Value} does not belong to Company {companyId}." });
+                    }
+                }
+
+                var query = tenantDb.StaffMembers.AsNoTracking().Where(s => s.CompanyId == companyId);
+                if (branchId.HasValue)
+                {
+                    query = query.Where(s => s.BranchId == branchId.Value);
+                }
+
+                var staff = await query
                     .OrderBy(s => s.FullName)
                     .ToListAsync();
 
@@ -91,10 +109,24 @@ END";
                 return BadRequest(new { error = "Staff payload is required." });
             }
 
+            if (staff.CompanyId != 0 && staff.CompanyId != companyId)
+            {
+                return BadRequest(new { error = $"Cross-tenant staff creation rejected. Staff company ID {staff.CompanyId} does not match route company ID {companyId}." });
+            }
+
             try
             {
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureStaffSchemaAsync(tenantDb, companyId);
+
+                if (staff.BranchId.HasValue)
+                {
+                    bool branchValid = await tenantDb.Branches.AnyAsync(b => b.BranchId == staff.BranchId.Value && b.CompanyId == companyId);
+                    if (!branchValid)
+                    {
+                        return BadRequest(new { error = $"Cross-branch or unauthorized branch assignment rejected. Branch ID {staff.BranchId.Value} does not belong to Company {companyId}." });
+                    }
+                }
 
                 staff.CompanyId = companyId;
                 if (string.IsNullOrWhiteSpace(staff.StaffCode))
@@ -114,6 +146,7 @@ END";
                     existing.HourlyRate = staff.HourlyRate;
                     existing.MonthlySalary = staff.MonthlySalary;
                     existing.IsActive = staff.IsActive;
+                    existing.BranchId = staff.BranchId;
                     await tenantDb.SaveChangesAsync();
                     return Ok(existing);
                 }
@@ -135,12 +168,26 @@ END";
         [HttpPut("{id:int}")]
         public async Task<IActionResult> UpdateStaff(int companyId, int id, [FromBody] StaffMember updated)
         {
+            if (updated.CompanyId != 0 && updated.CompanyId != companyId)
+            {
+                return BadRequest(new { error = $"Cross-tenant staff update rejected. Staff company ID {updated.CompanyId} does not match route company ID {companyId}." });
+            }
+
             try
             {
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureStaffSchemaAsync(tenantDb, companyId);
 
-                var staff = await tenantDb.StaffMembers.FirstOrDefaultAsync(s => s.StaffId == id);
+                if (updated.BranchId.HasValue)
+                {
+                    bool branchValid = await tenantDb.Branches.AnyAsync(b => b.BranchId == updated.BranchId.Value && b.CompanyId == companyId);
+                    if (!branchValid)
+                    {
+                        return BadRequest(new { error = $"Cross-branch or unauthorized branch assignment rejected. Branch ID {updated.BranchId.Value} does not belong to Company {companyId}." });
+                    }
+                }
+
+                var staff = await tenantDb.StaffMembers.FirstOrDefaultAsync(s => s.StaffId == id && s.CompanyId == companyId);
                 if (staff == null)
                 {
                     return NotFound(new { error = $"Staff ID {id} not found." });
@@ -154,6 +201,7 @@ END";
                 staff.HourlyRate = updated.HourlyRate;
                 staff.MonthlySalary = updated.MonthlySalary;
                 staff.IsActive = updated.IsActive;
+                staff.BranchId = updated.BranchId;
 
                 int affected = await tenantDb.SaveChangesAsync();
                 if (affected == 0 && !tenantDb.Entry(staff).State.HasFlag(EntityState.Unchanged))
@@ -176,7 +224,7 @@ END";
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureStaffSchemaAsync(tenantDb, companyId);
 
-                var staff = await tenantDb.StaffMembers.FirstOrDefaultAsync(s => s.StaffId == id);
+                var staff = await tenantDb.StaffMembers.FirstOrDefaultAsync(s => s.StaffId == id && s.CompanyId == companyId);
                 if (staff == null)
                 {
                     return NotFound(new { error = $"Staff ID {id} not found." });

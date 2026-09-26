@@ -17,11 +17,32 @@ namespace ERP.api.Controllers
     {
         private readonly ITenantDbContextFactory _tenantFactory;
         private readonly MasterErpDbContext _masterDb;
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, bool> _ensuredSchemas = new();
 
         public ExpensesController(ITenantDbContextFactory tenantFactory, MasterErpDbContext masterDb)
         {
             _tenantFactory = tenantFactory;
             _masterDb = masterDb;
+        }
+
+        private static async Task EnsureExpensesSchemaAsync(TenantErpDbContext db, int companyId)
+        {
+            if (_ensuredSchemas.ContainsKey(companyId)) return;
+            if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable()) return;
+            try
+            {
+                const string sql = @"
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Expenses' AND COLUMN_NAME = 'BranchId')
+BEGIN
+    ALTER TABLE Expenses ADD BranchId INT NULL;
+END";
+                await db.Database.ExecuteSqlRawAsync(sql);
+                _ensuredSchemas.TryAdd(companyId, true);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"EnsureExpensesSchema note: {ex.Message}");
+            }
         }
 
         private async Task<bool> IsPlanAllowedAsync(int companyId)
@@ -33,7 +54,7 @@ namespace ERP.api.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetExpenses(int companyId, [FromQuery] bool includeArchived = true)
+        public async Task<IActionResult> GetExpenses(int companyId, [FromQuery] bool includeArchived = true, [FromQuery] int? branchId = null)
         {
             if (companyId <= 0)
             {
@@ -49,10 +70,25 @@ namespace ERP.api.Controllers
             try
             {
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
+                await EnsureExpensesSchemaAsync(tenantDb, companyId);
+
+                if (branchId.HasValue)
+                {
+                    bool branchValid = await tenantDb.Branches.AnyAsync(b => b.BranchId == branchId.Value && b.CompanyId == companyId);
+                    if (!branchValid)
+                    {
+                        return BadRequest(new { error = $"Branch ID {branchId.Value} does not belong to Company {companyId}." });
+                    }
+                }
+
                 var query = tenantDb.Expenses.AsNoTracking().Where(e => e.CompanyId == companyId);
                 if (!includeArchived)
                 {
                     query = query.Where(e => e.IsActive);
+                }
+                if (branchId.HasValue)
+                {
+                    query = query.Where(e => e.BranchId == branchId.Value);
                 }
 
                 var list = await query.OrderByDescending(e => e.ExpenseDate).ThenByDescending(e => e.ExpenseId).ToListAsync();
@@ -76,6 +112,8 @@ namespace ERP.api.Controllers
             try
             {
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
+                await EnsureExpensesSchemaAsync(tenantDb, companyId);
+
                 var expense = await tenantDb.Expenses.AsNoTracking().FirstOrDefaultAsync(e => e.ExpenseId == id && e.CompanyId == companyId);
                 if (expense == null)
                 {
@@ -97,6 +135,11 @@ namespace ERP.api.Controllers
                 return BadRequest(new { error = "Expense record payload is required." });
             }
 
+            if (record.CompanyId != 0 && record.CompanyId != companyId)
+            {
+                return BadRequest(new { error = $"Cross-tenant expense creation rejected. Record company ID {record.CompanyId} does not match route company ID {companyId}." });
+            }
+
             if (!await IsPlanAllowedAsync(companyId))
             {
                 return StatusCode(403, new { error = "Plan does not include access to the Financial Statements / Expenses module." });
@@ -114,6 +157,18 @@ namespace ERP.api.Controllers
 
             try
             {
+                await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
+                await EnsureExpensesSchemaAsync(tenantDb, companyId);
+
+                if (record.BranchId.HasValue)
+                {
+                    bool branchValid = await tenantDb.Branches.AnyAsync(b => b.BranchId == record.BranchId.Value && b.CompanyId == companyId);
+                    if (!branchValid)
+                    {
+                        return BadRequest(new { error = $"Cross-branch or unauthorized branch assignment rejected. Branch ID {record.BranchId.Value} does not belong to Company {companyId}." });
+                    }
+                }
+
                 record.CompanyId = companyId;
                 record.ExpenseId = 0;
                 if (string.IsNullOrWhiteSpace(record.ExpenseNumber))
@@ -126,7 +181,6 @@ namespace ERP.api.Controllers
                 }
                 record.CreatedAt = DateTime.UtcNow;
 
-                await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 tenantDb.Expenses.Add(record);
                 await tenantDb.SaveChangesAsync();
 
@@ -146,6 +200,11 @@ namespace ERP.api.Controllers
                 return BadRequest(new { error = "Expense record payload is required." });
             }
 
+            if (record.CompanyId != 0 && record.CompanyId != companyId)
+            {
+                return BadRequest(new { error = $"Cross-tenant expense update rejected. Record company ID {record.CompanyId} does not match route company ID {companyId}." });
+            }
+
             if (!await IsPlanAllowedAsync(companyId))
             {
                 return StatusCode(403, new { error = "Plan does not include access to the Financial Statements / Expenses module." });
@@ -154,12 +213,24 @@ namespace ERP.api.Controllers
             try
             {
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
+                await EnsureExpensesSchemaAsync(tenantDb, companyId);
+
+                if (record.BranchId.HasValue)
+                {
+                    bool branchValid = await tenantDb.Branches.AnyAsync(b => b.BranchId == record.BranchId.Value && b.CompanyId == companyId);
+                    if (!branchValid)
+                    {
+                        return BadRequest(new { error = $"Cross-branch or unauthorized branch assignment rejected. Branch ID {record.BranchId.Value} does not belong to Company {companyId}." });
+                    }
+                }
+
                 var existing = await tenantDb.Expenses.FirstOrDefaultAsync(e => e.ExpenseId == id && e.CompanyId == companyId);
                 if (existing == null)
                 {
                     return NotFound(new { error = $"Expense ID {id} not found." });
                 }
 
+                existing.BranchId = record.BranchId;
                 existing.Category = record.Category;
                 existing.Description = record.Description;
                 existing.Amount = record.Amount;

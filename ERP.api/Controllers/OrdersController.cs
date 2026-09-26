@@ -44,6 +44,10 @@ BEGIN
         TotalAmount DECIMAL(18,2) NOT NULL,
         PaymentMethod NVARCHAR(50) NOT NULL
     );
+END
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Orders' AND COLUMN_NAME = 'BranchId')
+BEGIN
+    ALTER TABLE Orders ADD BranchId INT NULL;
 END";
                 await db.Database.ExecuteSqlRawAsync(sql);
                 _tableEnsured = true;
@@ -58,7 +62,7 @@ END";
         /// Retrieves all orders for the specified tenant from MonsterASP database.
         /// </summary>
         [HttpGet]
-        public async Task<IActionResult> GetOrders(int companyId)
+        public async Task<IActionResult> GetOrders(int companyId, [FromQuery] int? branchId = null)
         {
             if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
             {
@@ -70,14 +74,28 @@ END";
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureOrdersTableAsync(tenantDb);
 
-                var orders = await tenantDb.Orders
-                    .AsNoTracking()
-                    .Where(o => o.CompanyId == companyId)
+                if (branchId.HasValue)
+                {
+                    bool branchValid = await tenantDb.Branches.AnyAsync(b => b.BranchId == branchId.Value && b.CompanyId == companyId);
+                    if (!branchValid)
+                    {
+                        return BadRequest(new { error = $"Branch ID {branchId.Value} does not belong to Company {companyId}." });
+                    }
+                }
+
+                var query = tenantDb.Orders.AsNoTracking().Where(o => o.CompanyId == companyId);
+                if (branchId.HasValue)
+                {
+                    query = query.Where(o => o.BranchId == branchId.Value);
+                }
+
+                var orders = await query
                     .OrderByDescending(o => o.CreatedAt)
                     .Select(o => new Order
                     {
                         Id = o.Id,
                         CompanyId = o.CompanyId,
+                        BranchId = o.BranchId,
                         CustomerName = o.CustomerName,
                         CreatedAt = o.CreatedAt,
                         ItemsJson = o.ItemsJson,
@@ -124,6 +142,11 @@ END";
                 return BadRequest(new { error = "Order must contain at least one item." });
             }
 
+            if (order.CompanyId != 0 && order.CompanyId != companyId)
+            {
+                return BadRequest(new { error = $"Cross-tenant order rejected. Order company ID {order.CompanyId} does not match route company ID {companyId}." });
+            }
+
             if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
             {
                 return StatusCode(503, new { error = "Database offline. Network unavailable." });
@@ -133,6 +156,15 @@ END";
             {
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureOrdersTableAsync(tenantDb);
+
+                if (order.BranchId.HasValue)
+                {
+                    bool branchValid = await tenantDb.Branches.AnyAsync(b => b.BranchId == order.BranchId.Value && b.CompanyId == companyId);
+                    if (!branchValid)
+                    {
+                        return BadRequest(new { error = $"Cross-branch or unauthorized branch assignment rejected. Branch ID {order.BranchId.Value} does not belong to Company {companyId}." });
+                    }
+                }
 
                 order.CompanyId = companyId;
                 if (string.IsNullOrWhiteSpace(order.ItemsJson) || order.ItemsJson == "[]")
@@ -163,7 +195,16 @@ END";
                         return BadRequest(new { error = $"Product '{item.ProductName}' is inactive/archived and cannot be sold." });
                     }
 
-                    var inv = await tenantDb.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId);
+                    Inventory? inv = null;
+                    if (order.BranchId.HasValue)
+                    {
+                        inv = await tenantDb.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId && i.BranchId == order.BranchId.Value);
+                    }
+                    if (inv == null)
+                    {
+                        inv = await tenantDb.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId && i.BranchId == null);
+                    }
+
                     int currentStock = (int)(inv?.QuantityOnHand ?? 0m);
                     if (currentStock <= 0)
                     {
@@ -176,8 +217,8 @@ END";
                 }
 
                 int orderAffected = await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
-                    INSERT INTO Orders (Id, CompanyId, CustomerName, CreatedAt, ItemsJson, Subtotal, Discount, Tax, TotalAmount, PaymentMethod)
-                    VALUES ({order.Id}, {order.CompanyId}, {order.CustomerName}, {order.CreatedAt}, {order.ItemsJson}, {order.Subtotal}, {order.Discount}, {order.Tax}, {order.TotalAmount}, {order.PaymentMethod});
+                    INSERT INTO Orders (Id, CompanyId, CustomerName, CreatedAt, ItemsJson, Subtotal, Discount, Tax, TotalAmount, PaymentMethod, BranchId)
+                    VALUES ({order.Id}, {order.CompanyId}, {order.CustomerName}, {order.CreatedAt}, {order.ItemsJson}, {order.Subtotal}, {order.Discount}, {order.Tax}, {order.TotalAmount}, {order.PaymentMethod}, {order.BranchId});
                 ");
 
                 if (orderAffected == 0)
@@ -185,11 +226,18 @@ END";
                     return StatusCode(500, new { error = "Failed to record order in cloud database." });
                 }
 
-                // Deduct stock for purchased items
+                // Deduct stock for purchased items (targeting branch inventory first, falling back to unassigned)
                 foreach (var item in order.Items)
                 {
-                    var inv = await tenantDb.Inventories
-                        .FirstOrDefaultAsync(i => i.ProductId == item.ProductId);
+                    Inventory? inv = null;
+                    if (order.BranchId.HasValue)
+                    {
+                        inv = await tenantDb.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId && i.BranchId == order.BranchId.Value);
+                    }
+                    if (inv == null)
+                    {
+                        inv = await tenantDb.Inventories.FirstOrDefaultAsync(i => i.ProductId == item.ProductId && i.BranchId == null);
+                    }
 
                     if (inv != null)
                     {
