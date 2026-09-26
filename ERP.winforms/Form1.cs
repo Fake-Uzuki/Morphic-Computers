@@ -55,11 +55,10 @@ namespace ERP.winforms
         private Button? _btnNavRepairs;
         private Button? _btnNavSuppliers;
         private Button? _btnNavStaff;
-        private Button? _btnNavApprovals;
+        private Button? _btnNavPoliciesApprovals;
         private Button? _btnNavCustomers;
         private Button? _btnNavPayroll;
         private Button? _btnNavFinance;
-        private Button? _btnNavPolicies;
         private Button? _btnNavBranches;
         private Button? _btnNavProcurement;
         private Button? _btnNavAdminPanel;
@@ -83,6 +82,7 @@ namespace ERP.winforms
         private PayrollView _payrollView = null!;
         private FinanceView _financeView = null!;
         private PoliciesView _policiesView = null!;
+        private PoliciesApprovalsView _policiesApprovalsView = null!;
         private BranchManagementView _branchView = null!;
         private ProcurementView _procurementView = null!;
         private SuperAdminView _superAdminView = null!;
@@ -544,13 +544,13 @@ namespace ERP.winforms
                     tabX += 122;
                 }
 
-                // 8. Approvals (Micro, Small, Medium)
-                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Approvals))
+                // 8. Policies & Approvals (Micro, Small, Medium)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Approvals) || ModuleAccessService.IsModuleEnabled(plan, ErpModule.StorePolicies))
                 {
-                    _btnNavApprovals = CreateEnterpriseTab("Approvals", tabX, 120);
-                    _btnNavApprovals.Click += (s, e) => SwitchView(_approvalsView, _btnNavApprovals);
-                    _pnlTabsTrack.Controls.Add(_btnNavApprovals);
-                    tabX += 122;
+                    _btnNavPoliciesApprovals = CreateEnterpriseTab("Policies & Approvals", tabX, 165);
+                    _btnNavPoliciesApprovals.Click += (s, e) => SwitchView(_policiesApprovalsView, _btnNavPoliciesApprovals);
+                    _pnlTabsTrack.Controls.Add(_btnNavPoliciesApprovals);
+                    tabX += 167;
                 }
 
                 // 9. Suppliers (Micro, Small, Medium)
@@ -569,15 +569,6 @@ namespace ERP.winforms
                     _btnNavStaff.Click += (s, e) => SwitchView(_staffView, _btnNavStaff);
                     _pnlTabsTrack.Controls.Add(_btnNavStaff);
                     tabX += 132;
-                }
-
-                // 11. Policies & Terms (Micro, Small, Medium)
-                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.StorePolicies) && isAdmin)
-                {
-                    _btnNavPolicies = CreateEnterpriseTab("Policies & Terms", tabX, 140);
-                    _btnNavPolicies.Click += (s, e) => SwitchView(_policiesView, _btnNavPolicies);
-                    _pnlTabsTrack.Controls.Add(_btnNavPolicies);
-                    tabX += 142;
                 }
 
                 // 12. Branch Management (Medium Enterprise only)
@@ -702,6 +693,7 @@ namespace ERP.winforms
             _payrollView = new PayrollView();
             _financeView = new FinanceView(_currentUser, _currentRole);
             _policiesView = new PoliciesView();
+            _policiesApprovalsView = new PoliciesApprovalsView(_approvalsView, _policiesView);
             _branchView = new BranchManagementView();
             _procurementView = new ProcurementView();
             _superAdminView = new SuperAdminView();
@@ -830,6 +822,7 @@ namespace ERP.winforms
             if (view is PayrollView prv) prv.RefreshData();
             if (view is FinanceView fv) fv.RefreshData();
             if (view is PoliciesView pol) pol.RefreshData();
+            if (view is PoliciesApprovalsView pav) pav.RefreshData();
             if (view is SuperAdminView sav) sav.RefreshData();
         }
 
@@ -919,7 +912,8 @@ namespace ERP.winforms
                     IsRead = _readAlertKeys.Contains(key),
                     OnClickAction = () =>
                     {
-                        if (_btnNavApprovals != null) SwitchView(_approvalsView, _btnNavApprovals);
+                        _policiesApprovalsView.SelectTab(PoliciesApprovalsTab.WorkflowAndApproval);
+                        if (_btnNavPoliciesApprovals != null) SwitchView(_policiesApprovalsView, _btnNavPoliciesApprovals);
                     },
                     OnDismiss = () =>
                     {

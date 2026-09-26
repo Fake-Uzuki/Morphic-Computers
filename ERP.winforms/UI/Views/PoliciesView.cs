@@ -60,7 +60,7 @@ namespace ERP.winforms.UI.Views
 
             Label lblBannerTitle = new Label
             {
-                Text = "Policies and Terms",
+                Text = "Terms, Policies & Agreements",
                 Font = new Font("Segoe UI", 12F, FontStyle.Bold),
                 ForeColor = AppTheme.HeaderBrandGold,
                 Location = new Point(20, 10),

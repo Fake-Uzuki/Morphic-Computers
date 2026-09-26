@@ -78,7 +78,7 @@ namespace ERP.winforms.UI.Views
 
             Label lblBannerTitle = new Label
             {
-                Text = "🛡️ STORE APPROVALS & OPERATIONAL AUDIT TRAIL",
+                Text = "🛡️ WORKFLOW & APPROVAL",
                 Font = new Font("Segoe UI", 11F, FontStyle.Bold),
                 ForeColor = AppTheme.HeaderBrandGold,
                 Location = new Point(20, 8),
