@@ -2549,6 +2549,78 @@ namespace ERP.winforms.Services
                     result.PoliciesCount = cloudPolicies.Count;
                 }
 
+                // 12. Branches (Medium plan)
+                try
+                {
+                    var cloudBranches = await apiClient.GetBranchesAsync(companyId, includeArchived: true).ConfigureAwait(false);
+                    if (cloudBranches != null)
+                    {
+                        var localBranches = await context.Branches.ToListAsync().ConfigureAwait(false);
+                        var newBranches = new List<Branch>();
+
+                        foreach (var cloud in cloudBranches)
+                        {
+                            var local = localBranches.FirstOrDefault(b => (cloud.BranchId > 0 && b.BranchId == cloud.BranchId) || b.BranchCode.Equals(cloud.BranchCode, StringComparison.OrdinalIgnoreCase));
+                            if (local != null)
+                            {
+                                if (!HasOutbox("Branch", local.BranchId.ToString(), local.BranchCode, cloud.BranchId.ToString(), cloud.BranchCode))
+                                {
+                                    local.BranchCode = cloud.BranchCode;
+                                    local.BranchName = cloud.BranchName;
+                                    local.Address = cloud.Address;
+                                    local.City = cloud.City;
+                                    local.ContactNumber = cloud.ContactNumber;
+                                    local.ManagerName = cloud.ManagerName;
+                                    local.AssignedStaffCount = cloud.AssignedStaffCount;
+                                    local.IsActive = cloud.IsActive;
+                                    local.CreatedAt = cloud.CreatedAt;
+                                }
+                            }
+                            else
+                            {
+                                newBranches.Add(new Branch
+                                {
+                                    BranchId = cloud.BranchId,
+                                    CompanyId = companyId,
+                                    BranchCode = cloud.BranchCode,
+                                    BranchName = cloud.BranchName,
+                                    Address = cloud.Address,
+                                    City = cloud.City,
+                                    ContactNumber = cloud.ContactNumber,
+                                    ManagerName = cloud.ManagerName,
+                                    AssignedStaffCount = cloud.AssignedStaffCount,
+                                    IsActive = cloud.IsActive,
+                                    CreatedAt = cloud.CreatedAt
+                                });
+                            }
+                        }
+
+                        foreach (var local in localBranches)
+                        {
+                            if (cloudBranches.All(b => b.BranchId != local.BranchId && !b.BranchCode.Equals(local.BranchCode, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                if (!HasOutbox("Branch", local.BranchId.ToString(), local.BranchCode))
+                                {
+                                    context.Branches.Remove(local);
+                                }
+                            }
+                        }
+
+                        await context.SaveChangesAsync().ConfigureAwait(false);
+
+                        if (newBranches.Count > 0)
+                        {
+                            await InsertWithIdentityAsync(context, "Branches", newBranches).ConfigureAwait(false);
+                        }
+                        result.BranchesCount = cloudBranches.Count;
+                    }
+                }
+                catch (Exception branchEx)
+                {
+                    // Tenant plan might not allow branches (e.g. Micro/Small) or network failure
+                    System.Diagnostics.Debug.WriteLine($"RefreshFromCloudAsync branches note: {branchEx.Message}");
+                }
+
                 result.Success = true;
                 result.Message = "Cloud-to-local synchronization completed successfully.";
                 return result;
@@ -2693,5 +2765,6 @@ namespace ERP.winforms.Services
         public int PayrollCount { get; set; }
         public int ApprovalsCount { get; set; }
         public int PoliciesCount { get; set; }
+        public int BranchesCount { get; set; }
     }
 }
