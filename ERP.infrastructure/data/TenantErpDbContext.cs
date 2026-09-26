@@ -17,6 +17,7 @@ namespace ERP.infrastructure.data
         public DbSet<PayrollRecord> PayrollRecords => Set<PayrollRecord>();
         public DbSet<StorePolicy> StorePolicies => Set<StorePolicy>();
         public DbSet<ExpenseRecord> Expenses => Set<ExpenseRecord>();
+        public DbSet<Branch> Branches => Set<Branch>();
         public DbSet<SyncOutboxItem> SyncOutbox => Set<SyncOutboxItem>();
 
         public TenantErpDbContext(DbContextOptions<TenantErpDbContext> options)
@@ -229,6 +230,23 @@ namespace ERP.infrastructure.data
                 entity.Property(x => x.RecordedBy).HasMaxLength(100).IsRequired();
                 entity.Property(x => x.ReceiptRef).HasMaxLength(100).IsRequired(false);
                 entity.Property(x => x.Notes).HasMaxLength(1000).IsRequired(false);
+            });
+
+            builder.Entity<Branch>(entity =>
+            {
+                entity.ToTable("Branches");
+                entity.HasKey(x => x.BranchId);
+                entity.Property(x => x.BranchCode).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.BranchName).HasMaxLength(200).IsRequired();
+                entity.Property(x => x.Address).HasMaxLength(300).IsRequired();
+                entity.Property(x => x.City).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.ContactNumber).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.ManagerName).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.AssignedStaffCount).HasDefaultValue(0);
+                entity.Property(x => x.IsActive).HasDefaultValue(true);
+                entity.HasIndex(x => new { x.CompanyId, x.BranchCode }).IsUnique();
+                entity.Ignore(x => x.CityLocation);
+                entity.Ignore(x => x.Status);
             });
         }
     }
