@@ -107,22 +107,6 @@ namespace ERP.winforms
 
             SetupCustomLayout();
 
-            // Hook SuperAdmin sub-section changes to Form1 nav tabs
-            _superAdminView.SectionChanged += (sec) =>
-            {
-                Button? targetBtn = sec switch
-                {
-                    SuperAdminView.SuperAdminSection.AdminPanel => _btnNavAdminPanel,
-                    SuperAdminView.SuperAdminSection.BusinessIntelligence => _btnNavPlatformBI,
-                    SuperAdminView.SuperAdminSection.Subscriptions => _btnNavSubscriptions,
-                    _ => null
-                };
-                if (targetBtn != null && _activeNavButton != targetBtn)
-                {
-                    SwitchView(_superAdminView, targetBtn);
-                }
-            };
-
             // Initial landing view selection based on plan entitlement
             var initialPlan = ModuleAccessService.NormalizePlan(_dataService.CurrentCompany?.PlanName);
             if (initialPlan == ErpPlan.SuperAdmin && _btnNavAdminPanel != null)

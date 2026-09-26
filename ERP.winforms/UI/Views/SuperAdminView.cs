@@ -44,12 +44,6 @@ namespace ERP.winforms.UI.Views
         }
 
         private SuperAdminSection _activeSection = SuperAdminSection.AdminPanel;
-        public event Action<SuperAdminSection>? SectionChanged;
-
-        // Navigation Subtab Buttons (Three modules only)
-        private Button _btnTabAdminPanel = null!;
-        private Button _btnTabBI = null!;
-        private Button _btnTabSubscriptions = null!;
 
         // Content Host
         private Panel _pnlBody = null!;
@@ -72,7 +66,6 @@ namespace ERP.winforms.UI.Views
         public void SetActiveSection(SuperAdminSection section)
         {
             _activeSection = section;
-            HighlightActiveTab();
             RenderActiveSection();
         }
 
@@ -115,27 +108,7 @@ namespace ERP.winforms.UI.Views
             pnlHeader.Controls.Add(lblTitle);
             pnlHeader.Controls.Add(lblSubtitle);
 
-            // 2. SUB-NAVIGATION BAR (Three Modules: Admin Panel, Business Intelligence, Subscriptions)
-            Panel pnlNav = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = 44,
-                Padding = new Padding(24, 0, 24, 0),
-                BackColor = Color.FromArgb(24, 25, 20)
-            };
-
-            int tx = 24;
-            _btnTabAdminPanel = CreateTabBtn("Admin Panel", tx, 150, SuperAdminSection.AdminPanel);
-            tx += 154;
-            _btnTabBI = CreateTabBtn("Business Intelligence", tx, 185, SuperAdminSection.BusinessIntelligence);
-            tx += 189;
-            _btnTabSubscriptions = CreateTabBtn("Subscriptions", tx, 150, SuperAdminSection.Subscriptions);
-
-            pnlNav.Controls.Add(_btnTabAdminPanel);
-            pnlNav.Controls.Add(_btnTabBI);
-            pnlNav.Controls.Add(_btnTabSubscriptions);
-
-            // 3. MAIN BODY CONTAINER
+            // 2. MAIN BODY CONTAINER
             _pnlBody = new Panel
             {
                 Dock = DockStyle.Fill,
@@ -144,55 +117,7 @@ namespace ERP.winforms.UI.Views
             };
 
             Controls.Add(_pnlBody);
-            Controls.Add(pnlNav);
             Controls.Add(pnlHeader);
-
-            HighlightActiveTab();
-        }
-
-        private Button CreateTabBtn(string text, int x, int width, SuperAdminSection section)
-        {
-            var btn = new Button
-            {
-                Text = text,
-                Location = new Point(x, 4),
-                Size = new Size(width, 36),
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 8.8F, FontStyle.Bold),
-                ForeColor = Color.White,
-                BackColor = Color.Transparent,
-                Cursor = Cursors.Hand
-            };
-            btn.FlatAppearance.BorderSize = 0;
-            btn.Click += (s, e) =>
-            {
-                _activeSection = section;
-                HighlightActiveTab();
-                RenderActiveSection();
-                SectionChanged?.Invoke(section);
-            };
-            return btn;
-        }
-
-        private void HighlightActiveTab()
-        {
-            if (_btnTabAdminPanel != null)
-            {
-                _btnTabAdminPanel.BackColor = _activeSection == SuperAdminSection.AdminPanel ? AppTheme.Primary : Color.Transparent;
-                _btnTabAdminPanel.ForeColor = _activeSection == SuperAdminSection.AdminPanel ? AppTheme.TextDark : Color.White;
-            }
-
-            if (_btnTabBI != null)
-            {
-                _btnTabBI.BackColor = _activeSection == SuperAdminSection.BusinessIntelligence ? AppTheme.Primary : Color.Transparent;
-                _btnTabBI.ForeColor = _activeSection == SuperAdminSection.BusinessIntelligence ? AppTheme.TextDark : Color.White;
-            }
-
-            if (_btnTabSubscriptions != null)
-            {
-                _btnTabSubscriptions.BackColor = _activeSection == SuperAdminSection.Subscriptions ? AppTheme.Primary : Color.Transparent;
-                _btnTabSubscriptions.ForeColor = _activeSection == SuperAdminSection.Subscriptions ? AppTheme.TextDark : Color.White;
-            }
         }
 
         private void LoadMasterData()
