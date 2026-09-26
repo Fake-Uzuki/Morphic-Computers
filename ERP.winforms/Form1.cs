@@ -69,6 +69,9 @@ namespace ERP.winforms
         private Label _lblBottomRight = null!;
         private Panel _pnlStatusBadge = null!;
         private Label _lblStatusIndicator = null!;
+        private Label _lblLogoBadge = null!;
+        private Label _lblBrandName = null!;
+        private Label _lblTagline = null!;
         private Panel _pnlBranchSelector = null!;
         private ComboBox _cboBranchSelector = null!;
         private bool _isUpdatingBranchCombo;
@@ -169,7 +172,7 @@ namespace ERP.winforms
             };
 
             // [M] Gold Brand Badge
-            Label lblLogoBadge = new Label
+            _lblLogoBadge = new Label
             {
                 Text = "M",
                 Font = new Font("Segoe UI", 12F, FontStyle.Bold),
@@ -181,7 +184,7 @@ namespace ERP.winforms
             };
 
             // Dynamic Tenant Brand Title
-            Label lblBrandName = new Label
+            _lblBrandName = new Label
             {
                 Text = isPlatformAdmin ? "Master (Super Admin)" : (_dataService.CurrentCompany?.CompanyName ?? "Tenant A"),
                 Font = new Font("Segoe UI", 14F, FontStyle.Bold),
@@ -191,12 +194,12 @@ namespace ERP.winforms
             };
 
             // Subtitle tag cleanly aligned
-            Label lblTagline = new Label
+            _lblTagline = new Label
             {
                 Text = isPlatformAdmin ? "" : $"|  {_dataService.CurrentCompany?.PlanName ?? "Micro"} Company Operations",
                 Font = new Font("Segoe UI", 10F, FontStyle.Regular),
                 ForeColor = Color.FromArgb(170, 168, 158),
-                Location = new Point(56 + lblBrandName.PreferredSize.Width + 8, 17),
+                Location = new Point(56 + _lblBrandName.PreferredSize.Width + 8, 17),
                 AutoSize = true
             };
 
@@ -345,24 +348,23 @@ namespace ERP.winforms
 
             _pnlBranchSelector = new Panel
             {
-                Location = new Point(56 + lblBrandName.PreferredSize.Width + lblTagline.PreferredSize.Width + 24, 11),
-                Size = new Size(245, 32),
+                Height = 32,
                 BackColor = Color.FromArgb(32, 34, 28),
                 Visible = isBranchAllowed
             };
 
             Label lblBranchTitle = new Label
             {
-                Text = "🏢 Branch:",
+                Text = "Branch:",
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
                 ForeColor = AppTheme.HeaderBrandGold,
-                Location = new Point(6, 7),
+                Location = new Point(8, 7),
                 AutoSize = true
             };
 
             _cboBranchSelector = new ComboBox
             {
-                Location = new Point(72, 4),
+                Location = new Point(58, 4),
                 Size = new Size(165, 24),
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
@@ -375,11 +377,19 @@ namespace ERP.winforms
             _pnlBranchSelector.Controls.Add(lblBranchTitle);
             _pnlBranchSelector.Controls.Add(_cboBranchSelector);
 
-            _pnlTopBar.Controls.Add(lblLogoBadge);
-            _pnlTopBar.Controls.Add(lblBrandName);
-            _pnlTopBar.Controls.Add(lblTagline);
+            // Compute compact dynamic width for the branch selector pill
+            _cboBranchSelector.Location = new Point(lblBranchTitle.PreferredSize.Width + 14, 4);
+            _pnlBranchSelector.Width = _cboBranchSelector.Right + 8;
+
+            _pnlTopBar.Controls.Add(_lblLogoBadge);
+            _pnlTopBar.Controls.Add(_lblBrandName);
+            _pnlTopBar.Controls.Add(_lblTagline);
             _pnlTopBar.Controls.Add(_pnlBranchSelector);
             _pnlTopBar.Controls.Add(_pnlTopRight);
+
+            _pnlTopBar.Resize += (s, e) => UpdateHeaderLayout();
+            Resize += (s, e) => UpdateHeaderLayout();
+            UpdateHeaderLayout();
 
             // Notification Flyout Setup
             _notificationFlyout = new NotificationFlyout
@@ -1292,6 +1302,7 @@ namespace ERP.winforms
             }
 
             _pnlBranchSelector.Visible = true;
+            UpdateHeaderLayout();
             _isUpdatingBranchCombo = true;
             try
             {
@@ -1390,6 +1401,55 @@ namespace ERP.winforms
                 }
 
                 RefreshCurrentView();
+            }
+        }
+
+        private void UpdateHeaderLayout()
+        {
+            if (_pnlTopBar == null || _pnlBranchSelector == null || _lblBrandName == null) return;
+
+            var currentPlan = ModuleAccessService.NormalizePlan(_dataService.CurrentCompany?.PlanName);
+            bool isPlatformAdmin = currentPlan == ErpPlan.SuperAdmin;
+            bool isBranchAllowed = !isPlatformAdmin &&
+                                   ModuleAccessService.IsTenantOperationalAllowed(currentPlan) &&
+                                   ModuleAccessService.IsModuleEnabled(currentPlan, ErpModule.BranchManagement);
+
+            _pnlBranchSelector.Visible = isBranchAllowed;
+
+            _lblLogoBadge.Location = new Point(20, 13);
+            _lblBrandName.Location = new Point(56, 12);
+
+            int currentX = _lblBrandName.Right + 8;
+            int rightBoundary = _pnlTopBar.Width - (_pnlTopRight?.Width ?? 590) - 16;
+
+            if (_lblTagline != null)
+            {
+                if (isPlatformAdmin)
+                {
+                    _lblTagline.Visible = false;
+                }
+                else
+                {
+                    int neededWithTagline = currentX + _lblTagline.PreferredSize.Width + 16 + (isBranchAllowed ? _pnlBranchSelector.Width : 0);
+                    if (neededWithTagline <= rightBoundary)
+                    {
+                        _lblTagline.Visible = true;
+                        _lblTagline.Location = new Point(currentX, 17);
+                        currentX = _lblTagline.Right + 16;
+                    }
+                    else
+                    {
+                        // Compress tagline if window width is narrow to guarantee branch selector visibility
+                        _lblTagline.Visible = false;
+                        currentX += 8;
+                    }
+                }
+            }
+
+            if (isBranchAllowed)
+            {
+                _pnlBranchSelector.Location = new Point(currentX, 11);
+                _pnlBranchSelector.BringToFront();
             }
         }
 
