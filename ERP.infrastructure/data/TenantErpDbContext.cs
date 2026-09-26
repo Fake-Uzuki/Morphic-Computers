@@ -18,6 +18,8 @@ namespace ERP.infrastructure.data
         public DbSet<StorePolicy> StorePolicies => Set<StorePolicy>();
         public DbSet<ExpenseRecord> Expenses => Set<ExpenseRecord>();
         public DbSet<Branch> Branches => Set<Branch>();
+        public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
+        public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
         public DbSet<SyncOutboxItem> SyncOutbox => Set<SyncOutboxItem>();
 
         public TenantErpDbContext(DbContextOptions<TenantErpDbContext> options)
@@ -247,6 +249,54 @@ namespace ERP.infrastructure.data
                 entity.HasIndex(x => new { x.CompanyId, x.BranchCode }).IsUnique();
                 entity.Ignore(x => x.CityLocation);
                 entity.Ignore(x => x.Status);
+            });
+
+            builder.Entity<PurchaseOrder>(entity =>
+            {
+                entity.ToTable("PurchaseOrders");
+                entity.HasKey(x => x.PurchaseOrderId);
+                entity.Property(x => x.PurchaseOrderNumber).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.SupplierName).HasMaxLength(200).IsRequired();
+                entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.TotalAmount).HasPrecision(18, 2);
+                entity.Property(x => x.Notes).HasMaxLength(1000).IsRequired(false);
+                entity.Property(x => x.CreatedBy).HasMaxLength(100).IsRequired(false);
+                entity.Property(x => x.ApprovedBy).HasMaxLength(100).IsRequired(false);
+                entity.Property(x => x.IsActive).HasDefaultValue(true);
+                entity.HasIndex(x => new { x.CompanyId, x.PurchaseOrderNumber }).IsUnique();
+
+                entity.HasOne<Supplier>()
+                    .WithMany()
+                    .HasForeignKey(x => x.SupplierId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasMany(x => x.Items)
+                    .WithOne(x => x.PurchaseOrder)
+                    .HasForeignKey(x => x.PurchaseOrderId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.Ignore(x => x.PoNumber);
+                entity.Ignore(x => x.ItemDescription);
+                entity.Ignore(x => x.Quantity);
+                entity.Ignore(x => x.UnitCost);
+            });
+
+            builder.Entity<PurchaseOrderItem>(entity =>
+            {
+                entity.ToTable("PurchaseOrderItems");
+                entity.HasKey(x => x.PurchaseOrderItemId);
+                entity.Property(x => x.ItemDescription).HasMaxLength(250).IsRequired();
+                entity.Property(x => x.Quantity).IsRequired();
+                entity.Property(x => x.UnitCost).HasPrecision(18, 2);
+                entity.Property(x => x.TotalAmount).HasPrecision(18, 2);
+
+                entity.HasOne(x => x.Product)
+                    .WithMany()
+                    .HasForeignKey(x => x.ProductId)
+                    .OnDelete(DeleteBehavior.SetNull)
+                    .IsRequired(false);
+
+                entity.Ignore(x => x.TotalCost);
             });
         }
     }
