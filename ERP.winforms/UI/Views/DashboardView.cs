@@ -9,6 +9,7 @@ using ERP.winforms.Services;
 using ERP.winforms.Theme;
 using ERP.winforms.UI.Components;
 using ERP.winforms.UI.Dialogs;
+using ERP.domain.security;
 
 namespace ERP.winforms.UI.Views
 {
@@ -23,8 +24,7 @@ namespace ERP.winforms.UI.Views
         private readonly DataService _dataService = DataService.Instance;
 
         private bool IsSmallBusinessOrHigher =>
-            _dataService.CurrentCompany != null &&
-            !string.Equals(_dataService.CurrentCompany.PlanName, "Micro", StringComparison.OrdinalIgnoreCase);
+            ModuleAccessService.NormalizePlan(_dataService.CurrentCompany?.PlanName) != ErpPlan.Micro;
 
         public Action? OnNavigateToPOSRequest;
         public Action<bool>? OnNavigateToProductsRequest;
