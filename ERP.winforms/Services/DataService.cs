@@ -156,7 +156,10 @@ namespace ERP.winforms.Services
             try
             {
                 Categories = Task.Run(() => _localDb.GetCategoriesAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
-                Products = Task.Run(() => _localDb.GetProductsAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                Branches = Task.Run(() => _localDb.GetBranchesAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                BranchContextService.Instance.SyncBranches(ActiveCompanyId, Branches);
+                int? branchId = ActiveBranch.IsAllBranches ? null : ActiveBranch.BranchId;
+                Products = Task.Run(() => _localDb.GetProductsAsync(ActiveCompanyId, branchId)).GetAwaiter().GetResult() ?? new();
                 Orders = Task.Run(() => _localDb.GetOrdersAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
                 RepairTickets = Task.Run(() => _localDb.GetRepairsAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
                 Suppliers = Task.Run(() => _localDb.GetSuppliersAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
@@ -170,7 +173,6 @@ namespace ERP.winforms.Services
                 {
                     MigrateJsonExpensesIfAvailable(ActiveCompanyId);
                 }
-                Branches = Task.Run(() => _localDb.GetBranchesAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
                 PurchaseOrders = Task.Run(() => _localDb.GetPurchaseOrdersAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
             }
             catch (Exception ex)
@@ -202,7 +204,29 @@ namespace ERP.winforms.Services
             {
                 BranchContextService.Instance.SyncBranches(ActiveCompanyId, Branches);
             };
+            BranchContextService.Instance.ContextChanged += (ctx) =>
+            {
+                ReloadProductsForActiveBranch();
+            };
             InitializeDataStore();
+        }
+
+        /// <summary>
+        /// Reloads products from the local database reflecting the current active branch stock scope.
+        /// </summary>
+        public void ReloadProductsForActiveBranch()
+        {
+            if (ActiveCompanyId <= 0) return;
+            try
+            {
+                int? branchId = ActiveBranch.IsAllBranches ? null : ActiveBranch.BranchId;
+                Products = Task.Run(() => _localDb.GetProductsAsync(ActiveCompanyId, branchId)).GetAwaiter().GetResult() ?? new();
+                ProductsChanged?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ReloadProductsForActiveBranch error: {ex.Message}");
+            }
         }
 
         private void InitializeDataStore()
@@ -1405,10 +1429,10 @@ namespace ERP.winforms.Services
                         return false;
                     }
 
-                    product.ProductId = apiCreated.ProductId;
+                    int? targetBranchId = ActiveBranch.IsAllBranches ? null : ActiveBranch.BranchId;
                     try
                     {
-                        Task.Run(() => _localDb.SaveProductAsync(ActiveCompanyId, product, enqueueSync: false)).GetAwaiter().GetResult();
+                        Task.Run(() => _localDb.SaveProductAsync(ActiveCompanyId, product, enqueueSync: false, branchId: targetBranchId)).GetAwaiter().GetResult();
                     }
                     catch { }
                 }
@@ -1416,7 +1440,8 @@ namespace ERP.winforms.Services
                 {
                     try
                     {
-                        var saved = Task.Run(() => _localDb.SaveProductAsync(ActiveCompanyId, product, enqueueSync: true)).GetAwaiter().GetResult();
+                        int? targetBranchId = ActiveBranch.IsAllBranches ? null : ActiveBranch.BranchId;
+                        var saved = Task.Run(() => _localDb.SaveProductAsync(ActiveCompanyId, product, enqueueSync: true, branchId: targetBranchId)).GetAwaiter().GetResult();
                         if (saved != null && saved.ProductId > 0)
                         {
                             product.ProductId = saved.ProductId;
@@ -1452,6 +1477,7 @@ namespace ERP.winforms.Services
         {
             if (product == null) return false;
 
+            int? targetBranchId = ActiveBranch.IsAllBranches ? null : ActiveBranch.BranchId;
             bool isOnline = IsApiReachable();
             if (isOnline)
             {
@@ -1473,7 +1499,7 @@ namespace ERP.winforms.Services
 
                 try
                 {
-                    Task.Run(() => _localDb.SaveProductAsync(ActiveCompanyId, product, enqueueSync: false)).GetAwaiter().GetResult();
+                    Task.Run(() => _localDb.SaveProductAsync(ActiveCompanyId, product, enqueueSync: false, branchId: targetBranchId)).GetAwaiter().GetResult();
                 }
                 catch (Exception ex)
                 {
@@ -1484,7 +1510,7 @@ namespace ERP.winforms.Services
             {
                 try
                 {
-                    Task.Run(() => _localDb.SaveProductAsync(ActiveCompanyId, product, enqueueSync: true)).GetAwaiter().GetResult();
+                    Task.Run(() => _localDb.SaveProductAsync(ActiveCompanyId, product, enqueueSync: true, branchId: targetBranchId)).GetAwaiter().GetResult();
                 }
                 catch (Exception ex)
                 {

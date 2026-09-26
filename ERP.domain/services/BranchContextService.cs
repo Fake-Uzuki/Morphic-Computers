@@ -14,6 +14,13 @@ namespace ERP.domain.services
         private readonly object _lock = new();
 
         public event Action? ActiveBranchChanged;
+        public event Action<ActiveBranchContext>? ContextChanged;
+
+        private void NotifyChanged()
+        {
+            ActiveBranchChanged?.Invoke();
+            ContextChanged?.Invoke(CurrentContext);
+        }
 
         public ActiveBranchContext CurrentContext
         {
@@ -70,7 +77,7 @@ namespace ERP.domain.services
                 {
                     _currentContext.Clear();
                     _currentContext.CompanyId = companyId;
-                    ActiveBranchChanged?.Invoke();
+                    NotifyChanged();
                     return;
                 }
 
@@ -79,7 +86,7 @@ namespace ERP.domain.services
                     var single = activeBranches[0];
                     bool changed = _currentContext.BranchId != single.BranchId;
                     _currentContext.SetBranch(companyId, single.BranchId, single.BranchCode, single.BranchName);
-                    if (changed || companyChanged) ActiveBranchChanged?.Invoke();
+                    if (changed || companyChanged) NotifyChanged();
                     return;
                 }
 
@@ -107,7 +114,7 @@ namespace ERP.domain.services
                 // Default to first active branch
                 var first = activeBranches[0];
                 _currentContext.SetBranch(companyId, first.BranchId, first.BranchCode, first.BranchName);
-                ActiveBranchChanged?.Invoke();
+                NotifyChanged();
             }
         }
 
@@ -126,7 +133,7 @@ namespace ERP.domain.services
                 if (!branchId.HasValue || branchId.Value <= 0)
                 {
                     _currentContext.SetAllBranches(companyId);
-                    ActiveBranchChanged?.Invoke();
+                    NotifyChanged();
                     return true;
                 }
 
@@ -140,7 +147,7 @@ namespace ERP.domain.services
                 }
 
                 _currentContext.SetBranch(companyId, branch.BranchId, branch.BranchCode, branch.BranchName);
-                ActiveBranchChanged?.Invoke();
+                NotifyChanged();
                 return true;
             }
         }
@@ -150,7 +157,7 @@ namespace ERP.domain.services
             lock (_lock)
             {
                 _currentContext.SetAllBranches(companyId);
-                ActiveBranchChanged?.Invoke();
+                NotifyChanged();
             }
         }
 
@@ -159,7 +166,7 @@ namespace ERP.domain.services
             lock (_lock)
             {
                 _currentContext.Clear();
-                ActiveBranchChanged?.Invoke();
+                NotifyChanged();
             }
         }
     }

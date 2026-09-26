@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using ERP.domain.entities;
+using ERP.domain.services;
 using ERP.winforms.Services;
 using ERP.winforms.Theme;
 using ERP.winforms.UI.Components;
@@ -14,6 +15,10 @@ namespace ERP.winforms.UI.Views
         private readonly DataService _dataService = DataService.Instance;
 
         public Action? OnProductsChanged;
+
+        // Branch Scope Indicators
+        private Label _lblBranchScopeBadge = null!;
+        private Label _lblBranchStockNote = null!;
 
         // Left Form Inputs
         private TextBox _txtFormSku = null!;
@@ -84,6 +89,28 @@ namespace ERP.winforms.UI.Views
                     }
                 }
             };
+
+            BranchContextService.Instance.ContextChanged += (ctx) =>
+            {
+                if (IsHandleCreated && !IsDisposed)
+                {
+                    if (InvokeRequired)
+                    {
+                        BeginInvoke(new Action(() => { UpdateBranchScopeUI(); ApplyFilters(); }));
+                    }
+                    else
+                    {
+                        UpdateBranchScopeUI();
+                        ApplyFilters();
+                    }
+                }
+            };
+        }
+
+        public void RefreshData()
+        {
+            UpdateBranchScopeUI();
+            ApplyFilters();
         }
 
         private void InitializeLayout()
@@ -112,6 +139,18 @@ namespace ERP.winforms.UI.Views
                 AutoSize = true
             };
 
+            _lblBranchScopeBadge = new Label
+            {
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(27, 122, 79),
+                BackColor = Color.FromArgb(235, 247, 238),
+                Padding = new Padding(8, 4, 8, 4),
+                AutoSize = true,
+                Dock = DockStyle.Right,
+                Text = "📍 Active Branch: Default Location"
+            };
+
+            pnlHeader.Controls.Add(_lblBranchScopeBadge);
             pnlHeader.Controls.Add(lblTitle);
 
             // ========================================================
@@ -252,7 +291,18 @@ namespace ERP.winforms.UI.Views
             y += 18;
             _numFormStock = new NumericUpDown { Font = new Font("Segoe UI", 9F), Location = new Point(12, y), Width = 140, Minimum = 0, Maximum = 9999, Value = 10 };
             _numFormMinStock = new NumericUpDown { Font = new Font("Segoe UI", 9F), Location = new Point(165, y), Width = 145, Minimum = 0, Maximum = 999, Value = 3 };
-            y += 32;
+            y += 30;
+
+            _lblBranchStockNote = new Label
+            {
+                Font = new Font("Segoe UI", 7F, FontStyle.Italic),
+                ForeColor = AppTheme.TextMuted,
+                Location = new Point(12, y),
+                Width = 298,
+                Height = 16,
+                Text = string.Empty
+            };
+            y += 18;
 
             // Description / Specs
             Label lblDesc = new Label { Text = "DESCRIPTION / SPECS", Font = new Font("Segoe UI", 7.5F, FontStyle.Bold), ForeColor = AppTheme.TextMuted, Location = new Point(12, y), AutoSize = true };
@@ -328,6 +378,7 @@ namespace ERP.winforms.UI.Views
             card.Controls.Add(lblMinStock);
             card.Controls.Add(_numFormStock);
             card.Controls.Add(_numFormMinStock);
+            card.Controls.Add(_lblBranchStockNote);
             card.Controls.Add(lblDesc);
             card.Controls.Add(_txtFormDesc);
             card.Controls.Add(_btnSave);
@@ -684,6 +735,12 @@ namespace ERP.winforms.UI.Views
                 return;
             }
 
+            if (BranchContextService.Instance.CurrentContext.IsAllBranches)
+            {
+                MessageBox.Show("Inventory stock operations require selecting a specific active branch.\n\nPlease choose a specific branch from the header selector to record or modify branch stock.", "Specific Branch Required", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
             string sku = _txtFormSku.Text.Trim();
             string name = _txtFormName.Text.Trim();
             if (string.IsNullOrEmpty(sku) || string.IsNullOrEmpty(name))
@@ -738,6 +795,12 @@ namespace ERP.winforms.UI.Views
 
         private void BtnUpdateProduct_Click(object? sender, EventArgs e)
         {
+            if (BranchContextService.Instance.CurrentContext.IsAllBranches)
+            {
+                MessageBox.Show("Inventory stock operations require selecting a specific active branch.\n\nPlease choose a specific branch from the header selector to record or modify branch stock.", "Specific Branch Required", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
             if (_selectedProduct == null)
             {
                 string sku = _txtFormSku.Text.Trim();
@@ -920,8 +983,81 @@ namespace ERP.winforms.UI.Views
             }
         }
 
+        private void UpdateBranchScopeUI()
+        {
+            var ctx = BranchContextService.Instance.CurrentContext;
+            var colStock = _gridProducts?.Columns["ColStock"];
+
+            if (ctx.IsAllBranches)
+            {
+                if (_lblBranchScopeBadge != null)
+                {
+                    _lblBranchScopeBadge.Text = "🌐 All Branches (Consolidated Stock View)";
+                    _lblBranchScopeBadge.ForeColor = Color.FromArgb(31, 78, 121);
+                    _lblBranchScopeBadge.BackColor = Color.FromArgb(235, 243, 250);
+                }
+                if (colStock != null)
+                {
+                    colStock.HeaderText = "TOTAL STOCK";
+                }
+                if (_numFormStock != null)
+                {
+                    _numFormStock.Enabled = false;
+                }
+                if (_lblBranchStockNote != null)
+                {
+                    _lblBranchStockNote.Text = "⚠️ Consolidated view. Switch branch to modify stock.";
+                    _lblBranchStockNote.ForeColor = Color.FromArgb(180, 83, 9);
+                }
+            }
+            else if (ctx.HasSpecificBranch)
+            {
+                if (_lblBranchScopeBadge != null)
+                {
+                    _lblBranchScopeBadge.Text = $"📍 Active Branch: {ctx.BranchName}";
+                    _lblBranchScopeBadge.ForeColor = Color.FromArgb(27, 122, 79);
+                    _lblBranchScopeBadge.BackColor = Color.FromArgb(235, 247, 238);
+                }
+                if (colStock != null)
+                {
+                    colStock.HeaderText = $"STOCK ({ctx.BranchName})";
+                }
+                if (_numFormStock != null)
+                {
+                    _numFormStock.Enabled = true;
+                }
+                if (_lblBranchStockNote != null)
+                {
+                    _lblBranchStockNote.Text = $"Stock edits will apply to branch '{ctx.BranchName}'.";
+                    _lblBranchStockNote.ForeColor = Color.FromArgb(27, 122, 79);
+                }
+            }
+            else
+            {
+                if (_lblBranchScopeBadge != null)
+                {
+                    _lblBranchScopeBadge.Text = "📍 Active Branch: Default Location";
+                    _lblBranchScopeBadge.ForeColor = AppTheme.TextDark;
+                    _lblBranchScopeBadge.BackColor = Color.FromArgb(243, 244, 246);
+                }
+                if (colStock != null)
+                {
+                    colStock.HeaderText = "STOCK";
+                }
+                if (_numFormStock != null)
+                {
+                    _numFormStock.Enabled = true;
+                }
+                if (_lblBranchStockNote != null)
+                {
+                    _lblBranchStockNote.Text = string.Empty;
+                }
+            }
+        }
+
         public void ApplyFilters()
         {
+            UpdateBranchScopeUI();
             if (_gridProducts == null) return;
             if (_gridProducts.Columns["ColSupplier"] != null)
             {
@@ -979,6 +1115,10 @@ namespace ERP.winforms.UI.Views
                     : (p.StockQuantity > 2 ? "In Stock" : (p.StockQuantity > 0 ? $"Low Stock ({p.StockQuantity})" : "Out of Stock"));
                 decimal cost = p.UnitPrice * 0.75m;
 
+                string stockDisplay = BranchContextService.Instance.CurrentContext.IsAllBranches
+                    ? $"Total: {p.StockQuantity}"
+                    : $"{p.StockQuantity}";
+
                 int rowIdx = _gridProducts.Rows.Add(
                     p.ProductCode,
                     p.ProductName,
@@ -986,7 +1126,7 @@ namespace ERP.winforms.UI.Views
                     string.IsNullOrWhiteSpace(p.SupplierName) ? "Direct Distribution" : p.SupplierName,
                     $"₱{p.UnitPrice:N2}",
                     $"₱{cost:N2}",
-                    $"{p.StockQuantity}",
+                    stockDisplay,
                     stockStatus,
                     p.IsActive ? "📦 Archive" : "♻️ Restore"
                 );

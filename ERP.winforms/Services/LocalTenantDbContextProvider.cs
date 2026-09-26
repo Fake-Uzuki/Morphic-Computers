@@ -79,7 +79,46 @@ namespace ERP.winforms.Services
                 .UseSqlServer(connectionString)
                 .Options;
 
-            return new TenantErpDbContext(options);
+            var context = new TenantErpDbContext(options);
+            await EnsureBranchSchemaAsync(context, companyId).ConfigureAwait(false);
+            return context;
+        }
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, bool> _branchSchemaChecked = new();
+
+        /// <summary>
+        /// Idempotently ensures the BranchId column exists across operational tables in the local tenant database.
+        /// Preserves all existing historical records.
+        /// </summary>
+        public static async Task EnsureBranchSchemaAsync(TenantErpDbContext context, int companyId)
+        {
+            if (_branchSchemaChecked.TryGetValue(companyId, out bool done) && done) return;
+
+            try
+            {
+                const string sql = @"
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Inventories' AND COLUMN_NAME = 'BranchId')
+    ALTER TABLE Inventories ADD BranchId INT NULL;
+
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Orders' AND COLUMN_NAME = 'BranchId')
+    ALTER TABLE Orders ADD BranchId INT NULL;
+
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'StaffMembers' AND COLUMN_NAME = 'BranchId')
+    ALTER TABLE StaffMembers ADD BranchId INT NULL;
+
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'RepairTickets' AND COLUMN_NAME = 'BranchId')
+    ALTER TABLE RepairTickets ADD BranchId INT NULL;
+
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Expenses' AND COLUMN_NAME = 'BranchId')
+    ALTER TABLE Expenses ADD BranchId INT NULL;
+";
+                await context.Database.ExecuteSqlRawAsync(sql).ConfigureAwait(false);
+                _branchSchemaChecked[companyId] = true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"EnsureBranchSchemaAsync note for company {companyId}: {ex.Message}");
+            }
         }
     }
 }

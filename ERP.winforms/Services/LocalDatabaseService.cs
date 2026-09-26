@@ -37,8 +37,10 @@ namespace ERP.winforms.Services
 
         /// <summary>
         /// Retrieves all products for the specified tenant from the local tenant database.
+        /// When branchId is specified, populates StockQuantity for that branch only.
+        /// When branchId is null, populates StockQuantity as consolidated total across all branches.
         /// </summary>
-        public async Task<List<Product>> GetProductsAsync(int companyId)
+        public async Task<List<Product>> GetProductsAsync(int companyId, int? branchId = null)
         {
             await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
             var products = await context.Products
@@ -54,14 +56,34 @@ namespace ERP.winforms.Services
 
             foreach (var p in products)
             {
-                var inv = inventories.FirstOrDefault(i => i.ProductId == p.ProductId);
-                if (inv != null)
+                if (branchId.HasValue)
                 {
-                    p.StockQuantity = (int)inv.QuantityOnHand;
+                    // Isolated stock for the specific active branch
+                    var inv = inventories.FirstOrDefault(i => i.ProductId == p.ProductId && i.BranchId == branchId.Value);
+                    p.StockQuantity = inv != null ? (int)inv.QuantityOnHand : 0;
+                }
+                else
+                {
+                    // Consolidated total across all branches + unassigned historical inventory
+                    var prodInvs = inventories.Where(i => i.ProductId == p.ProductId).ToList();
+                    p.StockQuantity = prodInvs.Any() ? (int)prodInvs.Sum(i => i.QuantityOnHand) : 0;
                 }
             }
 
             return products;
+        }
+
+        /// <summary>
+        /// Retrieves stock quantities for a product broken down by branch.
+        /// </summary>
+        public async Task<Dictionary<int, decimal>> GetProductStockByBranchAsync(int companyId, int productId)
+        {
+            await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
+            return await context.Inventories
+                .AsNoTracking()
+                .Where(i => i.ProductId == productId && i.BranchId.HasValue)
+                .ToDictionaryAsync(i => i.BranchId!.Value, i => i.QuantityOnHand)
+                .ConfigureAwait(false);
         }
 
         /// <summary>
@@ -428,9 +450,9 @@ namespace ERP.winforms.Services
         }
 
         /// <summary>
-        /// Saves or updates a product and updates its inventory quantity in local SQL Server.
+        /// Saves or updates a product and updates its branch-specific inventory quantity in local SQL Server.
         /// </summary>
-        public async Task<Product> SaveProductAsync(int companyId, Product product, bool enqueueSync = true)
+        public async Task<Product> SaveProductAsync(int companyId, Product product, bool enqueueSync = true, int? branchId = null)
         {
             await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
             await using var tx = await context.Database.BeginTransactionAsync().ConfigureAwait(false);
@@ -441,6 +463,8 @@ namespace ERP.winforms.Services
                     p.ProductCode == product.ProductCode).ConfigureAwait(false);
 
                 bool isUpdate = existing != null;
+                int targetProductId;
+
                 if (existing != null)
                 {
                     existing.ProductName = product.ProductName;
@@ -452,23 +476,7 @@ namespace ERP.winforms.Services
                     existing.SupplierName = product.SupplierName;
                     existing.SupplierId = product.SupplierId;
 
-                    var inv = await context.Inventories.FirstOrDefaultAsync(i => i.ProductId == existing.ProductId).ConfigureAwait(false);
-                    if (inv != null)
-                    {
-                        inv.QuantityOnHand = product.StockQuantity;
-                        inv.LastUpdatedAt = DateTime.UtcNow;
-                    }
-                    else
-                    {
-                        context.Inventories.Add(new Inventory
-                        {
-                            ProductId = existing.ProductId,
-                            QuantityOnHand = product.StockQuantity,
-                            ReorderLevel = 3,
-                            LastUpdatedAt = DateTime.UtcNow
-                        });
-                    }
-
+                    targetProductId = existing.ProductId;
                     product.ProductId = existing.ProductId;
                 }
                 else
@@ -476,10 +484,25 @@ namespace ERP.winforms.Services
                     product.ProductId = 0;
                     context.Products.Add(product);
                     await context.SaveChangesAsync().ConfigureAwait(false);
+                    targetProductId = product.ProductId;
+                }
 
+                // Branch-aware inventory record
+                var inv = await context.Inventories.FirstOrDefaultAsync(i =>
+                    i.ProductId == targetProductId &&
+                    (branchId.HasValue ? i.BranchId == branchId.Value : i.BranchId == null)).ConfigureAwait(false);
+
+                if (inv != null)
+                {
+                    inv.QuantityOnHand = product.StockQuantity;
+                    inv.LastUpdatedAt = DateTime.UtcNow;
+                }
+                else
+                {
                     context.Inventories.Add(new Inventory
                     {
-                        ProductId = product.ProductId,
+                        ProductId = targetProductId,
+                        BranchId = branchId,
                         QuantityOnHand = product.StockQuantity,
                         ReorderLevel = 3,
                         LastUpdatedAt = DateTime.UtcNow

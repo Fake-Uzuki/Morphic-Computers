@@ -118,6 +118,15 @@ namespace ERP.infrastructure.data
                     .WithMany()
                     .HasForeignKey(x => x.ProductId)
                     .OnDelete(DeleteBehavior.Cascade);
+
+                entity.Property(x => x.BranchId)
+                    .IsRequired(false);
+
+                entity.HasOne(x => x.Branch)
+                    .WithMany()
+                    .HasForeignKey(x => x.BranchId)
+                    .OnDelete(DeleteBehavior.Restrict)
+                    .IsRequired(false);
             });
 
             builder.Entity<Order>(entity =>
