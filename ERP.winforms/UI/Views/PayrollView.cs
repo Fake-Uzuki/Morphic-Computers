@@ -30,8 +30,11 @@ namespace ERP.winforms.UI.Views
             InitializeLayout();
             _dataService.PayrollRecordsChanged += () =>
             {
-                if (InvokeRequired) Invoke(new Action(RefreshData));
-                else RefreshData();
+                if (IsHandleCreated && !IsDisposed)
+                {
+                    if (InvokeRequired) BeginInvoke(new Action(RefreshData));
+                    else RefreshData();
+                }
             };
 
             RefreshData();

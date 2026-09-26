@@ -311,6 +311,8 @@ namespace ERP.winforms.Services
             return await _localDb.GetInventoriesAsync(cid).ConfigureAwait(false);
         }
 
+        private int _isLoadingFromDatabase;
+
         public void LoadFromDatabase()
         {
             if (ActiveCompanyId <= 0 || string.Equals(CurrentCompany?.PlanName, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
@@ -318,9 +320,16 @@ namespace ERP.winforms.Services
                 return;
             }
 
-            int targetCompanyId = ActiveCompanyId;
-            bool networkUp = NetworkInterface.GetIsNetworkAvailable();
-            bool anyApiSucceeded = false;
+            if (Interlocked.CompareExchange(ref _isLoadingFromDatabase, 1, 0) != 0)
+            {
+                return;
+            }
+
+            try
+            {
+                int targetCompanyId = ActiveCompanyId;
+                bool networkUp = NetworkInterface.GetIsNetworkAvailable();
+                bool anyApiSucceeded = false;
 
             // 1. Fetch live categories for the active tenant via API (fallback to local DB)
             try
@@ -940,8 +949,12 @@ namespace ERP.winforms.Services
                     anyApiSucceeded = true;
                     if (ActiveCompanyId == targetCompanyId)
                     {
+                        bool branchesChanged = !AreBranchesEqual(Branches, liveBranches);
                         Branches = liveBranches;
-                        BranchesChanged?.Invoke();
+                        if (branchesChanged)
+                        {
+                            BranchesChanged?.Invoke();
+                        }
                     }
                 }
                 else
@@ -951,8 +964,12 @@ namespace ERP.winforms.Services
                         var localBranches = Task.Run(() => _localDb.GetBranchesAsync(targetCompanyId)).GetAwaiter().GetResult();
                         if (localBranches != null && ActiveCompanyId == targetCompanyId)
                         {
+                            bool branchesChanged = !AreBranchesEqual(Branches, localBranches);
                             Branches = localBranches;
-                            BranchesChanged?.Invoke();
+                            if (branchesChanged)
+                            {
+                                BranchesChanged?.Invoke();
+                            }
                         }
                     }
                     catch (Exception dbEx)
@@ -1018,6 +1035,29 @@ namespace ERP.winforms.Services
 
             IsUsingLiveCloudDatabase = anyApiSucceeded;
             ConnectionStatusChanged?.Invoke(anyApiSucceeded);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _isLoadingFromDatabase, 0);
+            }
+        }
+
+        private static bool AreBranchesEqual(List<Branch>? a, List<Branch>? b)
+        {
+            if (ReferenceEquals(a, b)) return true;
+            if (a == null || b == null) return false;
+            if (a.Count != b.Count) return false;
+            for (int i = 0; i < a.Count; i++)
+            {
+                if (a[i].BranchId != b[i].BranchId ||
+                    a[i].BranchCode != b[i].BranchCode ||
+                    a[i].BranchName != b[i].BranchName ||
+                    a[i].IsActive != b[i].IsActive)
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         private string GetLocalOrdersFilePath()

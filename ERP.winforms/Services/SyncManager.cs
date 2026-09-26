@@ -134,7 +134,7 @@ namespace ERP.winforms.Services
                 // If currently viewed tenant was refreshed, reload DataService in background to update views
                 try
                 {
-                    if (DataService.Instance.ActiveCompanyId > 0)
+                    if (DataService.Instance.ActiveCompanyId > 0 && companiesToSync.Contains(DataService.Instance.ActiveCompanyId))
                     {
                         _ = Task.Run(() => DataService.Instance.LoadFromDatabase());
                     }

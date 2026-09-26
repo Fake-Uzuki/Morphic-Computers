@@ -31,15 +31,18 @@ namespace ERP.winforms.UI.Views
             InitializeLayout();
             _dataService.StaffMembersChanged += () =>
             {
-                if (InvokeRequired) Invoke(new Action(RefreshData));
-                else RefreshData();
+                if (IsHandleCreated && !IsDisposed)
+                {
+                    if (InvokeRequired) BeginInvoke(new Action(RefreshData));
+                    else RefreshData();
+                }
             };
 
             BranchContextService.Instance.ContextChanged += ctx =>
             {
                 if (IsHandleCreated && !IsDisposed)
                 {
-                    if (InvokeRequired) Invoke(new Action(RefreshData));
+                    if (InvokeRequired) BeginInvoke(new Action(RefreshData));
                     else RefreshData();
                 }
             };
