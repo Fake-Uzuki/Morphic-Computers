@@ -1094,6 +1094,34 @@ namespace ERP.winforms.Services
             return payroll;
         }
 
+        public async Task<bool> DeletePayrollRecordAsync(int companyId, int payrollId, bool enqueueSync = true)
+        {
+            await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
+            var record = await context.PayrollRecords.FirstOrDefaultAsync(p => p.PayrollId == payrollId && p.CompanyId == companyId).ConfigureAwait(false);
+            if (record == null) return false;
+
+            context.PayrollRecords.Remove(record);
+            await context.SaveChangesAsync().ConfigureAwait(false);
+
+            if (enqueueSync)
+            {
+                context.SyncOutbox.Add(new SyncOutboxItem
+                {
+                    SyncId = Guid.NewGuid().ToString("N"),
+                    CompanyId = companyId,
+                    EntityType = "PayrollRecord",
+                    EntityId = payrollId.ToString(),
+                    Operation = "Delete",
+                    PayloadJson = System.Text.Json.JsonSerializer.Serialize(new { PayrollId = payrollId, CompanyId = companyId }),
+                    CreatedAt = DateTime.UtcNow,
+                    SyncStatus = "Pending"
+                });
+                await context.SaveChangesAsync().ConfigureAwait(false);
+            }
+
+            return true;
+        }
+
         // =========================================================================
         // APPROVAL REQUESTS
         // =========================================================================
@@ -2336,6 +2364,11 @@ namespace ERP.winforms.Services
                                 local.BaseSalary = cloud.BaseSalary;
                                 local.OvertimePay = cloud.OvertimePay;
                                 local.CommissionAmount = cloud.CommissionAmount;
+                                local.SssDeduction = cloud.SssDeduction;
+                                local.PhilHealthDeduction = cloud.PhilHealthDeduction;
+                                local.PagIbigDeduction = cloud.PagIbigDeduction;
+                                local.WithholdingTax = cloud.WithholdingTax;
+                                local.OtherDeductions = cloud.OtherDeductions;
                                 local.Deductions = cloud.Deductions;
                                 local.Status = cloud.Status;
                                 local.PaymentMethod = cloud.PaymentMethod;
@@ -2356,6 +2389,11 @@ namespace ERP.winforms.Services
                                 BaseSalary = cloud.BaseSalary,
                                 OvertimePay = cloud.OvertimePay,
                                 CommissionAmount = cloud.CommissionAmount,
+                                SssDeduction = cloud.SssDeduction,
+                                PhilHealthDeduction = cloud.PhilHealthDeduction,
+                                PagIbigDeduction = cloud.PagIbigDeduction,
+                                WithholdingTax = cloud.WithholdingTax,
+                                OtherDeductions = cloud.OtherDeductions,
                                 Deductions = cloud.Deductions,
                                 Status = cloud.Status,
                                 PaymentMethod = cloud.PaymentMethod,

@@ -333,6 +333,10 @@ namespace ERP.winforms.Services
                         if (payroll == null) return false;
                         return await _apiClient.CreatePayrollRecordAsync(item.CompanyId, payroll).ConfigureAwait(false);
                     }
+                    else if (item.Operation == "Delete" && int.TryParse(item.EntityId, out int delPayId))
+                    {
+                        return await _apiClient.DeletePayrollRecordAsync(item.CompanyId, delPayId).ConfigureAwait(false);
+                    }
                     break;
 
                 case "StorePolicy":

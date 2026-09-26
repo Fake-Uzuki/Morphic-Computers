@@ -778,11 +778,43 @@ namespace ERP.winforms.Services
             try
             {
                 var response = await _http.PostAsJsonAsync($"/api/tenant/{companyId}/payroll", record).ConfigureAwait(false);
-                return response.IsSuccessStatusCode;
+                if (response.IsSuccessStatusCode)
+                {
+                    var created = await response.Content.ReadFromJsonAsync<PayrollRecord>(_jsonOptions).ConfigureAwait(false);
+                    if (created != null)
+                    {
+                        record.PayrollId = created.PayrollId;
+                        record.SssDeduction = created.SssDeduction;
+                        record.PhilHealthDeduction = created.PhilHealthDeduction;
+                        record.PagIbigDeduction = created.PagIbigDeduction;
+                        record.WithholdingTax = created.WithholdingTax;
+                        record.OtherDeductions = created.OtherDeductions;
+                        record.Deductions = created.Deductions;
+                        record.ProcessedAt = created.ProcessedAt;
+                        record.StaffName = created.StaffName;
+                        record.Role = created.Role;
+                    }
+                    return true;
+                }
+                return false;
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"ApiClient CreatePayrollRecord error: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<bool> DeletePayrollRecordAsync(int companyId, int payrollId)
+        {
+            try
+            {
+                var response = await _http.DeleteAsync($"/api/tenant/{companyId}/payroll/{payrollId}").ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient DeletePayrollRecord error: {ex.Message}");
                 return false;
             }
         }

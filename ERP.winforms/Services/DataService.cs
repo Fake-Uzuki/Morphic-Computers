@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using ERP.domain.entities;
+using ERP.domain.services;
 
 namespace ERP.winforms.Services
 {
@@ -3127,6 +3128,20 @@ namespace ERP.winforms.Services
             record.CompanyId = ActiveCompanyId;
             record.ProcessedAt = DateTime.UtcNow;
 
+            // Compute Philippine statutory deductions before persisting
+            var calc = PayrollCalculationService.Calculate(
+                record.BaseSalary,
+                record.OvertimePay,
+                record.CommissionAmount,
+                record.OtherDeductions);
+
+            record.SssDeduction = calc.SssDeduction;
+            record.PhilHealthDeduction = calc.PhilHealthDeduction;
+            record.PagIbigDeduction = calc.PagIbigDeduction;
+            record.WithholdingTax = calc.WithholdingTax;
+            record.OtherDeductions = calc.OtherDeductions;
+            record.Deductions = calc.TotalDeductions;
+
             bool isOnline = IsApiReachable();
             if (isOnline)
             {
@@ -3183,14 +3198,42 @@ namespace ERP.winforms.Services
         public bool DeletePayrollRecord(int payrollId)
         {
             var record = PayrollRecords.FirstOrDefault(p => p.PayrollId == payrollId);
-            if (record != null)
+            if (record == null) return false;
+
+            bool isOnline = IsApiReachable();
+            if (isOnline)
             {
-                PayrollRecords.Remove(record);
-                SavePayrollToLocalCache();
-                PayrollRecordsChanged?.Invoke();
-                return true;
+                try
+                {
+                    Task.Run(() => _apiClient.DeletePayrollRecordAsync(ActiveCompanyId, payrollId)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"DeletePayrollRecord API error: {ex.Message}");
+                }
+
+                try
+                {
+                    Task.Run(() => _localDb.DeletePayrollRecordAsync(ActiveCompanyId, payrollId, enqueueSync: false)).GetAwaiter().GetResult();
+                }
+                catch { }
             }
-            return false;
+            else
+            {
+                try
+                {
+                    Task.Run(() => _localDb.DeletePayrollRecordAsync(ActiveCompanyId, payrollId, enqueueSync: true)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"DeletePayrollRecord localDb error: {ex.Message}");
+                }
+            }
+
+            PayrollRecords.Remove(record);
+            SavePayrollToLocalCache();
+            PayrollRecordsChanged?.Invoke();
+            return true;
         }
 
         // =========================================================================
