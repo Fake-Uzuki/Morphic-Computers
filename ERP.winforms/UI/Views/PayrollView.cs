@@ -168,17 +168,20 @@ namespace ERP.winforms.UI.Views
                 Padding = new Padding(6, 0, 0, 0)
             };
 
-            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ID", FillWeight = 8, MinimumWidth = 50, Name = "ColId" });
-            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "EMPLOYEE NAME", FillWeight = 18, MinimumWidth = 140, Name = "ColName" });
-            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ROLE / DEPARTMENT", FillWeight = 16, MinimumWidth = 130, Name = "ColRole" });
-            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PAY PERIOD", FillWeight = 17, MinimumWidth = 130, Name = "ColPeriod" });
-            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "BASE SALARY", FillWeight = 12, MinimumWidth = 90, Name = "ColBase" });
-            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "COMMISSION & OT", FillWeight = 14, MinimumWidth = 100, Name = "ColComm" });
-            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "DEDUCTIONS", FillWeight = 11, MinimumWidth = 90, Name = "ColDeduc" });
-            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "NET TAKE-HOME", FillWeight = 14, MinimumWidth = 100, Name = "ColNet" });
-            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CHANNEL", FillWeight = 14, MinimumWidth = 100, Name = "ColChannel" });
-            _gridPayroll.Columns.Add(new DataGridViewButtonColumn { HeaderText = "PAYSLIP", FillWeight = 9, MinimumWidth = 70, Text = "Payslip", UseColumnTextForButtonValue = true, Name = "ColPayslip" });
-            _gridPayroll.Columns.Add(new DataGridViewButtonColumn { HeaderText = "VOID", FillWeight = 7, MinimumWidth = 60, Text = "Void", UseColumnTextForButtonValue = true, Name = "ColDelete" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ID", FillWeight = 6, MinimumWidth = 45, Name = "ColId" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "EMPLOYEE NAME", FillWeight = 14, MinimumWidth = 120, Name = "ColName" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ROLE / DEPT", FillWeight = 11, MinimumWidth = 100, Name = "ColRole" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PERIOD", FillWeight = 11, MinimumWidth = 95, Name = "ColPeriod" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "BASIC / GROSS", FillWeight = 10, MinimumWidth = 95, Name = "ColGross" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "SSS", FillWeight = 8, MinimumWidth = 70, Name = "ColSss" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PHILHEALTH", FillWeight = 8, MinimumWidth = 75, Name = "ColPhic" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PAG-IBIG", FillWeight = 7, MinimumWidth = 65, Name = "ColHdmf" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "W/TAX", FillWeight = 8, MinimumWidth = 70, Name = "ColTax" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "OTHER DED", FillWeight = 7, MinimumWidth = 65, Name = "ColOther" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "TOTAL DED", FillWeight = 9, MinimumWidth = 75, Name = "ColDeduc" });
+            _gridPayroll.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "NET PAY", FillWeight = 11, MinimumWidth = 90, Name = "ColNet" });
+            _gridPayroll.Columns.Add(new DataGridViewButtonColumn { HeaderText = "PAYSLIP", FillWeight = 8, MinimumWidth = 65, Text = "Payslip", UseColumnTextForButtonValue = true, Name = "ColPayslip" });
+            _gridPayroll.Columns.Add(new DataGridViewButtonColumn { HeaderText = "VOID", FillWeight = 6, MinimumWidth = 50, Text = "Void", UseColumnTextForButtonValue = true, Name = "ColDelete" });
 
             _gridPayroll.CellContentClick += (s, e) =>
             {
@@ -287,16 +290,31 @@ namespace ERP.winforms.UI.Views
             _gridPayroll.Rows.Clear();
             foreach (var r in list)
             {
+                decimal sss = r.SssDeduction;
+                decimal phic = r.PhilHealthDeduction;
+                decimal hdmf = r.PagIbigDeduction;
+                decimal tax = r.WithholdingTax;
+                decimal other = r.OtherDeductions;
+                if (sss == 0 && phic == 0 && hdmf == 0 && tax == 0 && r.Deductions > 0)
+                {
+                    sss = Math.Round(r.Deductions * 0.45m, 2);
+                    phic = Math.Round(r.Deductions * 0.25m, 2);
+                    hdmf = r.Deductions - sss - phic;
+                }
+
                 int rowIdx = _gridPayroll.Rows.Add(
                     $"#PAY-{r.PayrollId:D3}",
                     r.StaffName,
                     r.Role,
-                    $"{r.PeriodStart:MMM dd} - {r.PeriodEnd:MMM dd, yyyy}",
-                    $"₱{r.BaseSalary:N2}",
-                    $"₱{(r.CommissionAmount + r.OvertimePay):N2}",
+                    $"{r.PeriodStart:MMM dd} - {r.PeriodEnd:MMM dd}",
+                    $"₱{r.GrossPay:N2}",
+                    $"₱{sss:N2}",
+                    $"₱{phic:N2}",
+                    $"₱{hdmf:N2}",
+                    $"₱{tax:N2}",
+                    $"₱{other:N2}",
                     $"₱{r.Deductions:N2}",
-                    $"₱{r.NetPay:N2}",
-                    r.PaymentMethod
+                    $"₱{r.NetPay:N2}"
                 );
 
                 var row = _gridPayroll.Rows[rowIdx];

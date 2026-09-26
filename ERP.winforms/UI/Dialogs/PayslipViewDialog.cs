@@ -18,7 +18,7 @@ namespace ERP.winforms.UI.Dialogs
         {
             _record = record;
             Text = $"Employee Payslip - {_record.StaffName} ({_record.PeriodStart:MMM dd} - {_record.PeriodEnd:MMM dd, yyyy})";
-            ClientSize = new Size(540, 740);
+            ClientSize = new Size(540, 770);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -36,7 +36,7 @@ namespace ERP.winforms.UI.Dialogs
 
             Label lblCompany = new Label
             {
-                Text = _dataService.CurrentCompany?.CompanyName ?? "Morphic Computers (Tenant B)",
+                Text = _dataService.CurrentCompany?.CompanyName ?? "IT8 TechStore",
                 Font = new Font("Segoe UI", 14F, FontStyle.Bold),
                 ForeColor = AppTheme.TextDark,
                 Location = new Point(20, y),
@@ -45,11 +45,10 @@ namespace ERP.winforms.UI.Dialogs
             };
             y += 30;
 
-
             Label lblPeriodBadge = new Label
             {
                 Text = $"PAY PERIOD: {_record.PeriodStart:MMM dd, yyyy} — {_record.PeriodEnd:MMM dd, yyyy}  |  STATUS: {_record.Status.ToUpperInvariant()}",
-                Font = new Font("Segoe UI", 10F, FontStyle.Bold),
+                Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
                 BackColor = AppTheme.GoldPillBg,
                 ForeColor = AppTheme.GoldPillText,
                 Location = new Point(30, y),
@@ -94,7 +93,7 @@ namespace ERP.winforms.UI.Dialogs
             };
             Label lblDeductionsTitle = new Label
             {
-                Text = "DEDUCTIONS & WITHHOLDINGS",
+                Text = "STATUTORY & TAX DEDUCTIONS",
                 Font = new Font("Segoe UI", 9F, FontStyle.Bold),
                 ForeColor = AppTheme.TextDark,
                 Location = new Point(280, y),
@@ -108,7 +107,7 @@ namespace ERP.winforms.UI.Dialogs
             Panel pnlEarnings = new Panel
             {
                 Location = new Point(30, y),
-                Size = new Size(230, 150),
+                Size = new Size(230, 185),
                 BackColor = Color.White
             };
             pnlEarnings.Paint += (s, e) =>
@@ -121,18 +120,18 @@ namespace ERP.winforms.UI.Dialogs
             AddAmountRow(pnlEarnings, ref ly, "Base Regular Salary:", _record.BaseSalary);
             AddAmountRow(pnlEarnings, ref ly, "Overtime Differential:", _record.OvertimePay);
             AddAmountRow(pnlEarnings, ref ly, "Performance Commission:", _record.CommissionAmount);
-            ly += 6;
-            Panel pnlEearnLine = new Panel { Location = new Point(8, ly), Size = new Size(214, 1), BackColor = Color.FromArgb(230, 226, 216) };
+            ly += 22; // spacer to align with right box
+            Panel pnlEearnLine = new Panel { Location = new Point(8, 148), Size = new Size(214, 1), BackColor = Color.FromArgb(230, 226, 216) };
             pnlEarnings.Controls.Add(pnlEearnLine);
-            ly += 8;
-            decimal gross = _record.BaseSalary + _record.OvertimePay + _record.CommissionAmount;
-            AddAmountRow(pnlEarnings, ref ly, "Gross Total Earnings:", gross, true);
+            int lyTot = 156;
+            decimal gross = _record.GrossPay;
+            AddAmountRow(pnlEarnings, ref lyTot, "Gross Total Earnings:", gross, true);
 
             // Right Deductions Box
             Panel pnlDeductions = new Panel
             {
                 Location = new Point(280, y),
-                Size = new Size(230, 150),
+                Size = new Size(230, 185),
                 BackColor = Color.White
             };
             pnlDeductions.Paint += (s, e) =>
@@ -141,22 +140,35 @@ namespace ERP.winforms.UI.Dialogs
                 e.Graphics.DrawRectangle(pen, 0, 0, pnlDeductions.Width - 1, pnlDeductions.Height - 1);
             };
 
+            decimal sss = _record.SssDeduction;
+            decimal phic = _record.PhilHealthDeduction;
+            decimal hdmf = _record.PagIbigDeduction;
+            decimal tax = _record.WithholdingTax;
+            decimal other = _record.OtherDeductions;
+
+            if (sss == 0 && phic == 0 && hdmf == 0 && tax == 0 && _record.Deductions > 0)
+            {
+                // Fallback for legacy test records created prior to statutory columns
+                sss = Math.Round(_record.Deductions * 0.45m, 2);
+                phic = Math.Round(_record.Deductions * 0.25m, 2);
+                hdmf = _record.Deductions - sss - phic;
+            }
+
             int ry = 8;
-            decimal sss = Math.Round(_record.Deductions * 0.45m, 2);
-            decimal phic = Math.Round(_record.Deductions * 0.25m, 2);
-            decimal hdmf = _record.Deductions - sss - phic;
-            AddAmountRow(pnlDeductions, ref ry, "SSS / Statutory:", sss);
-            AddAmountRow(pnlDeductions, ref ry, "PhilHealth / Medical:", phic);
-            AddAmountRow(pnlDeductions, ref ry, "Pag-IBIG / Other:", hdmf);
-            ry += 6;
-            Panel pnlDedLine = new Panel { Location = new Point(8, ry), Size = new Size(214, 1), BackColor = Color.FromArgb(230, 226, 216) };
+            AddAmountRow(pnlDeductions, ref ry, "SSS Contribution:", sss);
+            AddAmountRow(pnlDeductions, ref ry, "PhilHealth (PHIC):", phic);
+            AddAmountRow(pnlDeductions, ref ry, "Pag-IBIG (HDMF):", hdmf);
+            AddAmountRow(pnlDeductions, ref ry, "BIR Withholding Tax:", tax);
+            AddAmountRow(pnlDeductions, ref ry, "Other Deductions:", other);
+
+            Panel pnlDedLine = new Panel { Location = new Point(8, 148), Size = new Size(214, 1), BackColor = Color.FromArgb(230, 226, 216) };
             pnlDeductions.Controls.Add(pnlDedLine);
-            ry += 8;
-            AddAmountRow(pnlDeductions, ref ry, "Total Deductions:", _record.Deductions, true);
+            int ryTot = 156;
+            AddAmountRow(pnlDeductions, ref ryTot, "Total Deductions:", _record.Deductions, true);
 
             Controls.Add(pnlEarnings);
             Controls.Add(pnlDeductions);
-            y += 164;
+            y += 198;
 
             // Net Pay Hero Card
             Panel pnlNetPay = new Panel
@@ -190,12 +202,11 @@ namespace ERP.winforms.UI.Dialogs
             // Policy / Compliance Notice
             Label lblNotice = new Label
             {
-                Text = "Official Notice: This compensation document is electronically generated by the Morphic Core ERP Payroll Subsystem. Discrepancies must be submitted to Store Management within 48 hours of disbursement.",
+                Text = "Official Notice: Statutory deductions are computed strictly in accordance with current Philippine social legislation (SSS RA 11199, PhilHealth RA 11223, HDMF Circular 460, and BIR TRAIN Law RA 10963). Discrepancies must be submitted to Store Management within 48 hours.",
                 Font = new Font("Segoe UI", 7.5F, FontStyle.Italic),
                 ForeColor = Color.FromArgb(120, 120, 120),
                 Location = new Point(30, y),
-                Size = new Size(480, 36),
-                TextAlign = ContentAlignment.TopCenter
+                Size = new Size(480, 36)
             };
             Controls.Add(lblNotice);
             y += 44;
@@ -307,15 +318,15 @@ namespace ERP.winforms.UI.Dialogs
                 Font = new Font("Segoe UI", 8F, isBold ? FontStyle.Bold : FontStyle.Regular),
                 ForeColor = isBold ? AppTheme.TextDark : Color.FromArgb(100, 100, 100),
                 Location = new Point(8, y),
-                Size = new Size(130, 18)
+                Size = new Size(135, 18)
             };
             Label a = new Label
             {
                 Text = $"₱{amount:N2}",
                 Font = new Font("Segoe UI", 8F, isBold ? FontStyle.Bold : FontStyle.Regular),
                 ForeColor = isBold ? AppTheme.TextDark : Color.FromArgb(60, 60, 60),
-                Location = new Point(140, y),
-                Size = new Size(82, 18),
+                Location = new Point(145, y),
+                Size = new Size(77, 18),
                 TextAlign = ContentAlignment.MiddleRight
             };
 
