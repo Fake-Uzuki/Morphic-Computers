@@ -149,7 +149,7 @@ namespace ERP.winforms
             bool isPlatformAdmin = ModuleAccessService.NormalizePlan(_dataService.CurrentCompany?.PlanName) == ErpPlan.SuperAdmin;
 
             Text = isPlatformAdmin
-                ? $"Master (Super Admin) | Platform Administration - User: {_currentUser}"
+                ? $"Master (Super Admin) - User: {_currentUser}"
                 : $"{_dataService.CurrentCompany?.CompanyName ?? "Tenant A"} | {_dataService.CurrentCompany?.PlanName ?? "Micro"} Company Operations - User: {_currentUser}";
 
             // ========================================================
@@ -187,7 +187,7 @@ namespace ERP.winforms
             // Subtitle tag cleanly aligned
             Label lblTagline = new Label
             {
-                Text = isPlatformAdmin ? "|  Platform Administration" : $"|  {_dataService.CurrentCompany?.PlanName ?? "Micro"} Company Operations",
+                Text = isPlatformAdmin ? "" : $"|  {_dataService.CurrentCompany?.PlanName ?? "Micro"} Company Operations",
                 Font = new Font("Segoe UI", 10F, FontStyle.Regular),
                 ForeColor = Color.FromArgb(170, 168, 158),
                 Location = new Point(56 + lblBrandName.PreferredSize.Width + 8, 17),

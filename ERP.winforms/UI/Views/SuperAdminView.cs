@@ -82,31 +82,21 @@ namespace ERP.winforms.UI.Views
             Panel pnlHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 64,
-                Padding = new Padding(24, 12, 24, 10),
+                Height = 44,
+                Padding = new Padding(24, 10, 24, 10),
                 BackColor = AppTheme.HeaderBg
             };
 
             Label lblTitle = new Label
             {
                 Text = "Master (Super Admin)  |  Platform Management",
-                Font = new Font("Segoe UI", 13.5F, FontStyle.Bold),
+                Font = new Font("Segoe UI", 12.5F, FontStyle.Bold),
                 ForeColor = Color.White,
                 Location = new Point(24, 10),
                 AutoSize = true
             };
 
-            Label lblSubtitle = new Label
-            {
-                Text = "Platform Administration  •  Tenant Isolation  •  Business Intelligence  •  Subscriptions",
-                Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
-                ForeColor = AppTheme.TextMuted,
-                Location = new Point(24, 36),
-                AutoSize = true
-            };
-
             pnlHeader.Controls.Add(lblTitle);
-            pnlHeader.Controls.Add(lblSubtitle);
 
             // 2. MAIN BODY CONTAINER
             _pnlBody = new Panel
@@ -248,7 +238,7 @@ namespace ERP.winforms.UI.Views
             DataGridView grid = new DataGridView
             {
                 Location = new Point(0, 146),
-                Size = new Size(1100, 240),
+                Size = new Size(1100, 270),
                 BackgroundColor = Color.White,
                 BorderStyle = BorderStyle.None,
                 CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
@@ -298,7 +288,7 @@ namespace ERP.winforms.UI.Views
             // Details Panel below Grid
             Panel pnlDetails = new Panel
             {
-                Location = new Point(0, 396),
+                Location = new Point(0, 426),
                 Size = new Size(1100, 110),
                 BackColor = Color.White
             };
@@ -389,43 +379,8 @@ namespace ERP.winforms.UI.Views
                 ShowRegisterTenantDialog();
             };
 
-            // 4. Platform Security & Policy Guidelines Card
-            SunshineCard cardPolicy = new SunshineCard
-            {
-                Location = new Point(0, 518),
-                Size = new Size(1100, 190),
-                Padding = new Padding(20),
-                CustomBgColor = Color.White
-            };
-
-            Label lblHeading = new Label
-            {
-                Text = "Platform Architecture & Tenant Boundary Guidelines",
-                Font = new Font("Segoe UI", 11F, FontStyle.Bold),
-                ForeColor = AppTheme.TextDark,
-                Location = new Point(20, 16),
-                AutoSize = true
-            };
-
-            Label lblDesc = new Label
-            {
-                Text = "• Strict Tenant Isolation: Every tenant operates on a dedicated database. Tenant A, B, and C data cannot cross boundaries.\n" +
-                       "• Super Admin Boundary: Platform Super Administrators manage companies, subscription tiers, and databases from the Master DB.\n" +
-                       "• Operational Transaction Separation: Super Admin accounts are prohibited from executing normal tenant POS sales, inventory orders, or repairs.\n" +
-                       "• Dynamic Resolver: Database connections are dynamically queried from ERP_Master_Local.CompanyDatabases without hardcoded branching.\n" +
-                       "• Plan Tiers: Micro (Operational + Main Generative Income + Reports), Small (+ Support Income + BI), Medium (+ Branches, Procurement, Payroll, Finance, Dashboard).",
-                Font = new Font("Segoe UI", 9F, FontStyle.Regular),
-                ForeColor = Color.FromArgb(70, 70, 65),
-                Location = new Point(20, 44),
-                Size = new Size(1060, 130)
-            };
-
-            cardPolicy.Controls.Add(lblHeading);
-            cardPolicy.Controls.Add(lblDesc);
-
             pnl.Controls.Add(grid);
             pnl.Controls.Add(pnlDetails);
-            pnl.Controls.Add(cardPolicy);
 
             _pnlBody.Controls.Add(pnl);
         }
