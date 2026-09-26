@@ -970,5 +970,88 @@ namespace ERP.winforms.Services
                 return false;
             }
         }
+
+        // ==========================================
+        // PROCUREMENT (Medium Enterprise Logistics)
+        // ==========================================
+        public async Task<List<PurchaseOrder>?> GetPurchaseOrdersAsync(int companyId, bool includeArchived = true)
+        {
+            try
+            {
+                var response = await _http.GetAsync($"/api/tenant/{companyId}/purchaseorders?includeArchived={includeArchived}").ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    var records = await response.Content.ReadFromJsonAsync<List<PurchaseOrder>>(_jsonOptions).ConfigureAwait(false);
+                    return records ?? new List<PurchaseOrder>();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient GetPurchaseOrders error: {ex.Message}");
+            }
+            return null;
+        }
+
+        public async Task<PurchaseOrder?> GetPurchaseOrderByIdAsync(int companyId, int id)
+        {
+            try
+            {
+                var response = await _http.GetAsync($"/api/tenant/{companyId}/purchaseorders/{id}").ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadFromJsonAsync<PurchaseOrder>(_jsonOptions).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient GetPurchaseOrderById error: {ex.Message}");
+            }
+            return null;
+        }
+
+        public async Task<PurchaseOrder?> CreatePurchaseOrderAsync(int companyId, PurchaseOrder order)
+        {
+            try
+            {
+                var response = await _http.PostAsJsonAsync($"/api/tenant/{companyId}/purchaseorders", order).ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadFromJsonAsync<PurchaseOrder>(_jsonOptions).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient CreatePurchaseOrder error: {ex.Message}");
+            }
+            return null;
+        }
+
+        public async Task<bool> UpdatePurchaseOrderAsync(int companyId, int id, PurchaseOrder order)
+        {
+            try
+            {
+                var response = await _http.PutAsJsonAsync($"/api/tenant/{companyId}/purchaseorders/{id}", order).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient UpdatePurchaseOrder error: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<bool> ArchivePurchaseOrderAsync(int companyId, int id)
+        {
+            try
+            {
+                var response = await _http.DeleteAsync($"/api/tenant/{companyId}/purchaseorders/{id}").ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApiClient ArchivePurchaseOrder error: {ex.Message}");
+                return false;
+            }
+        }
     }
 }

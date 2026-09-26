@@ -10,20 +10,6 @@ using ERP.winforms.UI.Components;
 
 namespace ERP.winforms.UI.Views
 {
-    public class PurchaseOrderItem
-    {
-        public string PoNumber { get; set; } = string.Empty;
-        public string SupplierName { get; set; } = string.Empty;
-        public DateTime OrderDate { get; set; } = DateTime.UtcNow;
-        public string ItemDescription { get; set; } = string.Empty;
-        public int Quantity { get; set; }
-        public decimal UnitCost { get; set; }
-        public decimal TotalAmount => Quantity * UnitCost;
-        public string Status { get; set; } = "Pending";
-        public string ApprovedBy { get; set; } = "Procurement Lead";
-        public DateTime? ReceivedDate { get; set; }
-    }
-
     public class ProcurementView : UserControl
     {
         private readonly DataService _dataService = DataService.Instance;
@@ -35,57 +21,25 @@ namespace ERP.winforms.UI.Views
         private Label _lblTotalSpend = null!;
         private Label _lblSupplierCount = null!;
 
-        private readonly List<PurchaseOrderItem> _orders = new();
-
         public ProcurementView()
         {
             Dock = DockStyle.Fill;
             BackColor = AppTheme.AppBackground;
             AutoScroll = false;
 
-            InitializeDefaultPOs();
             InitializeLayout();
-        }
 
-        private void InitializeDefaultPOs()
-        {
-            _orders.Clear();
-            _orders.Add(new PurchaseOrderItem
+            _dataService.PurchaseOrdersChanged += () =>
             {
-                PoNumber = "PO-2026-001",
-                SupplierName = "Asus Republic of Gamers Corp",
-                OrderDate = DateTime.UtcNow.AddDays(-10),
-                ItemDescription = "ROG Strix RTX 4080 Super OC (16GB)",
-                Quantity = 5,
-                UnitCost = 54000m,
-                Status = "Received",
-                ApprovedBy = "Marcus V. (Manager)",
-                ReceivedDate = DateTime.UtcNow.AddDays(-2)
-            });
-            _orders.Add(new PurchaseOrderItem
-            {
-                PoNumber = "PO-2026-002",
-                SupplierName = "Corsair Memory Philippines",
-                OrderDate = DateTime.UtcNow.AddDays(-4),
-                ItemDescription = "Vengeance RGB DDR5 32GB (2x16GB) 6000MHz",
-                Quantity = 15,
-                UnitCost = 6200m,
-                Status = "In Transit",
-                ApprovedBy = "Marcus V. (Manager)",
-                ReceivedDate = null
-            });
-            _orders.Add(new PurchaseOrderItem
-            {
-                PoNumber = "PO-2026-003",
-                SupplierName = "Samsung Semiconductor",
-                OrderDate = DateTime.UtcNow.AddDays(-1),
-                ItemDescription = "990 PRO NVMe M.2 SSD 2TB",
-                Quantity = 10,
-                UnitCost = 8900m,
-                Status = "Pending",
-                ApprovedBy = "Admin",
-                ReceivedDate = null
-            });
+                if (IsHandleCreated)
+                {
+                    BeginInvoke(new Action(RefreshGrid));
+                }
+                else
+                {
+                    RefreshGrid();
+                }
+            };
         }
 
         private void InitializeLayout()
@@ -112,7 +66,7 @@ namespace ERP.winforms.UI.Views
 
             Label lblSubtitle = new Label
             {
-                Text = "Medium Enterprise Logistics  |  Component Inbound Orders & Supplier Shipments (Scaffolded / Local Preview)",
+                Text = "Medium Enterprise Logistics  |  Component Inbound Orders & Supplier Shipments",
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
                 ForeColor = AppTheme.TextMuted,
                 Location = new Point(24, 36),
@@ -136,20 +90,19 @@ namespace ERP.winforms.UI.Views
             int startX = 24;
 
             // KPI 1: Total Purchase Orders
-            Panel pnlCard1 = CreateKpiCard("TOTAL PURCHASE ORDERS", _orders.Count.ToString(), "All logged POs", startX, cardW, out _lblTotalPoCount);
+            Panel pnlCard1 = CreateKpiCard("TOTAL PURCHASE ORDERS", "0", "All logged POs", startX, cardW, out _lblTotalPoCount);
             startX += cardW + cardGap;
 
             // KPI 2: Pending Delivery
-            Panel pnlCard2 = CreateKpiCard("IN TRANSIT / PENDING", $"{_orders.Count(o => o.Status != "Received")} Active", "Awaiting fulfillment", startX, cardW, out _lblPendingDelivery);
+            Panel pnlCard2 = CreateKpiCard("IN TRANSIT / PENDING", "0 Active", "Awaiting fulfillment", startX, cardW, out _lblPendingDelivery);
             startX += cardW + cardGap;
 
             // KPI 3: Total Spend
-            decimal totalSpend = _orders.Sum(o => o.TotalAmount);
-            Panel pnlCard3 = CreateKpiCard("TOTAL COMMITMENT", $"₱{totalSpend:N0}", "Allocated procurement capital", startX, cardW, out _lblTotalSpend);
+            Panel pnlCard3 = CreateKpiCard("TOTAL COMMITMENT", "₱0", "Allocated procurement capital", startX, cardW, out _lblTotalSpend);
             startX += cardW + cardGap;
 
             // KPI 4: Connected Suppliers
-            int supplierCount = _dataService.Suppliers.Count > 0 ? _dataService.Suppliers.Count : 4;
+            int supplierCount = _dataService.Suppliers.Count;
             Panel pnlCard4 = CreateKpiCard("ACTIVE SUPPLIERS", $"{supplierCount} Vendors", "Contracted distributors", startX, cardW, out _lblSupplierCount);
 
             pnlKpis.Controls.Add(pnlCard1);
@@ -209,9 +162,20 @@ namespace ERP.winforms.UI.Views
             };
             btnReceive.Click += BtnReceive_Click;
 
+            SunshineButton btnCancel = new SunshineButton
+            {
+                Text = "✕ Cancel Purchase Order",
+                IsPrimary = false,
+                Location = new Point(720, 9),
+                Size = new Size(190, 34),
+                Font = new Font("Segoe UI", 8.8F, FontStyle.Bold)
+            };
+            btnCancel.Click += BtnCancel_Click;
+
             pnlToolbar.Controls.Add(pnlSearch);
             pnlToolbar.Controls.Add(btnNewPo);
             pnlToolbar.Controls.Add(btnReceive);
+            pnlToolbar.Controls.Add(btnCancel);
 
             // 4. MAIN DATA GRID
             Panel pnlGridContainer = new Panel
@@ -238,7 +202,8 @@ namespace ERP.winforms.UI.Views
                 AllowUserToDeleteRows = false,
                 RowHeadersVisible = false,
                 EnableHeadersVisualStyles = false,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                AutoGenerateColumns = false
             };
 
             _gridPOs.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(245, 244, 239);
@@ -319,29 +284,47 @@ namespace ERP.winforms.UI.Views
         private void FilterPOs()
         {
             string query = _txtSearch.Text.Trim().ToLower();
+            var orders = _dataService.PurchaseOrders;
             if (string.IsNullOrEmpty(query))
             {
-                _gridPOs.DataSource = _orders.ToList();
+                _gridPOs.DataSource = orders.ToList();
             }
             else
             {
-                _gridPOs.DataSource = _orders
-                    .Where(o => o.PoNumber.ToLower().Contains(query) ||
-                                o.SupplierName.ToLower().Contains(query) ||
-                                o.ItemDescription.ToLower().Contains(query) ||
-                                o.Status.ToLower().Contains(query))
+                _gridPOs.DataSource = orders
+                    .Where(o => (o.PoNumber != null && o.PoNumber.ToLower().Contains(query)) ||
+                                (o.SupplierName != null && o.SupplierName.ToLower().Contains(query)) ||
+                                (o.ItemDescription != null && o.ItemDescription.ToLower().Contains(query)) ||
+                                (o.Status != null && o.Status.ToLower().Contains(query)))
                     .ToList();
             }
         }
 
-        private void RefreshGrid()
+        public void RefreshGrid()
         {
+            var orders = _dataService.PurchaseOrders;
             _gridPOs.DataSource = null;
-            _gridPOs.DataSource = _orders.ToList();
+            _gridPOs.DataSource = orders.ToList();
 
-            if (_lblTotalPoCount != null) _lblTotalPoCount.Text = _orders.Count.ToString();
-            if (_lblPendingDelivery != null) _lblPendingDelivery.Text = $"{_orders.Count(o => o.Status != "Received")} Active";
-            if (_lblTotalSpend != null) _lblTotalSpend.Text = $"₱{_orders.Sum(o => o.TotalAmount):N0}";
+            if (_lblTotalPoCount != null) _lblTotalPoCount.Text = orders.Count.ToString();
+            if (_lblPendingDelivery != null) _lblPendingDelivery.Text = $"{orders.Count(o => o.Status != "Received" && o.Status != "Cancelled")} Active";
+            if (_lblTotalSpend != null) _lblTotalSpend.Text = $"₱{orders.Where(o => o.Status != "Cancelled").Sum(o => o.TotalAmount):N0}";
+            if (_lblSupplierCount != null) _lblSupplierCount.Text = $"{_dataService.Suppliers.Count} Vendors";
+        }
+
+        private class SupplierComboItem
+        {
+            public int SupplierId { get; set; }
+            public string SupplierName { get; set; } = string.Empty;
+            public override string ToString() => SupplierName;
+        }
+
+        private class ProductComboItem
+        {
+            public int ProductId { get; set; }
+            public string ProductName { get; set; } = string.Empty;
+            public decimal UnitPrice { get; set; }
+            public override string ToString() => ProductName;
         }
 
         private void BtnNewPo_Click(object? sender, EventArgs e)
@@ -349,7 +332,7 @@ namespace ERP.winforms.UI.Views
             using var dlg = new Form
             {
                 Text = "Create Purchase Order",
-                Size = new Size(420, 380),
+                Size = new Size(460, 480),
                 StartPosition = FormStartPosition.CenterParent,
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 MaximizeBox = false,
@@ -360,31 +343,56 @@ namespace ERP.winforms.UI.Views
             int y = 16;
             Label lblSup = new Label { Text = "Supplier / Vendor *", Location = new Point(24, y), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
             y += 20;
-            ComboBox cboSup = new ComboBox { Location = new Point(24, y), Width = 350, DropDownStyle = ComboBoxStyle.DropDownList };
-            if (_dataService.Suppliers.Count > 0)
+            ComboBox cboSup = new ComboBox { Location = new Point(24, y), Width = 390, DropDownStyle = ComboBoxStyle.DropDownList };
+            
+            var suppliers = _dataService.Suppliers;
+            if (suppliers.Count > 0)
             {
-                foreach (var s in _dataService.Suppliers) cboSup.Items.Add(s.SupplierName);
-            }
-            else
-            {
-                cboSup.Items.AddRange(new object[] { "Asus Republic of Gamers Corp", "Corsair Memory Philippines", "Samsung Semiconductor", "Intel Microelectronics" });
+                foreach (var s in suppliers)
+                {
+                    cboSup.Items.Add(new SupplierComboItem { SupplierId = s.SupplierId, SupplierName = s.SupplierName });
+                }
             }
             if (cboSup.Items.Count > 0) cboSup.SelectedIndex = 0;
             y += 34;
 
+            Label lblProd = new Label { Text = "Select Existing Product (Optional)", Location = new Point(24, y), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
+            y += 20;
+            ComboBox cboProd = new ComboBox { Location = new Point(24, y), Width = 390, DropDownStyle = ComboBoxStyle.DropDownList };
+            cboProd.Items.Add(new ProductComboItem { ProductId = 0, ProductName = "-- Custom Component --", UnitPrice = 0 });
+            foreach (var p in _dataService.Products)
+            {
+                cboProd.Items.Add(new ProductComboItem { ProductId = p.ProductId, ProductName = p.ProductName, UnitPrice = p.UnitPrice });
+            }
+            cboProd.SelectedIndex = 0;
+            y += 34;
+
             Label lblItem = new Label { Text = "Component Description *", Location = new Point(24, y), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
             y += 20;
-            TextBox txtItem = new TextBox { Location = new Point(24, y), Width = 350, Font = new Font("Segoe UI", 9.5F) };
+            TextBox txtItem = new TextBox { Location = new Point(24, y), Width = 390, Font = new Font("Segoe UI", 9.5F) };
             y += 34;
+
+            cboProd.SelectedIndexChanged += (s, ev) =>
+            {
+                if (cboProd.SelectedItem is ProductComboItem selectedProd && selectedProd.ProductId > 0)
+                {
+                    txtItem.Text = selectedProd.ProductName;
+                }
+            };
 
             Label lblQty = new Label { Text = "Quantity *", Location = new Point(24, y), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
             y += 20;
-            NumericUpDown nudQty = new NumericUpDown { Location = new Point(24, y), Width = 160, Minimum = 1, Maximum = 1000, Value = 10 };
+            NumericUpDown nudQty = new NumericUpDown { Location = new Point(24, y), Width = 180, Minimum = 1, Maximum = 10000, Value = 10 };
             y += 34;
 
             Label lblCost = new Label { Text = "Unit Cost (₱) *", Location = new Point(24, y), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
             y += 20;
-            NumericUpDown nudCost = new NumericUpDown { Location = new Point(24, y), Width = 160, Minimum = 1, Maximum = 500000, Value = 5000 };
+            NumericUpDown nudCost = new NumericUpDown { Location = new Point(24, y), Width = 180, Minimum = 0, Maximum = 10000000, DecimalPlaces = 2, Value = 5000 };
+            y += 34;
+
+            Label lblNotes = new Label { Text = "Order Notes / Remarks", Location = new Point(24, y), AutoSize = true, Font = new Font("Segoe UI", 8F, FontStyle.Bold) };
+            y += 20;
+            TextBox txtNotes = new TextBox { Location = new Point(24, y), Width = 390, Font = new Font("Segoe UI", 9.5F) };
             y += 40;
 
             SunshineButton btnSave = new SunshineButton
@@ -392,40 +400,76 @@ namespace ERP.winforms.UI.Views
                 Text = "Submit Purchase Order",
                 IsPrimary = true,
                 Location = new Point(24, y),
-                Size = new Size(180, 36)
+                Size = new Size(190, 36)
             };
+
             btnSave.Click += (s, ev) =>
             {
+                if (cboSup.SelectedItem is not SupplierComboItem selectedSup || selectedSup.SupplierId <= 0)
+                {
+                    MessageBox.Show("Please select a valid supplier/vendor.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
                 if (string.IsNullOrWhiteSpace(txtItem.Text))
                 {
                     MessageBox.Show("Please enter component description.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
 
-                _orders.Insert(0, new PurchaseOrderItem
+                int qty = (int)nudQty.Value;
+                decimal unitCost = nudCost.Value;
+                int? prodId = (cboProd.SelectedItem is ProductComboItem p && p.ProductId > 0) ? p.ProductId : null;
+
+                var newPo = new PurchaseOrder
                 {
-                    PoNumber = $"PO-2026-{_orders.Count + 1:D3}",
-                    SupplierName = cboSup.SelectedItem?.ToString() ?? "Vendor",
-                    ItemDescription = txtItem.Text.Trim(),
-                    Quantity = (int)nudQty.Value,
-                    UnitCost = nudCost.Value,
-                    Status = "In Transit",
+                    SupplierId = selectedSup.SupplierId,
+                    SupplierName = selectedSup.SupplierName,
                     OrderDate = DateTime.UtcNow,
-                    ApprovedBy = "Admin"
-                });
-                RefreshGrid();
-                dlg.DialogResult = DialogResult.OK;
-                dlg.Close();
+                    Status = "In Transit",
+                    TotalAmount = qty * unitCost,
+                    Notes = string.IsNullOrWhiteSpace(txtNotes.Text) ? null : txtNotes.Text.Trim(),
+                    CreatedBy = "Admin",
+                    ApprovedBy = "Marcus V. (Manager)",
+                    IsActive = true,
+                    Items = new List<PurchaseOrderItem>
+                    {
+                        new PurchaseOrderItem
+                        {
+                            ProductId = prodId,
+                            ItemDescription = txtItem.Text.Trim(),
+                            Quantity = qty,
+                            UnitCost = unitCost,
+                            TotalAmount = qty * unitCost
+                        }
+                    }
+                };
+
+                bool success = _dataService.AddPurchaseOrder(newPo);
+                if (success)
+                {
+                    RefreshGrid();
+                    dlg.DialogResult = DialogResult.OK;
+                    dlg.Close();
+                }
+                else
+                {
+                    MessageBox.Show("Failed to save purchase order. Please check input values or system connection.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             };
 
             dlg.Controls.Add(lblSup);
             dlg.Controls.Add(cboSup);
+            dlg.Controls.Add(lblProd);
+            dlg.Controls.Add(cboProd);
             dlg.Controls.Add(lblItem);
             dlg.Controls.Add(txtItem);
             dlg.Controls.Add(lblQty);
             dlg.Controls.Add(nudQty);
             dlg.Controls.Add(lblCost);
             dlg.Controls.Add(nudCost);
+            dlg.Controls.Add(lblNotes);
+            dlg.Controls.Add(txtNotes);
             dlg.Controls.Add(btnSave);
 
             dlg.ShowDialog(this);
@@ -439,7 +483,7 @@ namespace ERP.winforms.UI.Views
                 return;
             }
 
-            var selected = _gridPOs.SelectedRows[0].DataBoundItem as PurchaseOrderItem;
+            var selected = _gridPOs.SelectedRows[0].DataBoundItem as PurchaseOrder;
             if (selected == null) return;
 
             if (selected.Status == "Received")
@@ -448,10 +492,57 @@ namespace ERP.winforms.UI.Views
                 return;
             }
 
+            if (selected.Status == "Cancelled")
+            {
+                MessageBox.Show("Cannot receive a cancelled purchase order.", "Information", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             selected.Status = "Received";
             selected.ReceivedDate = DateTime.UtcNow;
-            RefreshGrid();
-            MessageBox.Show($"Shipment for {selected.PoNumber} ({selected.ItemDescription}) marked as Received.", "Fulfillment", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+            bool success = _dataService.UpdatePurchaseOrder(selected);
+            if (success)
+            {
+                RefreshGrid();
+                MessageBox.Show($"Shipment for {selected.PoNumber} marked as Received.", "Fulfillment", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                MessageBox.Show("Failed to update purchase order status.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void BtnCancel_Click(object? sender, EventArgs e)
+        {
+            if (_gridPOs.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Please select a purchase order to cancel.", "Information", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var selected = _gridPOs.SelectedRows[0].DataBoundItem as PurchaseOrder;
+            if (selected == null) return;
+
+            if (selected.Status == "Cancelled" || !selected.IsActive)
+            {
+                MessageBox.Show("This purchase order has already been cancelled.", "Information", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var confirm = MessageBox.Show($"Are you sure you want to cancel purchase order {selected.PoNumber}?", "Confirm Cancellation", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (confirm != DialogResult.Yes) return;
+
+            bool success = _dataService.TogglePurchaseOrderArchive(selected.PurchaseOrderId);
+            if (success)
+            {
+                RefreshGrid();
+                MessageBox.Show($"Purchase order {selected.PoNumber} has been cancelled.", "Cancelled", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                MessageBox.Show("Failed to cancel purchase order.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
     }
 }

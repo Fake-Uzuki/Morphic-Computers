@@ -35,6 +35,7 @@ namespace ERP.winforms.Services
         public List<StorePolicy> StorePolicies { get; private set; } = new();
         public List<ExpenseRecord> ExpenseRecords { get; private set; } = new();
         public List<Branch> Branches { get; private set; } = new();
+        public List<PurchaseOrder> PurchaseOrders { get; private set; } = new();
 
         public Action? CategoriesChanged;
         public Action? ProductsChanged;
@@ -47,6 +48,7 @@ namespace ERP.winforms.Services
         public Action? StorePoliciesChanged;
         public Action? ExpensesChanged;
         public Action? BranchesChanged;
+        public Action? PurchaseOrdersChanged;
         public Action? OrdersChanged;
         public Action<bool>? ConnectionStatusChanged;
 
@@ -93,6 +95,7 @@ namespace ERP.winforms.Services
             StorePolicies.Clear();
             ExpenseRecords.Clear();
             Branches.Clear();
+            PurchaseOrders.Clear();
 
             if (ActiveCompanyId <= 0 || string.Equals(CurrentCompany?.PlanName, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
             {
@@ -107,6 +110,7 @@ namespace ERP.winforms.Services
                 StorePoliciesChanged?.Invoke();
                 ExpensesChanged?.Invoke();
                 BranchesChanged?.Invoke();
+                PurchaseOrdersChanged?.Invoke();
                 return;
             }
 
@@ -128,6 +132,7 @@ namespace ERP.winforms.Services
                     MigrateJsonExpensesIfAvailable(ActiveCompanyId);
                 }
                 Branches = Task.Run(() => _localDb.GetBranchesAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                PurchaseOrders = Task.Run(() => _localDb.GetPurchaseOrdersAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
             }
             catch (Exception ex)
             {
@@ -145,6 +150,7 @@ namespace ERP.winforms.Services
             StorePoliciesChanged?.Invoke();
             ExpensesChanged?.Invoke();
             BranchesChanged?.Invoke();
+            PurchaseOrdersChanged?.Invoke();
 
             Task.Run(() => LoadFromDatabase());
         }
@@ -196,6 +202,7 @@ namespace ERP.winforms.Services
                     MigrateJsonExpensesIfAvailable(ActiveCompanyId);
                 }
                 Branches = Task.Run(() => _localDb.GetBranchesAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                PurchaseOrders = Task.Run(() => _localDb.GetPurchaseOrdersAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
             }
             catch (Exception ex)
             {
@@ -888,6 +895,54 @@ namespace ERP.winforms.Services
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"DataService Branches loading note: {ex.Message}");
+            }
+
+            // 13. Fetch live purchase orders for the active tenant via API (fallback to local DB)
+            try
+            {
+                List<PurchaseOrder>? livePOs = null;
+                if (networkUp)
+                {
+                    try
+                    {
+                        livePOs = Task.Run(() => _apiClient.GetPurchaseOrdersAsync(targetCompanyId)).GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"API GetPurchaseOrders note: {ex.Message}");
+                        livePOs = null;
+                    }
+                }
+
+                if (livePOs != null)
+                {
+                    anyApiSucceeded = true;
+                    if (ActiveCompanyId == targetCompanyId)
+                    {
+                        PurchaseOrders = livePOs;
+                        PurchaseOrdersChanged?.Invoke();
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        var localPOs = Task.Run(() => _localDb.GetPurchaseOrdersAsync(targetCompanyId)).GetAwaiter().GetResult();
+                        if (localPOs != null && ActiveCompanyId == targetCompanyId)
+                        {
+                            PurchaseOrders = localPOs;
+                            PurchaseOrdersChanged?.Invoke();
+                        }
+                    }
+                    catch (Exception dbEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Local DB GetPurchaseOrders fallback error: {dbEx.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DataService PurchaseOrders loading note: {ex.Message}");
             }
 
             if (ActiveCompanyId != targetCompanyId) return;
@@ -3868,6 +3923,171 @@ namespace ERP.winforms.Services
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"ToggleBranchArchive localDb error: {ex.Message}");
+                return false;
+            }
+        }
+
+        // ==========================================
+        // PROCUREMENT (Medium Enterprise Logistics)
+        // ==========================================
+        public bool AddPurchaseOrder(PurchaseOrder order)
+        {
+            if (order == null) return false;
+            order.CompanyId = ActiveCompanyId;
+            if (string.IsNullOrWhiteSpace(order.PurchaseOrderNumber))
+            {
+                int count = PurchaseOrders.Count;
+                order.PurchaseOrderNumber = $"PO-{DateTime.UtcNow:yyyy}-{(count + 1):D3}";
+            }
+            order.CreatedAt = DateTime.UtcNow;
+
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                PurchaseOrder? apiCreated = null;
+                try
+                {
+                    apiCreated = Task.Run(() => _apiClient.CreatePurchaseOrderAsync(ActiveCompanyId, order)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"AddPurchaseOrder API error: {ex.Message}");
+                    apiCreated = null;
+                }
+
+                if (apiCreated != null)
+                {
+                    try
+                    {
+                        Task.Run(() => _localDb.SavePurchaseOrderAsync(ActiveCompanyId, apiCreated, enqueueSync: false)).GetAwaiter().GetResult();
+                    }
+                    catch { }
+
+                    PurchaseOrders.RemoveAll(p => p.PurchaseOrderId == apiCreated.PurchaseOrderId);
+                    PurchaseOrders.Insert(0, apiCreated);
+                    PurchaseOrdersChanged?.Invoke();
+                    return true;
+                }
+            }
+
+            // Offline or API failure: persist locally and enqueue SyncOutbox
+            try
+            {
+                var saved = Task.Run(() => _localDb.SavePurchaseOrderAsync(ActiveCompanyId, order, enqueueSync: true)).GetAwaiter().GetResult();
+                if (saved != null)
+                {
+                    order.PurchaseOrderId = saved.PurchaseOrderId;
+                }
+                PurchaseOrders.RemoveAll(p => p.PurchaseOrderId == order.PurchaseOrderId);
+                PurchaseOrders.Insert(0, order);
+                PurchaseOrdersChanged?.Invoke();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"AddPurchaseOrder localDb error: {ex.Message}");
+                return false;
+            }
+        }
+
+        public bool UpdatePurchaseOrder(PurchaseOrder order)
+        {
+            if (order == null || order.PurchaseOrderId <= 0) return false;
+            order.CompanyId = ActiveCompanyId;
+
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
+                {
+                    apiSuccess = Task.Run(() => _apiClient.UpdatePurchaseOrderAsync(ActiveCompanyId, order.PurchaseOrderId, order)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"UpdatePurchaseOrder API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (apiSuccess)
+                {
+                    try
+                    {
+                        Task.Run(() => _localDb.UpdatePurchaseOrderAsync(ActiveCompanyId, order, enqueueSync: false)).GetAwaiter().GetResult();
+                    }
+                    catch { }
+
+                    int idx = PurchaseOrders.FindIndex(p => p.PurchaseOrderId == order.PurchaseOrderId);
+                    if (idx >= 0) PurchaseOrders[idx] = order;
+                    PurchaseOrdersChanged?.Invoke();
+                    return true;
+                }
+            }
+
+            // Offline or API failure: persist locally and enqueue SyncOutbox
+            try
+            {
+                Task.Run(() => _localDb.UpdatePurchaseOrderAsync(ActiveCompanyId, order, enqueueSync: true)).GetAwaiter().GetResult();
+                int idx = PurchaseOrders.FindIndex(p => p.PurchaseOrderId == order.PurchaseOrderId);
+                if (idx >= 0) PurchaseOrders[idx] = order;
+                PurchaseOrdersChanged?.Invoke();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"UpdatePurchaseOrder localDb error: {ex.Message}");
+                return false;
+            }
+        }
+
+        public bool TogglePurchaseOrderArchive(int purchaseOrderId)
+        {
+            var po = PurchaseOrders.FirstOrDefault(p => p.PurchaseOrderId == purchaseOrderId);
+            if (po == null) return false;
+
+            bool targetActive = !po.IsActive;
+
+            bool isOnline = IsApiReachable();
+            if (isOnline)
+            {
+                bool apiSuccess = false;
+                try
+                {
+                    apiSuccess = Task.Run(() => _apiClient.ArchivePurchaseOrderAsync(ActiveCompanyId, purchaseOrderId)).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"TogglePurchaseOrderArchive API error: {ex.Message}");
+                    apiSuccess = false;
+                }
+
+                if (apiSuccess)
+                {
+                    try
+                    {
+                        Task.Run(() => _localDb.TogglePurchaseOrderArchiveAsync(ActiveCompanyId, purchaseOrderId, enqueueSync: false)).GetAwaiter().GetResult();
+                    }
+                    catch { }
+
+                    po.IsActive = targetActive;
+                    if (!po.IsActive) po.Status = "Cancelled";
+                    PurchaseOrdersChanged?.Invoke();
+                    return true;
+                }
+            }
+
+            // Offline or API failure: persist locally and enqueue SyncOutbox
+            try
+            {
+                Task.Run(() => _localDb.TogglePurchaseOrderArchiveAsync(ActiveCompanyId, purchaseOrderId, enqueueSync: true)).GetAwaiter().GetResult();
+                po.IsActive = targetActive;
+                if (!po.IsActive) po.Status = "Cancelled";
+                PurchaseOrdersChanged?.Invoke();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"TogglePurchaseOrderArchive localDb error: {ex.Message}");
                 return false;
             }
         }

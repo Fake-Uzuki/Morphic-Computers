@@ -178,6 +178,41 @@ namespace ERP.winforms.Services
         }
 
         /// <summary>
+        /// Retrieves all purchase orders for the specified tenant from the local tenant database.
+        /// </summary>
+        public async Task<List<PurchaseOrder>> GetPurchaseOrdersAsync(int companyId, bool includeArchived = true)
+        {
+            await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
+            var query = context.PurchaseOrders
+                .AsNoTracking()
+                .Include(p => p.Items)
+                .Where(p => p.CompanyId == companyId);
+
+            if (!includeArchived)
+            {
+                query = query.Where(p => p.IsActive);
+            }
+
+            return await query
+                .OrderByDescending(p => p.OrderDate)
+                .ToListAsync()
+                .ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Retrieves a purchase order by ID for the specified tenant from the local tenant database.
+        /// </summary>
+        public async Task<PurchaseOrder?> GetPurchaseOrderByIdAsync(int companyId, int purchaseOrderId)
+        {
+            await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
+            return await context.PurchaseOrders
+                .AsNoTracking()
+                .Include(p => p.Items)
+                .FirstOrDefaultAsync(p => p.PurchaseOrderId == purchaseOrderId && p.CompanyId == companyId)
+                .ConfigureAwait(false);
+        }
+
+        /// <summary>
         /// Retrieves all approval requests for the specified tenant from the local tenant database.
         /// </summary>
         public async Task<List<ApprovalRequest>> GetApprovalsAsync(int companyId)
@@ -1456,6 +1491,176 @@ namespace ERP.winforms.Services
 
             await context.SaveChangesAsync().ConfigureAwait(false);
             return true;
+        }
+
+        // =========================================================================
+        // PROCUREMENT / PURCHASE ORDER OPERATIONS (Medium Enterprise)
+        // =========================================================================
+        public async Task<PurchaseOrder?> SavePurchaseOrderAsync(int companyId, PurchaseOrder order, bool enqueueSync = true)
+        {
+            if (order == null) return null;
+            await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
+            await using var tx = await context.Database.BeginTransactionAsync().ConfigureAwait(false);
+            try
+            {
+                order.CompanyId = companyId;
+                order.PurchaseOrderId = 0;
+                if (string.IsNullOrWhiteSpace(order.PurchaseOrderNumber))
+                {
+                    int count = await context.PurchaseOrders.CountAsync(p => p.CompanyId == companyId).ConfigureAwait(false);
+                    order.PurchaseOrderNumber = $"PO-{DateTime.UtcNow:yyyy}-{(count + 1):D3}";
+                }
+                order.CreatedAt = DateTime.UtcNow;
+                if (order.OrderDate == default) order.OrderDate = DateTime.UtcNow;
+                if (string.IsNullOrWhiteSpace(order.Status)) order.Status = "In Transit";
+
+                foreach (var item in order.Items)
+                {
+                    item.PurchaseOrderId = 0;
+                    item.PurchaseOrderItemId = 0;
+                }
+
+                context.PurchaseOrders.Add(order);
+                await context.SaveChangesAsync().ConfigureAwait(false);
+
+                if (enqueueSync)
+                {
+                    context.SyncOutbox.Add(new SyncOutboxItem
+                    {
+                        SyncId = Guid.NewGuid().ToString("N"),
+                        CompanyId = companyId,
+                        EntityType = "PurchaseOrder",
+                        EntityId = order.PurchaseOrderId.ToString(),
+                        Operation = "Create",
+                        PayloadJson = System.Text.Json.JsonSerializer.Serialize(order),
+                        CreatedAt = DateTime.UtcNow,
+                        SyncStatus = "Pending"
+                    });
+                    await context.SaveChangesAsync().ConfigureAwait(false);
+                }
+
+                await tx.CommitAsync().ConfigureAwait(false);
+                return order;
+            }
+            catch (Exception ex)
+            {
+                await tx.RollbackAsync().ConfigureAwait(false);
+                System.Diagnostics.Debug.WriteLine($"SavePurchaseOrderAsync error: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task<PurchaseOrder?> UpdatePurchaseOrderAsync(int companyId, PurchaseOrder order, bool enqueueSync = true)
+        {
+            if (order == null || order.PurchaseOrderId <= 0) return null;
+            await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
+            await using var tx = await context.Database.BeginTransactionAsync().ConfigureAwait(false);
+            try
+            {
+                var existing = await context.PurchaseOrders
+                    .Include(p => p.Items)
+                    .FirstOrDefaultAsync(p => p.PurchaseOrderId == order.PurchaseOrderId && p.CompanyId == companyId)
+                    .ConfigureAwait(false);
+
+                if (existing == null) return null;
+
+                existing.PurchaseOrderNumber = order.PurchaseOrderNumber;
+                existing.SupplierId = order.SupplierId;
+                existing.SupplierName = order.SupplierName;
+                existing.OrderDate = order.OrderDate;
+                existing.ExpectedDeliveryDate = order.ExpectedDeliveryDate;
+                existing.Status = order.Status;
+                existing.TotalAmount = order.TotalAmount;
+                existing.Notes = order.Notes;
+                existing.ApprovedBy = order.ApprovedBy;
+                existing.ReceivedDate = order.ReceivedDate;
+                existing.IsActive = order.IsActive;
+                existing.UpdatedAt = DateTime.UtcNow;
+
+                if (order.Items != null && order.Items.Count > 0)
+                {
+                    context.PurchaseOrderItems.RemoveRange(existing.Items);
+                    existing.Items.Clear();
+
+                    foreach (var item in order.Items)
+                    {
+                        item.PurchaseOrderId = existing.PurchaseOrderId;
+                        item.PurchaseOrderItemId = 0;
+                        existing.Items.Add(item);
+                    }
+                }
+
+                if (enqueueSync)
+                {
+                    context.SyncOutbox.Add(new SyncOutboxItem
+                    {
+                        SyncId = Guid.NewGuid().ToString("N"),
+                        CompanyId = companyId,
+                        EntityType = "PurchaseOrder",
+                        EntityId = existing.PurchaseOrderId.ToString(),
+                        Operation = "Update",
+                        PayloadJson = System.Text.Json.JsonSerializer.Serialize(existing),
+                        CreatedAt = DateTime.UtcNow,
+                        SyncStatus = "Pending"
+                    });
+                }
+
+                await context.SaveChangesAsync().ConfigureAwait(false);
+                await tx.CommitAsync().ConfigureAwait(false);
+                return existing;
+            }
+            catch (Exception ex)
+            {
+                await tx.RollbackAsync().ConfigureAwait(false);
+                System.Diagnostics.Debug.WriteLine($"UpdatePurchaseOrderAsync error: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task<bool> TogglePurchaseOrderArchiveAsync(int companyId, int purchaseOrderId, bool enqueueSync = true)
+        {
+            await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
+            await using var tx = await context.Database.BeginTransactionAsync().ConfigureAwait(false);
+            try
+            {
+                var existing = await context.PurchaseOrders
+                    .FirstOrDefaultAsync(p => p.PurchaseOrderId == purchaseOrderId && p.CompanyId == companyId)
+                    .ConfigureAwait(false);
+
+                if (existing == null) return false;
+
+                existing.IsActive = !existing.IsActive;
+                if (!existing.IsActive)
+                {
+                    existing.Status = "Cancelled";
+                }
+                existing.UpdatedAt = DateTime.UtcNow;
+
+                if (enqueueSync)
+                {
+                    context.SyncOutbox.Add(new SyncOutboxItem
+                    {
+                        SyncId = Guid.NewGuid().ToString("N"),
+                        CompanyId = companyId,
+                        EntityType = "PurchaseOrder",
+                        EntityId = purchaseOrderId.ToString(),
+                        Operation = "Archive",
+                        PayloadJson = System.Text.Json.JsonSerializer.Serialize(new { PurchaseOrderId = purchaseOrderId, IsActive = existing.IsActive, Status = existing.Status }),
+                        CreatedAt = DateTime.UtcNow,
+                        SyncStatus = "Pending"
+                    });
+                }
+
+                await context.SaveChangesAsync().ConfigureAwait(false);
+                await tx.CommitAsync().ConfigureAwait(false);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                await tx.RollbackAsync().ConfigureAwait(false);
+                System.Diagnostics.Debug.WriteLine($"TogglePurchaseOrderArchiveAsync error: {ex.Message}");
+                throw;
+            }
         }
 
         // =========================================================================
