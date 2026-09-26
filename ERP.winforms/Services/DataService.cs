@@ -194,8 +194,14 @@ namespace ERP.winforms.Services
             Task.Run(() => LoadFromDatabase());
         }
 
+        public ActiveBranchContext ActiveBranch => BranchContextService.Instance.CurrentContext;
+
         private DataService()
         {
+            BranchesChanged += () =>
+            {
+                BranchContextService.Instance.SyncBranches(ActiveCompanyId, Branches);
+            };
             InitializeDataStore();
         }
 

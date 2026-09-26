@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using ERP.domain.entities;
+using ERP.domain.services;
 using ERP.winforms.Services;
 using ERP.winforms.Theme;
 using ERP.winforms.UI.Components;
@@ -30,6 +31,15 @@ namespace ERP.winforms.UI.Views
             InitializeLayout();
 
             _dataService.BranchesChanged += () =>
+            {
+                if (IsHandleCreated && !IsDisposed)
+                {
+                    if (InvokeRequired) BeginInvoke(new Action(RefreshGrid));
+                    else RefreshGrid();
+                }
+            };
+
+            BranchContextService.Instance.ActiveBranchChanged += () =>
             {
                 if (IsHandleCreated && !IsDisposed)
                 {
@@ -100,8 +110,8 @@ namespace ERP.winforms.UI.Views
             Panel pnlCard3 = CreateKpiCard("BRANCH STAFF", "0 Staff Members", "Across all locations", startX, cardW, out _lblTotalStaff);
             startX += cardW + cardGap;
 
-            // KPI 4: Primary Hub
-            Panel pnlCard4 = CreateKpiCard("PRIMARY HUB", "N/A", "Central Inventory Node", startX, cardW, out _lblMainHub);
+            // KPI 4: Active Session Branch
+            Panel pnlCard4 = CreateKpiCard("ACTIVE SESSION BRANCH", "None", "Current operational context", startX, cardW, out _lblMainHub);
 
             pnlKpis.Controls.Add(pnlCard1);
             pnlKpis.Controls.Add(pnlCard2);
@@ -191,15 +201,17 @@ namespace ERP.winforms.UI.Views
             _gridBranches.DefaultCellStyle.SelectionForeColor = AppTheme.TextDark;
 
             _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CODE", Name = "ColCode", FillWeight = 50 });
-            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "BRANCH NAME", Name = "ColName", FillWeight = 120 });
+            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "BRANCH NAME", Name = "ColName", FillWeight = 115 });
             _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CITY / REGION", Name = "ColCity", FillWeight = 65 });
-            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PHYSICAL ADDRESS", Name = "ColAddress", FillWeight = 120 });
-            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "BRANCH MANAGER", Name = "ColManager", FillWeight = 80 });
-            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CONTACT PHONE", Name = "ColContact", FillWeight = 70 });
-            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STAFF", Name = "ColStaff", FillWeight = 40 });
-            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STATUS", Name = "ColStatus", FillWeight = 45 });
-            _gridBranches.Columns.Add(new DataGridViewButtonColumn { HeaderText = "EDIT", Name = "ColEdit", FillWeight = 40 });
-            _gridBranches.Columns.Add(new DataGridViewButtonColumn { HeaderText = "ACTION", Name = "ColAction", FillWeight = 50 });
+            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "PHYSICAL ADDRESS", Name = "ColAddress", FillWeight = 110 });
+            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "BRANCH MANAGER", Name = "ColManager", FillWeight = 75 });
+            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CONTACT PHONE", Name = "ColContact", FillWeight = 65 });
+            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STAFF", Name = "ColStaff", FillWeight = 35 });
+            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STATUS", Name = "ColStatus", FillWeight = 40 });
+            _gridBranches.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "CREATED", Name = "ColCreated", FillWeight = 55 });
+            _gridBranches.Columns.Add(new DataGridViewButtonColumn { HeaderText = "ACTIVE", Name = "ColSetActive", FillWeight = 45 });
+            _gridBranches.Columns.Add(new DataGridViewButtonColumn { HeaderText = "EDIT", Name = "ColEdit", FillWeight = 35 });
+            _gridBranches.Columns.Add(new DataGridViewButtonColumn { HeaderText = "ACTION", Name = "ColAction", FillWeight = 45 });
 
             _gridBranches.CellContentClick += (s, e) =>
             {
@@ -209,7 +221,18 @@ namespace ERP.winforms.UI.Views
                     var branch = _dataService.Branches.FirstOrDefault(b => b.BranchId == branchId);
                     if (branch == null) return;
 
-                    if (_gridBranches.Columns["ColEdit"] != null && e.ColumnIndex == _gridBranches.Columns["ColEdit"]!.Index)
+                    if (_gridBranches.Columns["ColSetActive"] != null && e.ColumnIndex == _gridBranches.Columns["ColSetActive"]!.Index)
+                    {
+                        if (!branch.IsActive)
+                        {
+                            MessageBox.Show($"Branch '{branch.BranchName}' is archived and cannot be activated for operations.", "Branch Inactive", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            return;
+                        }
+
+                        BranchContextService.Instance.SetActiveBranch(_dataService.ActiveCompanyId, branchId, _dataService.Branches);
+                        RefreshGrid();
+                    }
+                    else if (_gridBranches.Columns["ColEdit"] != null && e.ColumnIndex == _gridBranches.Columns["ColEdit"]!.Index)
                     {
                         ShowBranchEditDialog(branch);
                     }
@@ -322,9 +345,13 @@ namespace ERP.winforms.UI.Views
                     b.ContactNumber.ToLowerInvariant().Contains(query));
             }
 
+            var activeContext = BranchContextService.Instance.CurrentContext;
+
             _gridBranches.Rows.Clear();
             foreach (var b in list.OrderBy(b => b.BranchCode))
             {
+                bool isSelected = activeContext.HasSpecificBranch && activeContext.BranchId == b.BranchId;
+
                 int rIdx = _gridBranches.Rows.Add(
                     b.BranchCode,
                     b.BranchName,
@@ -334,12 +361,21 @@ namespace ERP.winforms.UI.Views
                     string.IsNullOrWhiteSpace(b.ContactNumber) ? "N/A" : b.ContactNumber,
                     b.AssignedStaffCount.ToString(),
                     b.IsActive ? "Active" : "Archived",
+                    b.CreatedAt.ToString("yyyy-MM-dd"),
+                    isSelected ? "★ Active" : (b.IsActive ? "Select" : "-"),
                     "✏️ Edit",
                     b.IsActive ? "📁 Archive" : "♻️ Restore"
                 );
 
                 var row = _gridBranches.Rows[rIdx];
                 row.Tag = b.BranchId;
+
+                if (isSelected)
+                {
+                    row.DefaultCellStyle.BackColor = Color.FromArgb(254, 252, 232);
+                    row.Cells["ColSetActive"].Style.ForeColor = Color.FromArgb(161, 98, 7);
+                    row.Cells["ColSetActive"].Style.Font = new Font("Segoe UI", 8.5F, FontStyle.Bold);
+                }
 
                 if (!b.IsActive)
                 {
@@ -356,13 +392,17 @@ namespace ERP.winforms.UI.Views
             int total = _dataService.Branches.Count;
             int active = _dataService.Branches.Count(b => b.IsActive);
             int staff = _dataService.Branches.Sum(b => b.AssignedStaffCount);
-            var hub = _dataService.Branches.FirstOrDefault(b => b.IsActive);
 
             if (_lblTotalBranches != null) _lblTotalBranches.Text = total.ToString();
             if (_lblActiveBranches != null) _lblActiveBranches.Text = $"{active} Online";
             if (_lblTotalStaff != null) _lblTotalStaff.Text = $"{staff} Staff Members";
-            if (_lblMainHub != null) _lblMainHub.Text = hub != null ? hub.BranchName : "Central Hub";
+            if (_lblMainHub != null)
+            {
+                _lblMainHub.Text = activeContext.HasSpecificBranch ? activeContext.BranchName! : (activeContext.IsAllBranches ? "All Branches" : (active > 0 ? "Default" : "None"));
+            }
         }
+
+        public void RefreshData() => RefreshGrid();
 
         private void BtnAddBranch_Click(object? sender, EventArgs e)
         {

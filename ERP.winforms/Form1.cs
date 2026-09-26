@@ -6,12 +6,13 @@ using System.Linq;
 using System.Text.Json;
 using System.Windows.Forms;
 using ERP.domain.entities;
+using ERP.domain.services;
+using ERP.domain.security;
 using ERP.winforms.Services;
 using ERP.winforms.Theme;
 using ERP.winforms.UI.Components;
 using ERP.winforms.UI.Dialogs;
 using ERP.winforms.UI.Views;
-using ERP.domain.security;
 
 namespace ERP.winforms
 {
@@ -68,6 +69,10 @@ namespace ERP.winforms
         private Label _lblBottomRight = null!;
         private Panel _pnlStatusBadge = null!;
         private Label _lblStatusIndicator = null!;
+        private Panel _pnlBranchSelector = null!;
+        private ComboBox _cboBranchSelector = null!;
+        private bool _isUpdatingBranchCombo;
+        private UserControl? _currentView;
 
         // Views
         private DashboardView _dashboardView = null!;
@@ -332,9 +337,43 @@ namespace ERP.winforms
             _pnlTopRight.Controls.Add(pnlUser);
             _pnlTopRight.Controls.Add(_btnLogout);
 
+            // Branch Selector (Tenant Operations only, hidden for Super Admin)
+            _pnlBranchSelector = new Panel
+            {
+                Location = new Point(56 + lblBrandName.PreferredSize.Width + lblTagline.PreferredSize.Width + 24, 11),
+                Size = new Size(245, 32),
+                BackColor = Color.FromArgb(32, 34, 28),
+                Visible = !isPlatformAdmin
+            };
+
+            Label lblBranchTitle = new Label
+            {
+                Text = "🏢 Branch:",
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                ForeColor = AppTheme.HeaderBrandGold,
+                Location = new Point(6, 7),
+                AutoSize = true
+            };
+
+            _cboBranchSelector = new ComboBox
+            {
+                Location = new Point(72, 4),
+                Size = new Size(165, 24),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
+                BackColor = Color.FromArgb(42, 44, 36),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat
+            };
+            _cboBranchSelector.SelectedIndexChanged += CboBranchSelector_SelectedIndexChanged;
+
+            _pnlBranchSelector.Controls.Add(lblBranchTitle);
+            _pnlBranchSelector.Controls.Add(_cboBranchSelector);
+
             _pnlTopBar.Controls.Add(lblLogoBadge);
             _pnlTopBar.Controls.Add(lblBrandName);
             _pnlTopBar.Controls.Add(lblTagline);
+            _pnlTopBar.Controls.Add(_pnlBranchSelector);
             _pnlTopBar.Controls.Add(_pnlTopRight);
 
             // Notification Flyout Setup
@@ -728,6 +767,26 @@ namespace ERP.winforms
             Controls.Add(_pnlNavTabs);
             Controls.Add(_pnlTopBar);
             Controls.Add(_pnlBottomBar);
+
+            _dataService.BranchesChanged += () =>
+            {
+                if (IsHandleCreated && !IsDisposed)
+                {
+                    if (InvokeRequired) BeginInvoke(new Action(PopulateBranchSelector));
+                    else PopulateBranchSelector();
+                }
+            };
+
+            BranchContextService.Instance.ActiveBranchChanged += () =>
+            {
+                if (IsHandleCreated && !IsDisposed)
+                {
+                    if (InvokeRequired) BeginInvoke(new Action(SyncBranchSelectorFromContext));
+                    else SyncBranchSelectorFromContext();
+                }
+            };
+
+            PopulateBranchSelector();
         }
 
         private Button CreateEnterpriseTab(string text, int x, int width)
@@ -810,6 +869,7 @@ namespace ERP.winforms
             view.Dock = DockStyle.Fill;
             _pnlContentArea.Controls.Add(view);
 
+            _currentView = view;
             if (view is DashboardView db) db.RefreshMetrics();
             if (view is ProductsView pv) pv.ApplyFilters();
             if (view is PosView pos) pos.RefreshCatalog();
@@ -823,7 +883,29 @@ namespace ERP.winforms
             if (view is FinanceView fv) fv.RefreshData();
             if (view is PoliciesView pol) pol.RefreshData();
             if (view is PoliciesApprovalsView pav) pav.RefreshData();
+            if (view is BranchManagementView bv) bv.RefreshData();
+            if (view is ProcurementView pro) pro.RefreshData();
             if (view is SuperAdminView sav) sav.RefreshData();
+        }
+
+        private void RefreshCurrentView()
+        {
+            if (_currentView is DashboardView db) db.RefreshMetrics();
+            if (_currentView is ProductsView pv) pv.ApplyFilters();
+            if (_currentView is PosView pos) pos.RefreshCatalog();
+            if (_currentView is OrdersView ov) ov.RefreshData();
+            if (_currentView is RepairsView rv) rv.RefreshData();
+            if (_currentView is SuppliersView sv) sv.RefreshData();
+            if (_currentView is StaffView stv) stv.RefreshData();
+            if (_currentView is ApprovalsView av) av.RefreshData();
+            if (_currentView is CustomersView cv) cv.RefreshData();
+            if (_currentView is PayrollView prv) prv.RefreshData();
+            if (_currentView is FinanceView fv) fv.RefreshData();
+            if (_currentView is PoliciesView pol) pol.RefreshData();
+            if (_currentView is PoliciesApprovalsView pav) pav.RefreshData();
+            if (_currentView is BranchManagementView bv) bv.RefreshData();
+            if (_currentView is ProcurementView pro) pro.RefreshData();
+            if (_currentView is SuperAdminView sav) sav.RefreshData();
         }
 
         private void ToggleNotifications()
@@ -1037,6 +1119,7 @@ namespace ERP.winforms
             if (result == DialogResult.Yes)
             {
                 IsLoggedOut = true;
+                BranchContextService.Instance.Clear();
                 SaveNotificationState();
                 _dataService.SaveAllToDisk();
                 Close();
@@ -1185,6 +1268,126 @@ namespace ERP.winforms
                 string syncText = pending > 0 ? $"({pending} queued for sync)" : "(Local Storage Active)";
                 _lblBottomRight.Text = $"📶 Offline Mode {syncText}  |  Local Storage Active";
             }
+        }
+
+        private void PopulateBranchSelector()
+        {
+            if (_cboBranchSelector == null || _pnlBranchSelector == null) return;
+
+            bool isPlatformAdmin = ModuleAccessService.NormalizePlan(_dataService.CurrentCompany?.PlanName) == ErpPlan.SuperAdmin;
+            if (isPlatformAdmin)
+            {
+                _pnlBranchSelector.Visible = false;
+                return;
+            }
+
+            _pnlBranchSelector.Visible = true;
+            _isUpdatingBranchCombo = true;
+            try
+            {
+                _cboBranchSelector.Items.Clear();
+
+                var activeBranches = _dataService.Branches
+                    .Where(b => b.CompanyId == _dataService.ActiveCompanyId && b.IsActive)
+                    .OrderBy(b => b.BranchCode)
+                    .ToList();
+
+                if (activeBranches.Count == 0)
+                {
+                    _cboBranchSelector.Items.Add(new BranchComboItem { Id = 0, DisplayText = "(Main Location)" });
+                    _cboBranchSelector.SelectedIndex = 0;
+                }
+                else if (activeBranches.Count == 1)
+                {
+                    var b = activeBranches[0];
+                    _cboBranchSelector.Items.Add(new BranchComboItem { Id = b.BranchId, DisplayText = b.BranchName });
+                    _cboBranchSelector.SelectedIndex = 0;
+                }
+                else
+                {
+                    int selectedIndex = 0;
+                    var activeContext = BranchContextService.Instance.CurrentContext;
+
+                    for (int i = 0; i < activeBranches.Count; i++)
+                    {
+                        var b = activeBranches[i];
+                        _cboBranchSelector.Items.Add(new BranchComboItem { Id = b.BranchId, DisplayText = b.BranchName });
+                        if (activeContext.BranchId == b.BranchId && !activeContext.IsAllBranches)
+                        {
+                            selectedIndex = i;
+                        }
+                    }
+
+                    // Add All Branches option
+                    _cboBranchSelector.Items.Add(new BranchComboItem { Id = -1, DisplayText = "All Branches (Consolidated)" });
+                    if (activeContext.IsAllBranches)
+                    {
+                        selectedIndex = _cboBranchSelector.Items.Count - 1;
+                    }
+
+                    _cboBranchSelector.SelectedIndex = selectedIndex;
+                }
+            }
+            finally
+            {
+                _isUpdatingBranchCombo = false;
+            }
+        }
+
+        private void SyncBranchSelectorFromContext()
+        {
+            if (_cboBranchSelector == null || _isUpdatingBranchCombo) return;
+
+            _isUpdatingBranchCombo = true;
+            try
+            {
+                var activeContext = BranchContextService.Instance.CurrentContext;
+                for (int i = 0; i < _cboBranchSelector.Items.Count; i++)
+                {
+                    if (_cboBranchSelector.Items[i] is BranchComboItem item)
+                    {
+                        if (activeContext.IsAllBranches && item.Id == -1)
+                        {
+                            _cboBranchSelector.SelectedIndex = i;
+                            break;
+                        }
+                        if (!activeContext.IsAllBranches && activeContext.BranchId.HasValue && item.Id == activeContext.BranchId.Value)
+                        {
+                            _cboBranchSelector.SelectedIndex = i;
+                            break;
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                _isUpdatingBranchCombo = false;
+            }
+        }
+
+        private void CboBranchSelector_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            if (_isUpdatingBranchCombo) return;
+            if (_cboBranchSelector.SelectedItem is BranchComboItem item)
+            {
+                if (item.Id == -1)
+                {
+                    BranchContextService.Instance.SetAllBranches(_dataService.ActiveCompanyId);
+                }
+                else if (item.Id > 0)
+                {
+                    BranchContextService.Instance.SetActiveBranch(_dataService.ActiveCompanyId, item.Id, _dataService.Branches);
+                }
+
+                RefreshCurrentView();
+            }
+        }
+
+        private class BranchComboItem
+        {
+            public int Id { get; set; }
+            public string DisplayText { get; set; } = string.Empty;
+            public override string ToString() => DisplayText;
         }
     }
 }

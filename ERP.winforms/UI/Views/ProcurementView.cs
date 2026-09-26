@@ -300,6 +300,8 @@ namespace ERP.winforms.UI.Views
             }
         }
 
+        public void RefreshData() => RefreshGrid();
+
         public void RefreshGrid()
         {
             var orders = _dataService.PurchaseOrders;
