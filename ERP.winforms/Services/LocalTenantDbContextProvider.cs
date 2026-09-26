@@ -113,6 +113,26 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Expe
     ALTER TABLE Expenses ADD BranchId INT NULL;
 ";
                 await context.Database.ExecuteSqlRawAsync(sql).ConfigureAwait(false);
+
+                // For Tenant C demonstration/testing, idempotently ensure the 3 required branches exist in its local tenant database
+                if (companyId == 1001)
+                {
+                    const string demoBranchesSql = @"
+IF NOT EXISTS (SELECT 1 FROM Branches WHERE CompanyId = 1001 AND BranchCode = 'MAIN')
+    INSERT INTO Branches (CompanyId, BranchCode, BranchName, Address, City, ContactNumber, ManagerName, AssignedStaffCount, IsActive, CreatedAt)
+    VALUES (1001, 'MAIN', 'Main Branch', 'Davao City Central Hub', 'Davao City', '082-221-0001', 'Store Manager', 0, 1, GETUTCDATE());
+
+IF NOT EXISTS (SELECT 1 FROM Branches WHERE CompanyId = 1001 AND BranchCode = 'MATINA')
+    INSERT INTO Branches (CompanyId, BranchCode, BranchName, Address, City, ContactNumber, ManagerName, AssignedStaffCount, IsActive, CreatedAt)
+    VALUES (1001, 'MATINA', 'Matina Branch', 'Matina Crossing, MacArthur Hwy', 'Davao City', '082-297-1001', 'Branch Supervisor', 0, 1, GETUTCDATE());
+
+IF NOT EXISTS (SELECT 1 FROM Branches WHERE CompanyId = 1001 AND BranchCode = 'LANANG')
+    INSERT INTO Branches (CompanyId, BranchCode, BranchName, Address, City, ContactNumber, ManagerName, AssignedStaffCount, IsActive, CreatedAt)
+    VALUES (1001, 'LANANG', 'Lanang Branch', 'J.P. Laurel Ave, Lanang', 'Davao City', '082-234-2001', 'Branch Supervisor', 0, 1, GETUTCDATE());
+";
+                    await context.Database.ExecuteSqlRawAsync(demoBranchesSql).ConfigureAwait(false);
+                }
+
                 _branchSchemaChecked[companyId] = true;
             }
             catch (Exception ex)
