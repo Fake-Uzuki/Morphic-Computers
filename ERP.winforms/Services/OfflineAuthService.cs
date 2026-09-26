@@ -394,7 +394,7 @@ namespace ERP.winforms.Services
                 {
                     CompanyId = 0,
                     CompanyCode = "PLATFORM",
-                    CompanyName = "Platform Master",
+                    CompanyName = "Master (Super Admin)",
                     PlanName = "SuperAdmin"
                 };
             }

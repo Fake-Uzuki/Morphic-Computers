@@ -70,11 +70,20 @@ namespace ERP.winforms.Services
 
         public Company? ActiveCompany => Companies.FirstOrDefault(c => c.CompanyId == ActiveCompanyId);
 
+        private Company? _currentCompany;
         public Company CurrentCompany
         {
-            get => ActiveCompany ?? (Companies.Count > 0 ? Companies[0] : new Company { CompanyId = 1, CompanyName = "Tenant A", PlanName = "Micro" });
+            get
+            {
+                if (ActiveCompanyId <= 0 || string.Equals(_currentCompany?.PlanName, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
+                {
+                    return _currentCompany ?? new Company { CompanyId = 0, CompanyCode = "PLATFORM", CompanyName = "Master (Super Admin)", PlanName = "SuperAdmin" };
+                }
+                return _currentCompany ?? ActiveCompany ?? (Companies.Count > 0 ? Companies[0] : new Company { CompanyId = 1, CompanyName = "Tenant A", PlanName = "Micro" });
+            }
             set
             {
+                _currentCompany = value;
                 if (value != null)
                 {
                     ActiveCompanyId = value.CompanyId;

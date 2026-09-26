@@ -86,7 +86,7 @@ namespace ERP.api.Controllers
                         Message: "Platform Super Administrator authentication successful.",
                         CompanyId: 0,
                         CompanyCode: "PLATFORM",
-                        CompanyName: "Platform Master",
+                        CompanyName: "Master (Super Admin)",
                         PlanName: "SuperAdmin",
                         Username: "Super Administrator",
                         Role: "Super Administrator",

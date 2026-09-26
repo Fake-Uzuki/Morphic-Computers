@@ -61,7 +61,9 @@ namespace ERP.winforms
         private Button? _btnNavPolicies;
         private Button? _btnNavBranches;
         private Button? _btnNavProcurement;
-        private Button? _btnNavSuperAdmin;
+        private Button? _btnNavAdminPanel;
+        private Button? _btnNavPlatformBI;
+        private Button? _btnNavSubscriptions;
         private Button? _activeNavButton;
         private Label _lblBottomRight = null!;
         private Panel _pnlStatusBadge = null!;
@@ -105,11 +107,28 @@ namespace ERP.winforms
 
             SetupCustomLayout();
 
+            // Hook SuperAdmin sub-section changes to Form1 nav tabs
+            _superAdminView.SectionChanged += (sec) =>
+            {
+                Button? targetBtn = sec switch
+                {
+                    SuperAdminView.SuperAdminSection.AdminPanel => _btnNavAdminPanel,
+                    SuperAdminView.SuperAdminSection.BusinessIntelligence => _btnNavPlatformBI,
+                    SuperAdminView.SuperAdminSection.Subscriptions => _btnNavSubscriptions,
+                    _ => null
+                };
+                if (targetBtn != null && _activeNavButton != targetBtn)
+                {
+                    SwitchView(_superAdminView, targetBtn);
+                }
+            };
+
             // Initial landing view selection based on plan entitlement
             var initialPlan = ModuleAccessService.NormalizePlan(_dataService.CurrentCompany?.PlanName);
-            if (initialPlan == ErpPlan.SuperAdmin && _btnNavSuperAdmin != null)
+            if (initialPlan == ErpPlan.SuperAdmin && _btnNavAdminPanel != null)
             {
-                SwitchView(_superAdminView, _btnNavSuperAdmin);
+                _superAdminView.SetActiveSection(SuperAdminView.SuperAdminSection.AdminPanel);
+                SwitchView(_superAdminView, _btnNavAdminPanel);
             }
             else if (_btnNavDashboard != null)
             {
@@ -143,7 +162,11 @@ namespace ERP.winforms
             Size = new Size(1380, 860);
             MinimumSize = new Size(1240, 780);
             StartPosition = FormStartPosition.CenterScreen;
-            Text = $"{_dataService.CurrentCompany?.CompanyName ?? "Tenant A"} | {_dataService.CurrentCompany?.PlanName ?? "Micro"} Company Operations - User: {_currentUser}";
+            bool isPlatformAdmin = ModuleAccessService.NormalizePlan(_dataService.CurrentCompany?.PlanName) == ErpPlan.SuperAdmin;
+
+            Text = isPlatformAdmin
+                ? $"Master (Super Admin) | Platform Administration - User: {_currentUser}"
+                : $"{_dataService.CurrentCompany?.CompanyName ?? "Tenant A"} | {_dataService.CurrentCompany?.PlanName ?? "Micro"} Company Operations - User: {_currentUser}";
 
             // ========================================================
             // 1. TOP HEADER BANNER (Height: 54px, Dark Charcoal #141511)
@@ -170,7 +193,7 @@ namespace ERP.winforms
             // Dynamic Tenant Brand Title
             Label lblBrandName = new Label
             {
-                Text = _dataService.CurrentCompany?.CompanyName ?? "Tenant A",
+                Text = isPlatformAdmin ? "Master (Super Admin)" : (_dataService.CurrentCompany?.CompanyName ?? "Tenant A"),
                 Font = new Font("Segoe UI", 14F, FontStyle.Bold),
                 ForeColor = Color.White,
                 Location = new Point(56, 12),
@@ -180,7 +203,7 @@ namespace ERP.winforms
             // Subtitle tag cleanly aligned
             Label lblTagline = new Label
             {
-                Text = $"|  {_dataService.CurrentCompany?.PlanName ?? "Micro"} Company Operations",
+                Text = isPlatformAdmin ? "|  Platform Administration" : $"|  {_dataService.CurrentCompany?.PlanName ?? "Micro"} Company Operations",
                 Font = new Font("Segoe UI", 10F, FontStyle.Regular),
                 ForeColor = Color.FromArgb(170, 168, 158),
                 Location = new Point(56 + lblBrandName.PreferredSize.Width + 8, 17),
@@ -220,7 +243,7 @@ namespace ERP.winforms
             _lblStatusIndicator.Click += (s, e) => _ = Task.Run(() => SyncManager.Instance.CheckAndSyncAsync(_dataService.ActiveCompanyId));
 
             // 1. New Sale Action Button (Hidden for Super Admin)
-            bool isPlatformAdmin = ModuleAccessService.NormalizePlan(_dataService.CurrentCompany?.PlanName) == ErpPlan.SuperAdmin;
+            isPlatformAdmin = ModuleAccessService.NormalizePlan(_dataService.CurrentCompany?.PlanName) == ErpPlan.SuperAdmin;
             SunshineButton btnNewSale = new SunshineButton
             {
                 Text = "+ New Sale",
@@ -428,11 +451,33 @@ namespace ERP.winforms
 
             if (plan == ErpPlan.SuperAdmin)
             {
-                // Super Admin Platform Navigation
-                _btnNavSuperAdmin = CreateEnterpriseTab("⚡ Super Admin Platform", tabX, 220);
-                _btnNavSuperAdmin.Click += (s, e) => SwitchView(_superAdminView, _btnNavSuperAdmin);
-                _pnlTabsTrack.Controls.Add(_btnNavSuperAdmin);
-                tabX += 222;
+                // Super Admin Platform Navigation: three modules only
+                _btnNavAdminPanel = CreateEnterpriseTab("Admin Panel", tabX, 135);
+                _btnNavAdminPanel.Click += (s, e) =>
+                {
+                    _superAdminView.SetActiveSection(SuperAdminView.SuperAdminSection.AdminPanel);
+                    SwitchView(_superAdminView, _btnNavAdminPanel);
+                };
+                _pnlTabsTrack.Controls.Add(_btnNavAdminPanel);
+                tabX += 137;
+
+                _btnNavPlatformBI = CreateEnterpriseTab("Business Intelligence", tabX, 175);
+                _btnNavPlatformBI.Click += (s, e) =>
+                {
+                    _superAdminView.SetActiveSection(SuperAdminView.SuperAdminSection.BusinessIntelligence);
+                    SwitchView(_superAdminView, _btnNavPlatformBI);
+                };
+                _pnlTabsTrack.Controls.Add(_btnNavPlatformBI);
+                tabX += 177;
+
+                _btnNavSubscriptions = CreateEnterpriseTab("Subscriptions", tabX, 135);
+                _btnNavSubscriptions.Click += (s, e) =>
+                {
+                    _superAdminView.SetActiveSection(SuperAdminView.SuperAdminSection.Subscriptions);
+                    SwitchView(_superAdminView, _btnNavSubscriptions);
+                };
+                _pnlTabsTrack.Controls.Add(_btnNavSubscriptions);
+                tabX += 137;
             }
             else
             {
@@ -592,7 +637,9 @@ namespace ERP.winforms
 
             Label lblBottomLeft = new Label
             {
-                Text = $"Morphic Core ERP  |  Company: {_dataService.CurrentCompany?.CompanyName ?? "Tenant A"}  |  Plan: {_dataService.CurrentCompany?.PlanName ?? "Micro"}  |  Currency: Philippine Peso (PHP ₱)",
+                Text = isPlatformAdmin
+                    ? "Morphic Core ERP  |  Platform: Master (Super Admin)  |  Plan: SuperAdmin  |  Scope: Master Management"
+                    : $"Morphic Core ERP  |  Company: {_dataService.CurrentCompany?.CompanyName ?? "Tenant A"}  |  Plan: {_dataService.CurrentCompany?.PlanName ?? "Micro"}  |  Currency: Philippine Peso (PHP ₱)",
                 Font = new Font("Segoe UI", 8F, FontStyle.Regular),
                 ForeColor = AppTheme.BottomBarText,
                 Location = new Point(20, 6),
@@ -716,6 +763,13 @@ namespace ERP.winforms
 
         private void SwitchView(UserControl view, Button? navButton)
         {
+            bool isPlatformAdmin = ModuleAccessService.NormalizePlan(_dataService.CurrentCompany?.PlanName) == ErpPlan.SuperAdmin;
+            if (isPlatformAdmin && view != _superAdminView)
+            {
+                MessageBox.Show("Platform Super Administrators are restricted from accessing tenant operational modules.", "Access Denied", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             if (view is BranchManagementView && !ModuleAccessService.IsModuleEnabled(_dataService.CurrentCompany?.PlanName, ErpModule.BranchManagement))
             {
                 MessageBox.Show("Branch Management is restricted to Medium Enterprise plans.", "Plan Restricted", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -769,6 +823,7 @@ namespace ERP.winforms
             if (view is PayrollView prv) prv.RefreshData();
             if (view is FinanceView fv) fv.RefreshData();
             if (view is PoliciesView pol) pol.RefreshData();
+            if (view is SuperAdminView sav) sav.RefreshData();
         }
 
         private void ToggleNotifications()
