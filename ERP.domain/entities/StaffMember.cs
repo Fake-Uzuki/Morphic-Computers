@@ -18,7 +18,8 @@ namespace ERP.domain.entities
 
         public decimal HourlyRate { get; set; } = 150.00m;
         public decimal MonthlySalary { get; set; } = 25000.00m;
-        public string InitialPassword { get; set; } = "staff123";
+        public string InitialPassword { get; set; } = string.Empty;
+        public string PasswordHash { get; set; } = string.Empty;
         public bool IsActive { get; set; } = true;
         public DateTime HiredDate { get; set; } = DateTime.UtcNow;
         public int? BranchId { get; set; }

@@ -1247,6 +1247,29 @@ namespace ERP.winforms.Services
             existing.ReviewNotes = notes;
             existing.ResolvedAt = DateTime.UtcNow;
 
+            // Sync linked Purchase Order if request is a Procurement Request
+            if (!string.IsNullOrEmpty(existing.TargetReferenceId) || string.Equals(existing.RequestType, "ProcurementRequest", StringComparison.OrdinalIgnoreCase))
+            {
+                var po = await context.PurchaseOrders.FirstOrDefaultAsync(p =>
+                    p.CompanyId == companyId &&
+                    (p.PurchaseOrderNumber == existing.TargetReferenceId || p.PurchaseOrderId.ToString() == existing.TargetReferenceId))
+                    .ConfigureAwait(false);
+
+                if (po != null)
+                {
+                    if (status.Equals("Approved", StringComparison.OrdinalIgnoreCase))
+                    {
+                        po.Status = "In Transit";
+                        po.ApprovedBy = reviewer;
+                    }
+                    else if (status.Equals("Rejected", StringComparison.OrdinalIgnoreCase))
+                    {
+                        po.Status = "Rejected";
+                        po.ApprovedBy = $"Rejected by {reviewer}";
+                    }
+                }
+            }
+
             if (enqueueSync)
             {
                 context.SyncOutbox.Add(new SyncOutboxItem

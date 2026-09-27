@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using ERP.domain.entities;
 using ERP.domain.services;
+using ERP.domain.security;
 
 namespace ERP.winforms.Services
 {
@@ -174,6 +175,7 @@ namespace ERP.winforms.Services
                     MigrateJsonExpensesIfAvailable(ActiveCompanyId);
                 }
                 PurchaseOrders = Task.Run(() => _localDb.GetPurchaseOrdersAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
+                SyncPendingProcurementApprovals();
             }
             catch (Exception ex)
             {
@@ -1032,6 +1034,8 @@ namespace ERP.winforms.Services
             }
 
             if (ActiveCompanyId != targetCompanyId) return;
+
+            SyncPendingProcurementApprovals();
 
             IsUsingLiveCloudDatabase = anyApiSucceeded;
             ConnectionStatusChanged?.Invoke(anyApiSucceeded);
@@ -2426,6 +2430,14 @@ namespace ERP.winforms.Services
                     var cached = JsonSerializer.Deserialize<List<StaffMember>>(json);
                     if (cached != null)
                     {
+                        foreach (var s in cached)
+                        {
+                            if (string.IsNullOrEmpty(s.PasswordHash) && !string.IsNullOrEmpty(s.InitialPassword))
+                            {
+                                s.PasswordHash = PasswordHelper.HashPassword(s.InitialPassword);
+                                s.InitialPassword = s.PasswordHash;
+                            }
+                        }
                         StaffMembers = cached;
                     }
                 }
@@ -2436,9 +2448,11 @@ namespace ERP.winforms.Services
             }
         }
 
-        public bool AddStaffMember(StaffMember staff) => AddStaffMember(staff, out _);
+        public bool AddStaffMember(StaffMember staff) => AddStaffMember(staff, null, out _);
 
-        public bool AddStaffMember(StaffMember staff, out string? errorMessage)
+        public bool AddStaffMember(StaffMember staff, out string? errorMessage) => AddStaffMember(staff, null, out errorMessage);
+
+        public bool AddStaffMember(StaffMember staff, string? rawPassword, out string? errorMessage)
         {
             errorMessage = null;
             if (staff == null)
@@ -2489,19 +2503,27 @@ namespace ERP.winforms.Services
             staff.HiredDate = DateTime.UtcNow;
             staff.IsActive = true;
 
-            if (!string.IsNullOrWhiteSpace(staff.InitialPassword))
+            // Password hashing & vault registration
+            string passwordForVault = !string.IsNullOrWhiteSpace(rawPassword)
+                ? rawPassword
+                : (!string.IsNullOrWhiteSpace(staff.InitialPassword) && staff.InitialPassword.Length < 60 ? staff.InitialPassword : "staff123");
+
+            if (string.IsNullOrWhiteSpace(staff.PasswordHash))
             {
-                OfflineAuthService.Instance.RegisterOrUpdateStaffPassword(
-                    ActiveCompanyId,
-                    CurrentCompany?.CompanyCode ?? $"TENANT_{ActiveCompanyId}",
-                    CurrentCompany?.CompanyName ?? $"Tenant {ActiveCompanyId}",
-                    CurrentCompany?.PlanName ?? "Medium",
-                    staff.Username,
-                    staff.FullName,
-                    staff.Role,
-                    staff.InitialPassword
-                );
+                staff.PasswordHash = PasswordHelper.HashPassword(passwordForVault);
             }
+            staff.InitialPassword = staff.PasswordHash;
+
+            OfflineAuthService.Instance.RegisterOrUpdateStaffPassword(
+                ActiveCompanyId,
+                CurrentCompany?.CompanyCode ?? $"TENANT_{ActiveCompanyId}",
+                CurrentCompany?.CompanyName ?? $"Tenant {ActiveCompanyId}",
+                CurrentCompany?.PlanName ?? "Medium",
+                staff.Username,
+                staff.FullName,
+                staff.Role,
+                passwordForVault
+            );
 
             bool isOnline = IsApiReachable();
             if (isOnline)
@@ -2556,9 +2578,11 @@ namespace ERP.winforms.Services
             return true;
         }
 
-        public bool UpdateStaffMember(StaffMember staff) => UpdateStaffMember(staff, out _);
+        public bool UpdateStaffMember(StaffMember staff) => UpdateStaffMember(staff, null, out _);
 
-        public bool UpdateStaffMember(StaffMember staff, out string? errorMessage)
+        public bool UpdateStaffMember(StaffMember staff, out string? errorMessage) => UpdateStaffMember(staff, null, out errorMessage);
+
+        public bool UpdateStaffMember(StaffMember staff, string? rawPassword, out string? errorMessage)
         {
             errorMessage = null;
             if (staff == null)
@@ -2572,6 +2596,22 @@ namespace ERP.winforms.Services
             {
                 errorMessage = $"Staff profile #{staff.StaffId} not found.";
                 return false;
+            }
+
+            string? newHashedPassword = null;
+            if (!string.IsNullOrWhiteSpace(rawPassword))
+            {
+                newHashedPassword = PasswordHelper.HashPassword(rawPassword);
+                OfflineAuthService.Instance.RegisterOrUpdateStaffPassword(
+                    ActiveCompanyId,
+                    CurrentCompany?.CompanyCode ?? $"TENANT_{ActiveCompanyId}",
+                    CurrentCompany?.CompanyName ?? $"Tenant {ActiveCompanyId}",
+                    CurrentCompany?.PlanName ?? "Medium",
+                    existing.Username,
+                    staff.FullName.Trim(),
+                    staff.Role,
+                    rawPassword
+                );
             }
 
             var updatedStaff = new StaffMember
@@ -2590,22 +2630,9 @@ namespace ERP.winforms.Services
                 BranchId = staff.BranchId ?? existing.BranchId,
                 IsActive = existing.IsActive,
                 HiredDate = existing.HiredDate,
-                InitialPassword = !string.IsNullOrWhiteSpace(staff.InitialPassword) ? staff.InitialPassword : existing.InitialPassword
+                PasswordHash = newHashedPassword ?? (!string.IsNullOrWhiteSpace(staff.PasswordHash) ? staff.PasswordHash : existing.PasswordHash),
+                InitialPassword = newHashedPassword ?? (!string.IsNullOrWhiteSpace(staff.InitialPassword) ? staff.InitialPassword : existing.InitialPassword)
             };
-
-            if (!string.IsNullOrWhiteSpace(staff.InitialPassword))
-            {
-                OfflineAuthService.Instance.RegisterOrUpdateStaffPassword(
-                    ActiveCompanyId,
-                    CurrentCompany?.CompanyCode ?? $"TENANT_{ActiveCompanyId}",
-                    CurrentCompany?.CompanyName ?? $"Tenant {ActiveCompanyId}",
-                    CurrentCompany?.PlanName ?? "Medium",
-                    existing.Username,
-                    existing.FullName,
-                    existing.Role,
-                    staff.InitialPassword
-                );
-            }
 
             bool isOnline = IsApiReachable();
             if (isOnline)
@@ -2822,13 +2849,32 @@ namespace ERP.winforms.Services
         public bool AddApprovalRequest(ApprovalRequest request)
         {
             if (request == null) return false;
-            request.CompanyId = ActiveCompanyId;
+            if (request.CompanyId <= 0) request.CompanyId = ActiveCompanyId;
+
+            // Prevent duplicate approval requests for the same target reference and type
+            if (!string.IsNullOrWhiteSpace(request.TargetReferenceId))
+            {
+                var duplicate = ApprovalRequests.FirstOrDefault(r =>
+                    r.CompanyId == request.CompanyId &&
+                    string.Equals(r.RequestType, request.RequestType, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(r.TargetReferenceId, request.TargetReferenceId, StringComparison.OrdinalIgnoreCase));
+
+                if (duplicate != null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Duplicate approval request prevented for target {request.TargetReferenceId}");
+                    return false;
+                }
+            }
+
             if (string.IsNullOrWhiteSpace(request.RequestNumber))
             {
-                request.RequestNumber = $"REQ-{DateTime.UtcNow:yyyyMMdd}-{new Random().Next(100, 999)}";
+                request.RequestNumber = $"REQ-{DateTime.UtcNow:yyyyMMdd}-{Random.Shared.Next(100, 999)}";
             }
             request.CreatedAt = DateTime.UtcNow;
-            request.Status = "Pending";
+            if (string.IsNullOrWhiteSpace(request.Status))
+            {
+                request.Status = ApprovalRequest.StatusPending;
+            }
 
             bool isOnline = IsApiReachable();
             if (isOnline)
@@ -2844,32 +2890,39 @@ namespace ERP.winforms.Services
                     apiSuccess = false;
                 }
 
-                if (!apiSuccess)
+                if (apiSuccess)
                 {
-                    return false;
-                }
-
-                try
-                {
-                    Task.Run(() => _localDb.CreateApprovalRequestAsync(ActiveCompanyId, request, enqueueSync: false)).GetAwaiter().GetResult();
-                }
-                catch { }
-            }
-            else
-            {
-                try
-                {
-                    var saved = Task.Run(() => _localDb.CreateApprovalRequestAsync(ActiveCompanyId, request, enqueueSync: true)).GetAwaiter().GetResult();
-                    if (saved != null && saved.RequestId > 0)
+                    try
                     {
-                        request.RequestId = saved.RequestId;
+                        Task.Run(() => _localDb.CreateApprovalRequestAsync(ActiveCompanyId, request, enqueueSync: false)).GetAwaiter().GetResult();
                     }
+                    catch { }
+
+                    if (request.RequestId == 0)
+                    {
+                        request.RequestId = (ApprovalRequests.Count > 0 ? ApprovalRequests.Max(r => r.RequestId) : 0) + 1;
+                    }
+
+                    ApprovalRequests.RemoveAll(r => r.RequestId == request.RequestId);
+                    ApprovalRequests.Insert(0, request);
+                    SaveApprovalsToLocalCache();
+                    ApprovalRequestsChanged?.Invoke();
+                    return true;
                 }
-                catch (Exception ex)
+            }
+
+            // Offline or API failure: persist locally and enqueue SyncOutbox
+            try
+            {
+                var saved = Task.Run(() => _localDb.CreateApprovalRequestAsync(ActiveCompanyId, request, enqueueSync: true)).GetAwaiter().GetResult();
+                if (saved != null && saved.RequestId > 0)
                 {
-                    System.Diagnostics.Debug.WriteLine($"AddApprovalRequest localDb error: {ex.Message}");
-                    return false;
+                    request.RequestId = saved.RequestId;
                 }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"AddApprovalRequest localDb error: {ex.Message}");
             }
 
             if (request.RequestId == 0)
@@ -2877,6 +2930,7 @@ namespace ERP.winforms.Services
                 request.RequestId = (ApprovalRequests.Count > 0 ? ApprovalRequests.Max(r => r.RequestId) : 0) + 1;
             }
 
+            ApprovalRequests.RemoveAll(r => r.RequestId == request.RequestId);
             ApprovalRequests.Insert(0, request);
             SaveApprovalsToLocalCache();
             ApprovalRequestsChanged?.Invoke();
@@ -2902,16 +2956,26 @@ namespace ERP.winforms.Services
                     apiSuccess = false;
                 }
 
-                if (!apiSuccess)
+                if (apiSuccess)
                 {
-                    return false;
+                    try
+                    {
+                        Task.Run(() => _localDb.ResolveApprovalRequestAsync(ActiveCompanyId, requestId, status, reviewer, notes, enqueueSync: false)).GetAwaiter().GetResult();
+                    }
+                    catch { }
                 }
-
-                try
+                else
                 {
-                    Task.Run(() => _localDb.ResolveApprovalRequestAsync(ActiveCompanyId, requestId, status, reviewer, notes, enqueueSync: false)).GetAwaiter().GetResult();
+                    // Fallback to local DB and enqueue sync if API failed or returned error
+                    try
+                    {
+                        Task.Run(() => _localDb.ResolveApprovalRequestAsync(ActiveCompanyId, requestId, status, reviewer, notes, enqueueSync: true)).GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"ResolveApprovalRequest localDb fallback error: {ex.Message}");
+                    }
                 }
-                catch { }
             }
             else
             {
@@ -2922,7 +2986,6 @@ namespace ERP.winforms.Services
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"ResolveApprovalRequest localDb error: {ex.Message}");
-                    return false;
                 }
             }
 
@@ -2930,6 +2993,32 @@ namespace ERP.winforms.Services
             request.ReviewedBy = reviewer;
             request.ReviewNotes = notes;
             request.ResolvedAt = DateTime.UtcNow;
+
+            // Link to Purchase Order when this is a Procurement Request
+            if (string.Equals(request.RequestType, ApprovalRequest.TypeProcurementRequest, StringComparison.OrdinalIgnoreCase) ||
+                !string.IsNullOrEmpty(request.TargetReferenceId))
+            {
+                var po = PurchaseOrders.FirstOrDefault(p =>
+                    (!string.IsNullOrEmpty(request.TargetReferenceId) &&
+                        (string.Equals(p.PurchaseOrderNumber, request.TargetReferenceId, StringComparison.OrdinalIgnoreCase) ||
+                         string.Equals(p.PoNumber, request.TargetReferenceId, StringComparison.OrdinalIgnoreCase))) ||
+                    (p.PurchaseOrderId.ToString() == request.TargetReferenceId));
+
+                if (po != null)
+                {
+                    if (status.Equals("Approved", StringComparison.OrdinalIgnoreCase))
+                    {
+                        po.Status = "In Transit";
+                        po.ApprovedBy = reviewer;
+                    }
+                    else if (status.Equals("Rejected", StringComparison.OrdinalIgnoreCase))
+                    {
+                        po.Status = "Rejected";
+                        po.ApprovedBy = $"Rejected by {reviewer}";
+                    }
+                    UpdatePurchaseOrder(po);
+                }
+            }
 
             SaveApprovalsToLocalCache();
             ApprovalRequestsChanged?.Invoke();
@@ -4131,6 +4220,55 @@ namespace ERP.winforms.Services
         // ==========================================
         // PROCUREMENT (Medium Enterprise Logistics)
         // ==========================================
+        public ApprovalRequest? EnsureProcurementApprovalRequest(PurchaseOrder order)
+        {
+            if (order == null || string.IsNullOrWhiteSpace(order.PurchaseOrderNumber))
+            {
+                return null;
+            }
+
+            if (!string.Equals(order.Status, "Pending Approval", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            // Prevent duplicate approval requests for the same PO
+            var existing = ApprovalRequests.FirstOrDefault(r =>
+                r.CompanyId == order.CompanyId &&
+                string.Equals(r.RequestType, ApprovalRequest.TypeProcurementRequest, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(r.TargetReferenceId, order.PurchaseOrderNumber, StringComparison.OrdinalIgnoreCase));
+
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            var approvalReq = new ApprovalRequest
+            {
+                CompanyId = order.CompanyId,
+                RequestType = ApprovalRequest.TypeProcurementRequest,
+                Title = $"Procurement Order #{order.PurchaseOrderNumber} - {order.SupplierName}",
+                ReasonDescription = $"Procurement purchase order requested by {order.CreatedBy ?? "Staff"}: {order.Quantity}x {order.ItemDescription} from {order.SupplierName}. Total: ₱{order.TotalAmount:N2}. Remarks: {order.Notes ?? "Standard replenishment purchase order"}",
+                RequestedBy = order.CreatedBy ?? "Staff",
+                RequestedAmount = order.TotalAmount,
+                Status = ApprovalRequest.StatusPending,
+                TargetReferenceId = order.PurchaseOrderNumber,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            AddApprovalRequest(approvalReq);
+            return approvalReq;
+        }
+
+        public void SyncPendingProcurementApprovals()
+        {
+            if (PurchaseOrders == null || PurchaseOrders.Count == 0) return;
+            foreach (var po in PurchaseOrders.Where(p => string.Equals(p.Status, "Pending Approval", StringComparison.OrdinalIgnoreCase)).ToList())
+            {
+                EnsureProcurementApprovalRequest(po);
+            }
+        }
+
         public bool AddPurchaseOrder(PurchaseOrder order)
         {
             if (order == null) return false;
@@ -4139,6 +4277,10 @@ namespace ERP.winforms.Services
             {
                 int count = PurchaseOrders.Count;
                 order.PurchaseOrderNumber = $"PO-{DateTime.UtcNow:yyyy}-{(count + 1):D3}";
+            }
+            if (string.IsNullOrWhiteSpace(order.Status))
+            {
+                order.Status = "Pending Approval";
             }
             order.CreatedAt = DateTime.UtcNow;
 
@@ -4164,9 +4306,16 @@ namespace ERP.winforms.Services
                     }
                     catch { }
 
+                    order.PurchaseOrderId = apiCreated.PurchaseOrderId;
+                    order.PurchaseOrderNumber = apiCreated.PurchaseOrderNumber;
+                    order.Status = apiCreated.Status;
+
                     PurchaseOrders.RemoveAll(p => p.PurchaseOrderId == apiCreated.PurchaseOrderId);
                     PurchaseOrders.Insert(0, apiCreated);
                     PurchaseOrdersChanged?.Invoke();
+
+                    // Automatically create pending ApprovalRequest when status is Pending Approval
+                    EnsureProcurementApprovalRequest(apiCreated);
                     return true;
                 }
             }
@@ -4178,10 +4327,14 @@ namespace ERP.winforms.Services
                 if (saved != null)
                 {
                     order.PurchaseOrderId = saved.PurchaseOrderId;
+                    order.PurchaseOrderNumber = saved.PurchaseOrderNumber;
                 }
                 PurchaseOrders.RemoveAll(p => p.PurchaseOrderId == order.PurchaseOrderId);
                 PurchaseOrders.Insert(0, order);
                 PurchaseOrdersChanged?.Invoke();
+
+                // Automatically create pending ApprovalRequest when status is Pending Approval
+                EnsureProcurementApprovalRequest(order);
                 return true;
             }
             catch (Exception ex)
@@ -4193,11 +4346,20 @@ namespace ERP.winforms.Services
 
         public bool UpdatePurchaseOrder(PurchaseOrder order)
         {
-            if (order == null || order.PurchaseOrderId <= 0) return false;
+            if (order == null) return false;
             order.CompanyId = ActiveCompanyId;
 
+            if (order.PurchaseOrderId <= 0 && !string.IsNullOrEmpty(order.PurchaseOrderNumber))
+            {
+                var match = PurchaseOrders.FirstOrDefault(p => p.PurchaseOrderNumber == order.PurchaseOrderNumber);
+                if (match != null && match.PurchaseOrderId > 0)
+                {
+                    order.PurchaseOrderId = match.PurchaseOrderId;
+                }
+            }
+
             bool isOnline = IsApiReachable();
-            if (isOnline)
+            if (isOnline && order.PurchaseOrderId > 0)
             {
                 bool apiSuccess = false;
                 try
@@ -4228,8 +4390,13 @@ namespace ERP.winforms.Services
             // Offline or API failure: persist locally and enqueue SyncOutbox
             try
             {
-                Task.Run(() => _localDb.UpdatePurchaseOrderAsync(ActiveCompanyId, order, enqueueSync: true)).GetAwaiter().GetResult();
-                int idx = PurchaseOrders.FindIndex(p => p.PurchaseOrderId == order.PurchaseOrderId);
+                if (order.PurchaseOrderId > 0)
+                {
+                    Task.Run(() => _localDb.UpdatePurchaseOrderAsync(ActiveCompanyId, order, enqueueSync: true)).GetAwaiter().GetResult();
+                }
+                int idx = PurchaseOrders.FindIndex(p => 
+                    (order.PurchaseOrderId > 0 && p.PurchaseOrderId == order.PurchaseOrderId) ||
+                    (!string.IsNullOrEmpty(order.PurchaseOrderNumber) && p.PurchaseOrderNumber == order.PurchaseOrderNumber));
                 if (idx >= 0) PurchaseOrders[idx] = order;
                 PurchaseOrdersChanged?.Invoke();
                 return true;
@@ -4237,6 +4404,10 @@ namespace ERP.winforms.Services
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"UpdatePurchaseOrder localDb error: {ex.Message}");
+                int idx = PurchaseOrders.FindIndex(p => 
+                    (!string.IsNullOrEmpty(order.PurchaseOrderNumber) && p.PurchaseOrderNumber == order.PurchaseOrderNumber));
+                if (idx >= 0) PurchaseOrders[idx] = order;
+                PurchaseOrdersChanged?.Invoke();
                 return false;
             }
         }

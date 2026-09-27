@@ -55,8 +55,16 @@ BEGIN
         ReviewedBy NVARCHAR(100) NULL,
         ReviewNotes NVARCHAR(1000) NULL,
         CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-        ResolvedAt DATETIME2 NULL
+        ResolvedAt DATETIME2 NULL,
+        TargetReferenceId NVARCHAR(200) NULL
     );
+END
+ELSE
+BEGIN
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ApprovalRequests') AND name = 'TargetReferenceId')
+    BEGIN
+        ALTER TABLE ApprovalRequests ADD TargetReferenceId NVARCHAR(200) NULL;
+    END
 END";
                 await db.Database.ExecuteSqlRawAsync(sql);
                 _ensuredSchemas.TryAdd(companyId, true);
@@ -106,7 +114,8 @@ END";
                         ReviewedBy = r.ReviewedBy,
                         ReviewNotes = r.ReviewNotes,
                         CreatedAt = r.CreatedAt,
-                        ResolvedAt = r.ResolvedAt
+                        ResolvedAt = r.ResolvedAt,
+                        TargetReferenceId = r.TargetReferenceId
                     })
                     .ToListAsync();
                 return Ok(requests);
@@ -145,15 +154,15 @@ END";
                 }
 
                 request.CreatedAt = DateTime.UtcNow;
-                request.Status = "Pending";
+                if (string.IsNullOrWhiteSpace(request.Status)) request.Status = "Pending";
 
                 await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
                     INSERT INTO ApprovalRequests (
                         CompanyId, RequestNumber, RequestType, Title, ReasonDescription,
-                        RequestedBy, RequestedAmount, Status, CreatedAt
+                        RequestedBy, RequestedAmount, Status, CreatedAt, TargetReferenceId
                     ) VALUES (
                         {request.CompanyId}, {request.RequestNumber}, {request.RequestType}, {request.Title}, {request.ReasonDescription},
-                        {request.RequestedBy}, {request.RequestedAmount}, {request.Status}, {request.CreatedAt}
+                        {request.RequestedBy}, {request.RequestedAmount}, {request.Status}, {request.CreatedAt}, {request.TargetReferenceId}
                     );
                 ");
 
@@ -181,26 +190,41 @@ END";
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureApprovalsSchemaAsync(tenantDb, companyId);
 
-                bool exists = await tenantDb.ApprovalRequests.AnyAsync(r => r.RequestId == id);
-                if (!exists)
+                var existing = await tenantDb.ApprovalRequests.FirstOrDefaultAsync(r => r.RequestId == id);
+                if (existing == null)
                 {
                     return NotFound(new { error = $"Approval request ID {id} not found." });
                 }
 
                 DateTime resolvedAt = DateTime.UtcNow;
-                int affected = await tenantDb.Database.ExecuteSqlInterpolatedAsync($@"
-                    UPDATE ApprovalRequests
-                    SET Status = {dto.Status},
-                        ReviewedBy = {dto.ReviewedBy},
-                        ReviewNotes = {dto.ReviewNotes},
-                        ResolvedAt = {resolvedAt}
-                    WHERE RequestId = {id};
-                ");
+                existing.Status = dto.Status;
+                existing.ReviewedBy = dto.ReviewedBy;
+                existing.ReviewNotes = dto.ReviewNotes;
+                existing.ResolvedAt = resolvedAt;
 
-                if (affected == 0)
+                // Sync linked Purchase Order if request is a Procurement Request
+                if (!string.IsNullOrEmpty(existing.TargetReferenceId) || existing.RequestType == "ProcurementRequest")
                 {
-                    return StatusCode(500, new { error = "Resolve failed: 0 rows affected." });
+                    var po = await tenantDb.PurchaseOrders.FirstOrDefaultAsync(p =>
+                        p.CompanyId == companyId &&
+                        (p.PurchaseOrderNumber == existing.TargetReferenceId || p.PurchaseOrderId.ToString() == existing.TargetReferenceId));
+
+                    if (po != null)
+                    {
+                        if (dto.Status.Equals("Approved", StringComparison.OrdinalIgnoreCase))
+                        {
+                            po.Status = "In Transit";
+                            po.ApprovedBy = dto.ReviewedBy;
+                        }
+                        else if (dto.Status.Equals("Rejected", StringComparison.OrdinalIgnoreCase))
+                        {
+                            po.Status = "Rejected";
+                            po.ApprovedBy = $"Rejected by {dto.ReviewedBy}";
+                        }
+                    }
                 }
+
+                await tenantDb.SaveChangesAsync();
 
                 return Ok(new { success = true, requestId = id, dto.Status, dto.ReviewedBy, dto.ReviewNotes, resolvedAt });
             }

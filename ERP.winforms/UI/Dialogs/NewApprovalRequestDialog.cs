@@ -82,7 +82,7 @@ namespace ERP.winforms.UI.Dialogs
                 Font = AppTheme.BodyFont,
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
-            _cboType.Items.AddRange(new object[] { "VoidTransaction", "CustomDiscount", "InventoryWriteOff", "WarrantyOverride" });
+            _cboType.Items.AddRange(new object[] { "VoidTransaction", "CustomDiscount", "InventoryWriteOff", "WarrantyOverride", "ProcurementRequest" });
             _cboType.SelectedIndex = 0;
 
             _numAmount = new NumericUpDown

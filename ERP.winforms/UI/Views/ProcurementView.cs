@@ -13,6 +13,8 @@ namespace ERP.winforms.UI.Views
     public class ProcurementView : UserControl
     {
         private readonly DataService _dataService = DataService.Instance;
+        private readonly string _currentUser;
+        private readonly string _currentRole;
 
         private DataGridView _gridPOs = null!;
         private TextBox _txtSearch = null!;
@@ -21,8 +23,10 @@ namespace ERP.winforms.UI.Views
         private Label _lblTotalSpend = null!;
         private Label _lblSupplierCount = null!;
 
-        public ProcurementView()
+        public ProcurementView(string currentUser = "Cirunay", string currentRole = "Store Administrator")
         {
+            _currentUser = currentUser;
+            _currentRole = currentRole;
             Dock = DockStyle.Fill;
             BackColor = AppTheme.AppBackground;
             AutoScroll = false;
@@ -40,6 +44,15 @@ namespace ERP.winforms.UI.Views
                     RefreshGrid();
                 }
             };
+        }
+
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            base.OnVisibleChanged(e);
+            if (Visible)
+            {
+                RefreshGrid();
+            }
         }
 
         private void InitializeLayout()
@@ -309,8 +322,8 @@ namespace ERP.winforms.UI.Views
             _gridPOs.DataSource = orders.ToList();
 
             if (_lblTotalPoCount != null) _lblTotalPoCount.Text = orders.Count.ToString();
-            if (_lblPendingDelivery != null) _lblPendingDelivery.Text = $"{orders.Count(o => o.Status != "Received" && o.Status != "Cancelled")} Active";
-            if (_lblTotalSpend != null) _lblTotalSpend.Text = $"₱{orders.Where(o => o.Status != "Cancelled").Sum(o => o.TotalAmount):N0}";
+            if (_lblPendingDelivery != null) _lblPendingDelivery.Text = $"{orders.Count(o => o.Status != "Received" && o.Status != "Cancelled" && o.Status != "Rejected")} Active";
+            if (_lblTotalSpend != null) _lblTotalSpend.Text = $"₱{orders.Where(o => o.Status != "Cancelled" && o.Status != "Rejected").Sum(o => o.TotalAmount):N0}";
             if (_lblSupplierCount != null) _lblSupplierCount.Text = $"{_dataService.Suppliers.Count} Vendors";
         }
 
@@ -428,11 +441,11 @@ namespace ERP.winforms.UI.Views
                     SupplierId = selectedSup.SupplierId,
                     SupplierName = selectedSup.SupplierName,
                     OrderDate = DateTime.UtcNow,
-                    Status = "In Transit",
+                    Status = "Pending Approval",
                     TotalAmount = qty * unitCost,
                     Notes = string.IsNullOrWhiteSpace(txtNotes.Text) ? null : txtNotes.Text.Trim(),
-                    CreatedBy = "Admin",
-                    ApprovedBy = "Marcus V. (Manager)",
+                    CreatedBy = _currentUser,
+                    ApprovedBy = "Pending Approval",
                     IsActive = true,
                     Items = new List<PurchaseOrderItem>
                     {
@@ -453,6 +466,7 @@ namespace ERP.winforms.UI.Views
                     RefreshGrid();
                     dlg.DialogResult = DialogResult.OK;
                     dlg.Close();
+                    MessageBox.Show($"Purchase Order {newPo.PurchaseOrderNumber} created with status 'Pending Approval' and submitted to Approvals module.\n\nA Store Manager or Administrator can now review, approve, or reject this request.", "Order Submitted for Approval", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 else
                 {
@@ -487,6 +501,18 @@ namespace ERP.winforms.UI.Views
 
             var selected = _gridPOs.SelectedRows[0].DataBoundItem as PurchaseOrder;
             if (selected == null) return;
+
+            if (selected.Status == "Pending Approval" || selected.Status == "Pending")
+            {
+                MessageBox.Show("Cannot receive items for a purchase order that is still pending approval. It must first be approved by a Store Manager or Administrator in the Approvals module.", "Approval Required", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (selected.Status == "Rejected")
+            {
+                MessageBox.Show("Cannot receive items for a purchase order that was rejected.", "Order Rejected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
             if (selected.Status == "Received")
             {

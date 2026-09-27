@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows.Forms;
 using ERP.domain.entities;
 using ERP.domain.services;
+using ERP.domain.security;
 using ERP.winforms.Services;
 using ERP.winforms.Theme;
 using ERP.winforms.UI.Components;
@@ -468,8 +469,16 @@ namespace ERP.winforms.UI.Views
         private void UpdateBranchBadge()
         {
             if (_lblBranchBadge == null) return;
+            bool isBranchAware = ModuleAccessService.IsModuleEnabled(_dataService.CurrentCompany?.PlanName, ErpModule.BranchManagement);
+            if (!isBranchAware)
+            {
+                _lblBranchBadge.Visible = false;
+                return;
+            }
+
+            _lblBranchBadge.Visible = true;
             var ctx = BranchContextService.Instance.CurrentContext;
-            if (ctx.IsAllBranches)
+            if (ctx.IsAllBranches || !ctx.BranchId.HasValue)
             {
                 _lblBranchBadge.Text = "⚠️ Scope: All Branches (Select specific branch to checkout)";
                 _lblBranchBadge.ForeColor = Color.FromArgb(180, 110, 10);
@@ -738,7 +747,8 @@ namespace ERP.winforms.UI.Views
                 return;
             }
 
-            if (!BranchContextService.Instance.CurrentBranchId.HasValue)
+            bool isBranchAware = ModuleAccessService.IsModuleEnabled(_dataService.CurrentCompany?.PlanName, ErpModule.BranchManagement);
+            if (isBranchAware && !BranchContextService.Instance.CurrentBranchId.HasValue)
             {
                 MessageBox.Show(
                     "Please select a specific active branch from the top header selector before processing checkout.\n\nSales transactions deduct inventory from the designated active branch.",
@@ -759,7 +769,7 @@ namespace ERP.winforms.UI.Views
             Order order = new Order
             {
                 CompanyId = _dataService.ActiveCompanyId,
-                BranchId = BranchContextService.Instance.CurrentBranchId,
+                BranchId = isBranchAware ? BranchContextService.Instance.CurrentBranchId : null,
                 CustomerName = custName,
                 CashierName = cashier,
                 CreatedAt = DateTime.Now,

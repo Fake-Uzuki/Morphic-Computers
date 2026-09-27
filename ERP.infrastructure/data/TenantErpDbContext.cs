@@ -199,6 +199,7 @@ namespace ERP.infrastructure.data
                 entity.Property(x => x.HourlyRate).HasPrecision(18, 2);
                 entity.Property(x => x.MonthlySalary).HasPrecision(18, 2);
                 entity.Ignore(x => x.InitialPassword);
+                entity.Ignore(x => x.PasswordHash);
                 entity.Property(x => x.BranchId).IsRequired(false);
                 entity.HasOne(x => x.Branch)
                     .WithMany()

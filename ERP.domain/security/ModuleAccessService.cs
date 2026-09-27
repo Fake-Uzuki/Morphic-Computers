@@ -153,10 +153,10 @@ namespace ERP.domain.security
                         ErpModule.Inventory             => true,
                         ErpModule.Products              => true,
                         ErpModule.Orders                => true,
-                        ErpModule.MainGenerativeIncome  => true,
                         ErpModule.Reports               => true,
 
                         // Restricted for Micro
+                        ErpModule.MainGenerativeIncome  => false,
                         ErpModule.Repairs               => false,
                         ErpModule.Customers             => false,
                         ErpModule.Suppliers             => false,

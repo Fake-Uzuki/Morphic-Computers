@@ -403,10 +403,10 @@ namespace ERP.winforms.Services
                     SaltBase64 = salt,
                     HashBase64 = hash,
                     LastLoginUtc = DateTime.UtcNow,
-                    IsPOSAllowed = true,
-                    IsInventoryAllowed = true,
-                    IsRepairAllowed = role.Contains("Tech", StringComparison.OrdinalIgnoreCase) || role.Contains("Manager", StringComparison.OrdinalIgnoreCase) || role.Contains("Admin", StringComparison.OrdinalIgnoreCase),
-                    IsSupplierAllowed = role.Contains("Admin", StringComparison.OrdinalIgnoreCase) || role.Contains("Manager", StringComparison.OrdinalIgnoreCase)
+                    IsPOSAllowed = RoleAccessService.HasAccess(planName, role, ErpModule.POS),
+                    IsInventoryAllowed = RoleAccessService.HasAccess(planName, role, ErpModule.Inventory) || RoleAccessService.HasAccess(planName, role, ErpModule.Products),
+                    IsRepairAllowed = RoleAccessService.HasAccess(planName, role, ErpModule.Repairs),
+                    IsSupplierAllowed = RoleAccessService.HasAccess(planName, role, ErpModule.Suppliers)
                 });
                 WriteVault(vault);
             }
@@ -485,10 +485,10 @@ namespace ERP.winforms.Services
                     match.CompanyName = company.CompanyName;
                     match.CompanyCode = company.CompanyCode;
                     match.PlanName = company.PlanName;
-                    match.IsPOSAllowed = ModuleAccessService.IsModuleEnabled(company.PlanName, "POS");
-                    match.IsInventoryAllowed = ModuleAccessService.IsModuleEnabled(company.PlanName, "Inventory");
-                    match.IsRepairAllowed = ModuleAccessService.IsModuleEnabled(company.PlanName, "Repairs");
-                    match.IsSupplierAllowed = ModuleAccessService.IsModuleEnabled(company.PlanName, "Suppliers");
+                    match.IsPOSAllowed = RoleAccessService.HasAccess(company.PlanName, match.Role, ErpModule.POS);
+                    match.IsInventoryAllowed = RoleAccessService.HasAccess(company.PlanName, match.Role, ErpModule.Inventory) || RoleAccessService.HasAccess(company.PlanName, match.Role, ErpModule.Products);
+                    match.IsRepairAllowed = RoleAccessService.HasAccess(company.PlanName, match.Role, ErpModule.Repairs);
+                    match.IsSupplierAllowed = RoleAccessService.HasAccess(company.PlanName, match.Role, ErpModule.Suppliers);
                     return OfflineAuthResult.Succeeded(match);
                 }
             }

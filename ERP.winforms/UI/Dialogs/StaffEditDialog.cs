@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using ERP.domain.entities;
 using ERP.domain.services;
+using ERP.domain.security;
 using ERP.winforms.Services;
 using ERP.winforms.Theme;
 using ERP.winforms.UI.Components;
@@ -44,7 +45,7 @@ namespace ERP.winforms.UI.Dialogs
             {
                 _txtName.Text = _targetStaff.FullName;
                 _txtUsername.Text = _targetStaff.Username;
-                _txtPassword.Text = string.IsNullOrEmpty(_targetStaff.InitialPassword) ? "staff123" : _targetStaff.InitialPassword;
+                _txtPassword.Text = string.Empty; // Do not display plain text password
                 _cboRole.SelectedItem = _targetStaff.Role;
                 _txtPosition.Text = _targetStaff.PositionTitle;
                 _txtEmail.Text = _targetStaff.Email ?? "";
@@ -54,7 +55,7 @@ namespace ERP.winforms.UI.Dialogs
             }
             else
             {
-                _txtPassword.Text = "staff123";
+                _txtPassword.Text = string.Empty;
             }
         }
 
@@ -132,11 +133,30 @@ namespace ERP.winforms.UI.Dialogs
             y += 35;
 
             // Password & Role
-            card.Controls.Add(CreateLabel("LOGIN PASSWORD * (Used to Sign In)", 15, y));
+            string pwdLabelText = _targetStaff == null ? "LOGIN PASSWORD *" : "NEW PASSWORD (leave blank to keep current)";
+            card.Controls.Add(CreateLabel(pwdLabelText, 15, y));
             card.Controls.Add(CreateLabel("SYSTEM ROLE *", 240, y));
             y += 20;
 
-            _txtPassword = new TextBox { Location = new Point(15, y), Width = 210, Font = AppTheme.BodyFont };
+            _txtPassword = new TextBox
+            {
+                Location = new Point(15, y),
+                Width = 150,
+                Font = AppTheme.BodyFont,
+                UseSystemPasswordChar = true
+            };
+
+            CheckBox chkShowPwd = new CheckBox
+            {
+                Text = "Show",
+                Location = new Point(170, y + 2),
+                Size = new Size(55, 20),
+                Font = new Font("Segoe UI", 7.5F),
+                ForeColor = AppTheme.TextMuted,
+                Cursor = Cursors.Hand
+            };
+            chkShowPwd.CheckedChanged += (s, e) => _txtPassword.UseSystemPasswordChar = !chkShowPwd.Checked;
+
             _cboRole = new ComboBox
             {
                 Location = new Point(240, y),
@@ -148,6 +168,7 @@ namespace ERP.winforms.UI.Dialogs
             _cboRole.SelectedIndex = 2; // Default Hardware Tech
 
             card.Controls.Add(_txtPassword);
+            card.Controls.Add(chkShowPwd);
             card.Controls.Add(_cboRole);
             y += 35;
 
@@ -287,12 +308,16 @@ namespace ERP.winforms.UI.Dialogs
                     branchId = _dataService.Branches.FirstOrDefault(b => b.IsActive)?.BranchId;
                 }
 
+                string rawPasswordToUse = !string.IsNullOrEmpty(password) ? password : "staff123";
+                string hashedPassword = PasswordHelper.HashPassword(rawPasswordToUse);
+
                 var newStaff = new StaffMember
                 {
                     CompanyId = _dataService.ActiveCompanyId,
                     FullName = name,
                     Username = username,
-                    InitialPassword = password,
+                    InitialPassword = hashedPassword,
+                    PasswordHash = hashedPassword,
                     Role = role,
                     PositionTitle = pos,
                     PhoneNumber = _txtPhone.Text.Trim(),
@@ -304,7 +329,7 @@ namespace ERP.winforms.UI.Dialogs
                     HiredDate = DateTime.UtcNow
                 };
 
-                bool ok = _dataService.AddStaffMember(newStaff, out string? errorReason);
+                bool ok = _dataService.AddStaffMember(newStaff, rawPasswordToUse, out string? errorReason);
                 if (!ok)
                 {
                     string msg = string.IsNullOrWhiteSpace(errorReason)
@@ -326,7 +351,6 @@ namespace ERP.winforms.UI.Dialogs
 
                 _targetStaff.FullName = name;
                 _targetStaff.Username = username;
-                _targetStaff.InitialPassword = password;
                 _targetStaff.Role = role;
                 _targetStaff.PositionTitle = pos;
                 _targetStaff.PhoneNumber = _txtPhone.Text.Trim();
@@ -334,7 +358,15 @@ namespace ERP.winforms.UI.Dialogs
                 _targetStaff.HourlyRate = _numHourlyRate.Value;
                 _targetStaff.MonthlySalary = _numMonthlySalary.Value;
 
-                bool ok = _dataService.UpdateStaffMember(_targetStaff, out string? errorReason);
+                string? rawPasswordToUpdate = !string.IsNullOrEmpty(password) ? password : null;
+                if (!string.IsNullOrEmpty(rawPasswordToUpdate))
+                {
+                    string hashed = PasswordHelper.HashPassword(rawPasswordToUpdate);
+                    _targetStaff.InitialPassword = hashed;
+                    _targetStaff.PasswordHash = hashed;
+                }
+
+                bool ok = _dataService.UpdateStaffMember(_targetStaff, rawPasswordToUpdate, out string? errorReason);
                 if (!ok)
                 {
                     string msg = string.IsNullOrWhiteSpace(errorReason)

@@ -59,6 +59,15 @@ namespace ERP.winforms.UI.Views
             RefreshData();
         }
 
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            base.OnVisibleChanged(e);
+            if (Visible)
+            {
+                RefreshData();
+            }
+        }
+
         private void InitializeLayout()
         {
             Controls.Clear();
@@ -87,7 +96,6 @@ namespace ERP.winforms.UI.Views
 
             Label lblBannerSub = new Label
             {
-                Text = "Central operational hub for POS cashier item voids, cart cancellations, and manager discount overrides. Store Managers can review and authorize pending tickets below.",
                 Font = new Font("Segoe UI", 8F, FontStyle.Regular),
                 ForeColor = Color.FromArgb(180, 178, 168),
                 Location = new Point(20, 30),
@@ -502,7 +510,12 @@ namespace ERP.winforms.UI.Views
             }
 
             _lblDetailReqNum.Text = $"TICKET: {_selectedRequest.RequestNumber}";
-            _lblDetailType.Text = $"Type: {_selectedRequest.RequestType}";
+            string typeDisplay = _selectedRequest.RequestType;
+            if (!string.IsNullOrEmpty(_selectedRequest.TargetReferenceId))
+            {
+                typeDisplay += $"  |  Ref: {_selectedRequest.TargetReferenceId}";
+            }
+            _lblDetailType.Text = $"Type: {typeDisplay}";
             _lblDetailRequester.Text = $"Requested By: {_selectedRequest.RequestedBy} on {_selectedRequest.CreatedAt.ToLocalTime():MMM dd, hh:mm tt}";
             _lblDetailAmount.Text = $"Impact Amount: ₱{_selectedRequest.RequestedAmount:N2}";
             _lblDetailStatus.Text = $"Status: {_selectedRequest.Status.ToUpperInvariant()}";
@@ -543,7 +556,8 @@ namespace ERP.winforms.UI.Views
                     r.RequestNumber.ToLowerInvariant().Contains(query) ||
                     r.Title.ToLowerInvariant().Contains(query) ||
                     r.RequestedBy.ToLowerInvariant().Contains(query) ||
-                    r.RequestType.ToLowerInvariant().Contains(query));
+                    r.RequestType.ToLowerInvariant().Contains(query) ||
+                    (r.TargetReferenceId != null && r.TargetReferenceId.ToLowerInvariant().Contains(query)));
             }
 
             _gridRequests.Rows.Clear();
