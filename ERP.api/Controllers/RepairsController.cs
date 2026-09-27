@@ -5,8 +5,11 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ERP.domain.entities;
+using ERP.domain.security;
 using ERP.infrastructure.data;
 using ERP.infrastructure.services;
+
+using ERP.api.Helpers;
 
 namespace ERP.api.Controllers
 {
@@ -15,11 +18,19 @@ namespace ERP.api.Controllers
     public class RepairsController : ControllerBase
     {
         private readonly ITenantDbContextFactory _tenantFactory;
+        private readonly MasterErpDbContext _masterDb;
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, bool> _ensuredSchemas = new();
 
-        public RepairsController(ITenantDbContextFactory tenantFactory)
+        public RepairsController(ITenantDbContextFactory tenantFactory, MasterErpDbContext masterDb)
         {
             _tenantFactory = tenantFactory;
+            _masterDb = masterDb;
+        }
+
+        private async Task<(bool Allowed, string? ErrorMessage, int StatusCode)> CheckPlanAccessAsync(int companyId)
+        {
+            return await PlanAccessHelper.CheckPlanAccessAsync(
+                _masterDb, companyId, ErpModule.Repairs, "Repair Services", "Small or Medium");
         }
 
         private static async Task EnsureRepairsSchemaAsync(TenantErpDbContext db, int companyId)
@@ -71,6 +82,10 @@ END";
         [HttpGet]
         public async Task<IActionResult> GetRepairs(int companyId, [FromQuery] int? branchId = null)
         {
+            var access = await CheckPlanAccessAsync(companyId);
+            if (!access.Allowed)
+                return StatusCode(access.StatusCode, new { error = access.ErrorMessage });
+
             if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
             {
                 return Ok(new List<RepairTicket>());
@@ -137,6 +152,10 @@ END";
         [HttpPost]
         public async Task<IActionResult> CreateRepairTicket(int companyId, [FromBody] RepairTicket ticket)
         {
+            var access = await CheckPlanAccessAsync(companyId);
+            if (!access.Allowed)
+                return StatusCode(access.StatusCode, new { error = access.ErrorMessage });
+
             if (ticket == null)
             {
                 return BadRequest(new { error = "Repair ticket payload is required." });

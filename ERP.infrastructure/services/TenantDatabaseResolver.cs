@@ -53,7 +53,13 @@ namespace ERP.infrastructure.services
             try
             {
                 var localOptions = new DbContextOptionsBuilder<MasterErpDbContext>()
-                    .UseSqlServer(localMasterConn)
+                    .UseSqlServer(localMasterConn, sqlOptions =>
+                    {
+                        sqlOptions.EnableRetryOnFailure(
+                            maxRetryCount: 3,
+                            maxRetryDelay: TimeSpan.FromSeconds(5),
+                            errorNumbersToAdd: null);
+                    })
                     .Options;
                 await using var localMasterDb = new MasterErpDbContext(localOptions);
 

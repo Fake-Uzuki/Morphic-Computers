@@ -5,8 +5,11 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ERP.domain.entities;
+using ERP.domain.security;
 using ERP.infrastructure.data;
 using ERP.infrastructure.services;
+
+using ERP.api.Helpers;
 
 namespace ERP.api.Controllers
 {
@@ -15,11 +18,19 @@ namespace ERP.api.Controllers
     public class PoliciesController : ControllerBase
     {
         private readonly ITenantDbContextFactory _tenantFactory;
+        private readonly MasterErpDbContext _masterDb;
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, bool> _ensuredSchemas = new();
 
-        public PoliciesController(ITenantDbContextFactory tenantFactory)
+        public PoliciesController(ITenantDbContextFactory tenantFactory, MasterErpDbContext masterDb)
         {
             _tenantFactory = tenantFactory;
+            _masterDb = masterDb;
+        }
+
+        private async Task<(bool Allowed, string? ErrorMessage, int StatusCode)> CheckPlanAccessAsync(int companyId)
+        {
+            return await PlanAccessHelper.CheckPlanAccessAsync(
+                _masterDb, companyId, ErpModule.StorePolicies, "Store Policies", "Small or Medium");
         }
 
         private static async Task EnsurePoliciesSchemaAsync(TenantErpDbContext db, int companyId)
@@ -53,6 +64,10 @@ END";
         [HttpGet]
         public async Task<IActionResult> GetPolicies(int companyId)
         {
+            var access = await CheckPlanAccessAsync(companyId);
+            if (!access.Allowed)
+                return StatusCode(access.StatusCode, new { error = access.ErrorMessage });
+
             if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
             {
                 return Ok(new List<StorePolicy>());

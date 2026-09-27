@@ -10,6 +10,8 @@ using ERP.infrastructure.data;
 using ERP.infrastructure.services;
 using ERP.domain.security;
 
+using ERP.api.Helpers;
+
 namespace ERP.api.Controllers
 {
     [ApiController]
@@ -28,23 +30,8 @@ namespace ERP.api.Controllers
 
         private async Task<(bool Allowed, string? ErrorMessage, int StatusCode)> CheckPlanAccessAsync(int companyId)
         {
-            if (companyId <= 0)
-            {
-                return (false, "Super Admin or platform-level callers cannot perform tenant operational payroll.", 403);
-            }
-
-            var company = await _masterDb.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.CompanyId == companyId);
-            if (company == null)
-            {
-                return (false, $"Company ID {companyId} not found.", 404);
-            }
-
-            if (!ModuleAccessService.IsModuleEnabled(company.PlanName, "Payroll"))
-            {
-                return (false, $"Plan '{company.PlanName}' does not include access to the Payroll module. Upgrade to Medium to enable Payroll.", 403);
-            }
-
-            return (true, null, 200);
+            return await PlanAccessHelper.CheckPlanAccessAsync(
+                _masterDb, companyId, ErpModule.Payroll, "Payroll", "Small or Medium");
         }
 
         private static async Task EnsurePayrollSchemaAsync(TenantErpDbContext db, int companyId)

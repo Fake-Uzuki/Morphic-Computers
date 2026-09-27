@@ -64,6 +64,23 @@ namespace ERP.api.Controllers
 
                 if (company == null)
                 {
+                    try
+                    {
+                        var localOptions = new DbContextOptionsBuilder<MasterErpDbContext>()
+                            .UseSqlServer("Server=(localdb)\\MSSQLLocalDB;Database=ERP_Master_Local;Trusted_Connection=True;Encrypt=False;TrustServerCertificate=True;MultipleActiveResultSets=True;Connect Timeout=5;",
+                                sql => sql.EnableRetryOnFailure(3, TimeSpan.FromSeconds(5), null))
+                            .Options;
+                        await using var localMasterDb = new MasterErpDbContext(localOptions);
+                        company = await localMasterDb.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.CompanyId == companyId);
+                    }
+                    catch (Exception localEx)
+                    {
+                        _logger.LogWarning(localEx, "Local master DB fallback note in GetSubscription: {Message}", localEx.Message);
+                    }
+                }
+
+                if (company == null)
+                {
                     return NotFound(new { error = $"Company ID {companyId} not found." });
                 }
 

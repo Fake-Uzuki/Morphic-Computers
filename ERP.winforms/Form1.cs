@@ -49,7 +49,6 @@ namespace ERP.winforms
         // Navigation tab buttons
         private Button? _btnNavDashboard;
         private Button? _btnNavSupportIncome;
-        private Button? _btnNavBI;
         private Button? _btnNavProducts;
         private Button? _btnNavPOS;
         private Button? _btnNavOrders;
@@ -127,11 +126,7 @@ namespace ERP.winforms
             {
                 SwitchView(_dashboardView, _btnNavDashboard);
             }
-            else if (_btnNavBI != null)
-            {
-                _dashboardView.SetDashboardMode(DashboardMode.BusinessIntelligence);
-                SwitchView(_dashboardView, _btnNavBI);
-            }
+
             else if (_btnNavPOS != null)
             {
                 SwitchView(_posView, _btnNavPOS);
@@ -521,7 +516,18 @@ namespace ERP.winforms
             }
             else
             {
-                // 1. Dashboard (Standardized name for all tenants; layout is plan-aware)
+                // --------------------------------------------------------
+                // TENANT NAVIGATION — generated from ModuleAccessService plan rules.
+                // Order: Dashboard → POS → Products → Orders/Sales → Repairs →
+                //        Customers → Suppliers → Staff Team → Policies & Approvals →
+                //        Payroll → Finance → Procurement → Branch Management →
+                //        Main Generative Income → Reports
+                //
+                // SupportGenerativeIncome and BusinessIntelligence are NOT shown as
+                // separate tenant nav items — Business overview is served by Dashboard.
+                // --------------------------------------------------------
+
+                // 1. Dashboard (All tenants)
                 _btnNavDashboard = CreateEnterpriseTab("Dashboard", tabX, 130);
                 _btnNavDashboard.Click += (s, e) =>
                 {
@@ -531,26 +537,13 @@ namespace ERP.winforms
                 _pnlTabsTrack.Controls.Add(_btnNavDashboard);
                 tabX += 132;
 
-                // 2. Support Generative Income (Small & Medium only)
-                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.SupportGenerativeIncome))
+                // 2. Point of Sale (Micro, Small, Medium)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.POS))
                 {
-                    _btnNavSupportIncome = CreateEnterpriseTab("Support Generative Income", tabX, 195);
-                    _btnNavSupportIncome.Click += (s, e) => SwitchView(_repairsView, _btnNavSupportIncome);
-                    _pnlTabsTrack.Controls.Add(_btnNavSupportIncome);
-                    tabX += 197;
-                }
-
-                // 3. Business Intelligence (Small & Medium only, separate module)
-                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.BusinessIntelligence))
-                {
-                    _btnNavBI = CreateEnterpriseTab("Business Intelligence", tabX, 175);
-                    _btnNavBI.Click += (s, e) =>
-                    {
-                        _dashboardView.SetDashboardMode(DashboardMode.BusinessIntelligence);
-                        SwitchView(_dashboardView, _btnNavBI);
-                    };
-                    _pnlTabsTrack.Controls.Add(_btnNavBI);
-                    tabX += 177;
+                    _btnNavPOS = CreateEnterpriseTab("Point of Sale", tabX, 135);
+                    _btnNavPOS.Click += (s, e) => SwitchView(_posView, _btnNavPOS);
+                    _pnlTabsTrack.Controls.Add(_btnNavPOS);
+                    tabX += 137;
                 }
 
                 // 3. Products Stock (Micro, Small, Medium)
@@ -562,25 +555,16 @@ namespace ERP.winforms
                     tabX += 147;
                 }
 
-                // 4. Point of Sale (Micro, Small, Medium)
-                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.POS))
-                {
-                    _btnNavPOS = CreateEnterpriseTab("Point of Sale", tabX, 135);
-                    _btnNavPOS.Click += (s, e) => SwitchView(_posView, _btnNavPOS);
-                    _pnlTabsTrack.Controls.Add(_btnNavPOS);
-                    tabX += 137;
-                }
-
-                // 5. Sales Reports (Micro, Small, Medium)
+                // 4. Orders / Sales (Micro, Small, Medium)
                 if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Orders) || ModuleAccessService.IsModuleEnabled(plan, ErpModule.Reports))
                 {
-                    _btnNavOrders = CreateEnterpriseTab("Sales Reports", tabX, 140);
+                    _btnNavOrders = CreateEnterpriseTab("Orders / Sales", tabX, 140);
                     _btnNavOrders.Click += (s, e) => SwitchView(_ordersView, _btnNavOrders);
                     _pnlTabsTrack.Controls.Add(_btnNavOrders);
                     tabX += 142;
                 }
 
-                // 6. Repair Services (Micro, Small, Medium operational module)
+                // 5. Repair Services (Small, Medium only — not available for Micro)
                 if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Repairs))
                 {
                     _btnNavRepairs = CreateEnterpriseTab("Repair Services", tabX, 145);
@@ -589,7 +573,7 @@ namespace ERP.winforms
                     tabX += 147;
                 }
 
-                // 7. Customers (Micro, Small, Medium)
+                // 6. Customers (Small, Medium only)
                 if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Customers))
                 {
                     _btnNavCustomers = CreateEnterpriseTab("Customers", tabX, 120);
@@ -598,16 +582,7 @@ namespace ERP.winforms
                     tabX += 122;
                 }
 
-                // 8. Policies & Approvals (Micro, Small, Medium)
-                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Approvals) || ModuleAccessService.IsModuleEnabled(plan, ErpModule.StorePolicies))
-                {
-                    _btnNavPoliciesApprovals = CreateEnterpriseTab("Policies & Approvals", tabX, 165);
-                    _btnNavPoliciesApprovals.Click += (s, e) => SwitchView(_policiesApprovalsView, _btnNavPoliciesApprovals);
-                    _pnlTabsTrack.Controls.Add(_btnNavPoliciesApprovals);
-                    tabX += 167;
-                }
-
-                // 9. Suppliers (Micro, Small, Medium)
+                // 7. Suppliers (Small, Medium — admin only)
                 if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Suppliers) && isAdmin)
                 {
                     _btnNavSuppliers = CreateEnterpriseTab("Suppliers", tabX, 130);
@@ -616,7 +591,7 @@ namespace ERP.winforms
                     tabX += 132;
                 }
 
-                // 10. Staff & Team (Micro, Small, Medium)
+                // 8. Staff & Team (Small, Medium — admin or manager)
                 if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Staff) && (isAdmin || isManager))
                 {
                     _btnNavStaff = CreateEnterpriseTab("Staff & Team", tabX, 130);
@@ -625,25 +600,16 @@ namespace ERP.winforms
                     tabX += 132;
                 }
 
-                // 12. Branch Management (Medium Enterprise only)
-                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.BranchManagement))
+                // 9. Policies & Approvals (Small, Medium only)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Approvals) || ModuleAccessService.IsModuleEnabled(plan, ErpModule.StorePolicies))
                 {
-                    _btnNavBranches = CreateEnterpriseTab("Branches", tabX, 120);
-                    _btnNavBranches.Click += (s, e) => SwitchView(_branchView, _btnNavBranches);
-                    _pnlTabsTrack.Controls.Add(_btnNavBranches);
-                    tabX += 122;
+                    _btnNavPoliciesApprovals = CreateEnterpriseTab("Policies & Approvals", tabX, 165);
+                    _btnNavPoliciesApprovals.Click += (s, e) => SwitchView(_policiesApprovalsView, _btnNavPoliciesApprovals);
+                    _pnlTabsTrack.Controls.Add(_btnNavPoliciesApprovals);
+                    tabX += 167;
                 }
 
-                // 13. Procurement / Supply Chain (Medium Enterprise only)
-                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Procurement))
-                {
-                    _btnNavProcurement = CreateEnterpriseTab("Procurement", tabX, 135);
-                    _btnNavProcurement.Click += (s, e) => SwitchView(_procurementView, _btnNavProcurement);
-                    _pnlTabsTrack.Controls.Add(_btnNavProcurement);
-                    tabX += 137;
-                }
-
-                // 14. Store Payroll (Medium Enterprise only)
+                // 10. Store Payroll (Small, Medium — admin or manager)
                 if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Payroll) && (isAdmin || isManager))
                 {
                     _btnNavPayroll = CreateEnterpriseTab("Store Payroll", tabX, 130);
@@ -652,13 +618,51 @@ namespace ERP.winforms
                     tabX += 132;
                 }
 
-                // 15. Finance & Accounting / P&L (Medium Enterprise only)
+                // 11. Finance & P&L (Small, Medium — admin or manager)
                 if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.FinancialStatements) && (isAdmin || isManager))
                 {
                     _btnNavFinance = CreateEnterpriseTab("Finance & P&L", tabX, 145);
                     _btnNavFinance.Click += (s, e) => SwitchView(_financeView, _btnNavFinance);
                     _pnlTabsTrack.Controls.Add(_btnNavFinance);
                     tabX += 147;
+                }
+
+                // 12. Procurement / Supply Chain (Small, Medium)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Procurement))
+                {
+                    _btnNavProcurement = CreateEnterpriseTab("Procurement", tabX, 135);
+                    _btnNavProcurement.Click += (s, e) => SwitchView(_procurementView, _btnNavProcurement);
+                    _pnlTabsTrack.Controls.Add(_btnNavProcurement);
+                    tabX += 137;
+                }
+
+                // 13. Branch Management (Medium only)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.BranchManagement))
+                {
+                    _btnNavBranches = CreateEnterpriseTab("Branches", tabX, 120);
+                    _btnNavBranches.Click += (s, e) => SwitchView(_branchView, _btnNavBranches);
+                    _pnlTabsTrack.Controls.Add(_btnNavBranches);
+                    tabX += 122;
+                }
+
+                // 14. Main Generative Income (Micro, Small, Medium)
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.MainGenerativeIncome))
+                {
+                    _btnNavSupportIncome = CreateEnterpriseTab("Main Income", tabX, 130);
+                    _btnNavSupportIncome.Click += (s, e) => SwitchView(_repairsView, _btnNavSupportIncome);
+                    _pnlTabsTrack.Controls.Add(_btnNavSupportIncome);
+                    tabX += 132;
+                }
+
+                // 15. Reports (Micro, Small, Medium)
+                // Note: if _btnNavOrders was already created (Orders/Sales), it covers Reports too.
+                // Only create a separate Reports tab if Orders nav wasn't created (edge case).
+                if (ModuleAccessService.IsModuleEnabled(plan, ErpModule.Reports) && _btnNavOrders == null)
+                {
+                    _btnNavOrders = CreateEnterpriseTab("Reports", tabX, 120);
+                    _btnNavOrders.Click += (s, e) => SwitchView(_ordersView, _btnNavOrders);
+                    _pnlTabsTrack.Controls.Add(_btnNavOrders);
+                    tabX += 122;
                 }
             }
 
@@ -850,19 +854,11 @@ namespace ERP.winforms
             }
             if (view is FinanceView && !ModuleAccessService.IsModuleEnabled(_dataService.CurrentCompany?.PlanName, ErpModule.FinancialStatements))
             {
-                MessageBox.Show("Financial Statements & Executive P&L is restricted to Medium Enterprise plans.", "Plan Restricted", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Financial Statements & Executive P&L is available from the Small Business Plan onwards. Please upgrade your subscription.", "Plan Restricted", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
-            if (navButton == _btnNavSupportIncome && !ModuleAccessService.IsModuleEnabled(_dataService.CurrentCompany?.PlanName, ErpModule.SupportGenerativeIncome))
-            {
-                MessageBox.Show("Support Generative Income is restricted to Small and Medium plans.", "Plan Restricted", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-            if (navButton == _btnNavBI && !ModuleAccessService.IsModuleEnabled(_dataService.CurrentCompany?.PlanName, ErpModule.BusinessIntelligence))
-            {
-                MessageBox.Show("Business Intelligence Analytics is restricted to Small and Medium plans.", "Plan Restricted", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
+
+
 
             if (_notificationFlyout != null) _notificationFlyout.Visible = false;
 

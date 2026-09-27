@@ -1,9 +1,10 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using ERP.domain.entities;
+using ERP.domain.security;
 using ERP.domain.services;
 using ERP.winforms.Services;
 using ERP.winforms.Theme;
@@ -21,6 +22,17 @@ namespace ERP.winforms.UI.Views
         private FlowLayoutPanel _flpFilterPills = null!;
 
         private string _currentRoleFilter = "All";
+
+        /// <summary>
+        /// Returns true only when the current company plan supports Branch Management
+        /// (i.e. Medium plan). Small plan has Staff but no branch context.
+        /// The BranchId column/field in the database is always preserved; only the
+        /// UI visibility is controlled here based on the plan.
+        /// </summary>
+        private bool IsBranchAware =>
+            ModuleAccessService.IsModuleEnabled(
+                _dataService.CurrentCompany?.PlanName,
+                ErpModule.BranchManagement);
 
         public StaffView()
         {
@@ -53,8 +65,6 @@ namespace ERP.winforms.UI.Views
         private void InitializeLayout()
         {
             Controls.Clear();
-
-
 
             // ========================================================
             // 2. TOOLBAR (Search & Actions)
@@ -184,7 +194,19 @@ namespace ERP.winforms.UI.Views
 
             _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "STAFF ID", FillWeight = 10, MinimumWidth = 70, Name = "ColCode" });
             _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "FULL NAME", FillWeight = 16, MinimumWidth = 110, Name = "ColName" });
-            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ASSIGNED BRANCH", FillWeight = 14, MinimumWidth = 100, Name = "ColBranch" });
+
+            // Branch column: visible only for Medium (branch-aware) plan.
+            // Small plan has Staff module but no Branch Management: column hidden.
+            // BranchId field in the database is preserved for Medium compatibility.
+            _gridStaff.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                HeaderText = "ASSIGNED BRANCH",
+                FillWeight = 14,
+                MinimumWidth = 100,
+                Name = "ColBranch",
+                Visible = IsBranchAware
+            });
+
             _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "USERNAME", FillWeight = 11, MinimumWidth = 80, Name = "ColUser" });
             _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "LOGIN PASSWORD", FillWeight = 11, MinimumWidth = 85, Name = "ColPwd" });
             _gridStaff.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "ROLE", FillWeight = 16, MinimumWidth = 110, Name = "ColRole" });
@@ -214,7 +236,7 @@ namespace ERP.winforms.UI.Views
                     {
                         string action = staff.IsActive ? "archive / disable" : "restore";
                         var res = MessageBox.Show(
-                            $"Are you sure you want to {action} staff profile for '{staff.FullName}'?\n\n" +
+                            $"Are you sure you want to {action} staff profile for `{staff.FullName}`?\n\n" +
                             (staff.IsActive ? "• The staff account will be marked as archived/inactive." : "• The staff account will be reinstated as active."),
                             $"Confirm {(staff.IsActive ? "Archive" : "Restore")}",
                             MessageBoxButtons.YesNo,
@@ -236,8 +258,6 @@ namespace ERP.winforms.UI.Views
             Controls.Add(pnlMainContainer);
             Controls.Add(pnlToolbar);
         }
-
-
 
         private void AddFilterPill(string filterKey, string label)
         {
@@ -283,7 +303,9 @@ namespace ERP.winforms.UI.Views
             string query = _txtSearch.Text.Trim().ToLowerInvariant();
             var filtered = _dataService.StaffMembers.AsEnumerable();
 
-            if (BranchContextService.Instance.CurrentBranchId.HasValue)
+            // Branch filtering: only apply when the plan supports Branch Management (Medium).
+            // For Small plan, IsBranchAware is false so no branch filter is applied.
+            if (IsBranchAware && BranchContextService.Instance.CurrentBranchId.HasValue)
             {
                 int activeBranchId = BranchContextService.Instance.CurrentBranchId.Value;
                 filtered = filtered.Where(s => s.BranchId == activeBranchId);
@@ -323,15 +345,15 @@ namespace ERP.winforms.UI.Views
                 int rowIdx = _gridStaff.Rows.Add(
                     s.StaffCode,
                     displayName,
-                    branchDisplay,
+                    branchDisplay,    // Always added; ColBranch.Visible is plan-controlled
                     s.Username,
                     pwdDisplay,
                     s.Role,
                     s.PositionTitle,
                     s.PhoneNumber ?? "N/A",
-                    $"₱{s.MonthlySalary:N0}/mo (₱{s.HourlyRate:N0}/hr)",
+                    $"PHP {s.MonthlySalary:N0}/mo (PHP {s.HourlyRate:N0}/hr)",
                     "Edit",
-                    s.IsActive ? "📦 Archive" : "♻️ Restore"
+                    s.IsActive ? "Archive" : "Restore"
                 );
                 var row = _gridStaff.Rows[rowIdx];
                 row.Tag = s.StaffId;

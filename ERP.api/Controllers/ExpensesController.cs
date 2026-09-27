@@ -8,6 +8,7 @@ using ERP.domain.entities;
 using ERP.infrastructure.data;
 using ERP.infrastructure.services;
 using ERP.domain.security;
+using ERP.api.Helpers;
 
 namespace ERP.api.Controllers
 {
@@ -45,26 +46,25 @@ END";
             }
         }
 
+        private async Task<(bool Allowed, string? ErrorMessage, int StatusCode)> CheckPlanAccessAsync(int companyId)
+        {
+            return await PlanAccessHelper.CheckPlanAccessAsync(
+                _masterDb, companyId, ErpModule.FinancialStatements, "Financial Statements / Expenses", "Small or Medium");
+        }
+
         private async Task<bool> IsPlanAllowedAsync(int companyId)
         {
-            if (companyId <= 0) return false;
-            var company = await _masterDb.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.CompanyId == companyId);
-            if (company == null) return false;
-            return ModuleAccessService.IsModuleEnabled(company.PlanName, "FinancialStatements");
+            var access = await CheckPlanAccessAsync(companyId);
+            return access.Allowed;
         }
 
         [HttpGet]
         public async Task<IActionResult> GetExpenses(int companyId, [FromQuery] bool includeArchived = true, [FromQuery] int? branchId = null)
         {
-            if (companyId <= 0)
+            var access = await CheckPlanAccessAsync(companyId);
+            if (!access.Allowed)
             {
-                return StatusCode(403, new { error = "Super Admin or platform-level callers cannot perform tenant operational expense operations." });
-            }
-
-            var company = await _masterDb.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.CompanyId == companyId);
-            if (company != null && !ModuleAccessService.IsModuleEnabled(company.PlanName, "FinancialStatements"))
-            {
-                return StatusCode(403, new { error = $"Plan '{company.PlanName}' does not include access to the Financial Statements / Expenses module. Upgrade to Medium to enable Financial Statements." });
+                return StatusCode(access.StatusCode, new { error = access.ErrorMessage });
             }
 
             try

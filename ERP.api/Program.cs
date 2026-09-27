@@ -9,12 +9,20 @@ var builder = WebApplication.CreateBuilder(args);
 // Register MasterErpDbContext
 builder.Services.AddDbContext<MasterErpDbContext>(options =>
   options.UseSqlServer(
-    builder.Configuration.GetConnectionString("MasterErp")));
+    builder.Configuration.GetConnectionString("MasterErp"),
+    sqlOptions => sqlOptions.EnableRetryOnFailure(
+        maxRetryCount: 3,
+        maxRetryDelay: TimeSpan.FromSeconds(5),
+        errorNumbersToAdd: null)));
 
 // Register TenantErpDbContext
 builder.Services.AddDbContext<TenantErpDbContext>(options =>
   options.UseSqlServer(
-    builder.Configuration.GetConnectionString("TenantErp")));
+    builder.Configuration.GetConnectionString("TenantErp"),
+    sqlOptions => sqlOptions.EnableRetryOnFailure(
+        maxRetryCount: 3,
+        maxRetryDelay: TimeSpan.FromSeconds(5),
+        errorNumbersToAdd: null)));
 
 // Register Multi-Tenant Services
 builder.Services.AddScoped<ITenantDatabaseResolver, TenantDatabaseResolver>();

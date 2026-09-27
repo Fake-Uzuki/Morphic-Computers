@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using ERP.domain.entities;
+using ERP.domain.security;
 using ERP.domain.services;
 using ERP.winforms.Services;
 using ERP.winforms.Theme;
@@ -28,7 +29,8 @@ namespace ERP.winforms.UI.Views
         private Label? _lblFormSupplier;
         private TextBox _txtFormPrice = null!;
 
-        private bool HasSupplierModule => _dataService.CurrentCompany != null && !string.Equals(_dataService.CurrentCompany.PlanName, "Micro", StringComparison.OrdinalIgnoreCase);
+        private bool HasSupplierModule => _dataService.CurrentCompany != null &&
+            ModuleAccessService.IsModuleEnabled(_dataService.CurrentCompany.PlanName, ErpModule.Suppliers);
         private TextBox _txtFormCost = null!;
         private NumericUpDown _numFormStock = null!;
         private NumericUpDown _numFormMinStock = null!;

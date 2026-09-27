@@ -5,8 +5,11 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ERP.domain.entities;
+using ERP.domain.security;
 using ERP.infrastructure.data;
 using ERP.infrastructure.services;
+
+using ERP.api.Helpers;
 
 namespace ERP.api.Controllers
 {
@@ -15,11 +18,19 @@ namespace ERP.api.Controllers
     public class StaffController : ControllerBase
     {
         private readonly ITenantDbContextFactory _tenantFactory;
+        private readonly MasterErpDbContext _masterDb;
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, bool> _ensuredSchemas = new();
 
-        public StaffController(ITenantDbContextFactory tenantFactory)
+        public StaffController(ITenantDbContextFactory tenantFactory, MasterErpDbContext masterDb)
         {
             _tenantFactory = tenantFactory;
+            _masterDb = masterDb;
+        }
+
+        private async Task<(bool Allowed, string? ErrorMessage, int StatusCode)> CheckPlanAccessAsync(int companyId)
+        {
+            return await PlanAccessHelper.CheckPlanAccessAsync(
+                _masterDb, companyId, ErpModule.Staff, "Staff Team", "Small or Medium");
         }
 
         private static async Task EnsureStaffSchemaAsync(TenantErpDbContext db, int companyId)
@@ -63,6 +74,10 @@ END";
         [HttpGet]
         public async Task<IActionResult> GetStaff(int companyId, [FromQuery] int? branchId = null)
         {
+            var access = await CheckPlanAccessAsync(companyId);
+            if (!access.Allowed)
+                return StatusCode(access.StatusCode, new { error = access.ErrorMessage });
+
             if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
             {
                 return Ok(new List<StaffMember>());
@@ -104,6 +119,10 @@ END";
         [HttpPost]
         public async Task<IActionResult> CreateStaff(int companyId, [FromBody] StaffMember staff)
         {
+            var access = await CheckPlanAccessAsync(companyId);
+            if (!access.Allowed)
+                return StatusCode(access.StatusCode, new { error = access.ErrorMessage });
+
             if (companyId <= 0)
             {
                 return BadRequest(new { error = "Super Admin / Platform context cannot create tenant operational staff." });

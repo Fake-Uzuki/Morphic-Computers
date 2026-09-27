@@ -5,8 +5,11 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ERP.domain.entities;
+using ERP.domain.security;
 using ERP.infrastructure.data;
 using ERP.infrastructure.services;
+
+using ERP.api.Helpers;
 
 namespace ERP.api.Controllers
 {
@@ -15,11 +18,19 @@ namespace ERP.api.Controllers
     public class ApprovalsController : ControllerBase
     {
         private readonly ITenantDbContextFactory _tenantFactory;
+        private readonly MasterErpDbContext _masterDb;
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, bool> _ensuredSchemas = new();
 
-        public ApprovalsController(ITenantDbContextFactory tenantFactory)
+        public ApprovalsController(ITenantDbContextFactory tenantFactory, MasterErpDbContext masterDb)
         {
             _tenantFactory = tenantFactory;
+            _masterDb = masterDb;
+        }
+
+        private async Task<(bool Allowed, string? ErrorMessage, int StatusCode)> CheckPlanAccessAsync(int companyId)
+        {
+            return await PlanAccessHelper.CheckPlanAccessAsync(
+                _masterDb, companyId, ErpModule.Approvals, "Policies & Approvals", "Small or Medium");
         }
 
         private static async Task EnsureApprovalsSchemaAsync(TenantErpDbContext db, int companyId)
@@ -59,6 +70,10 @@ END";
         [HttpGet]
         public async Task<IActionResult> GetRequests(int companyId, [FromQuery] string? status)
         {
+            var access = await CheckPlanAccessAsync(companyId);
+            if (!access.Allowed)
+                return StatusCode(access.StatusCode, new { error = access.ErrorMessage });
+
             if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
             {
                 return Ok(new List<ApprovalRequest>());

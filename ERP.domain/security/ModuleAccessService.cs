@@ -131,111 +131,131 @@ namespace ERP.domain.security
 
         /// <summary>
         /// Answers whether a specific module is enabled for a given ErpPlan.
+        /// This is the single source of truth for all plan-based module access decisions
+        /// across both ERP.api and ERP.winforms.
         /// </summary>
         public static bool IsModuleEnabled(ErpPlan plan, ErpModule module)
         {
             switch (plan)
             {
+                // --------------------------------------------------------
+                // MICRO — Tenant A
+                // Core POS/Inventory/Sales operations only.
+                // No staff team, no customers, no suppliers, no repairs,
+                // no policies, no payroll, no finance, no procurement,
+                // no branch management, no generative income addons.
+                // --------------------------------------------------------
                 case ErpPlan.Micro:
                     return module switch
                     {
-                        // Operational TechStore modules
-                        ErpModule.POS => true,
-                        ErpModule.Inventory => true,
-                        ErpModule.Products => true,
-                        ErpModule.Orders => true,
-                        ErpModule.Repairs => true,
-                        ErpModule.Customers => true,
-                        ErpModule.Suppliers => true,
-                        ErpModule.Staff => true,
-                        ErpModule.StorePolicies => true,
-                        ErpModule.Approvals => true,
-
-                        // Income & Reporting
-                        ErpModule.MainGenerativeIncome => true,
-                        ErpModule.Reports => true,
+                        ErpModule.Dashboard             => true,
+                        ErpModule.POS                   => true,
+                        ErpModule.Inventory             => true,
+                        ErpModule.Products              => true,
+                        ErpModule.Orders                => true,
+                        ErpModule.MainGenerativeIncome  => true,
+                        ErpModule.Reports               => true,
 
                         // Restricted for Micro
+                        ErpModule.Repairs               => false,
+                        ErpModule.Customers             => false,
+                        ErpModule.Suppliers             => false,
+                        ErpModule.Staff                 => false,
+                        ErpModule.StorePolicies         => false,
+                        ErpModule.Approvals             => false,
                         ErpModule.SupportGenerativeIncome => false,
-                        ErpModule.BusinessIntelligence => false,
-                        ErpModule.BranchManagement => false,
-                        ErpModule.Procurement => false,
-                        ErpModule.Payroll => false,
-                        ErpModule.FinancialStatements => false,
-                        ErpModule.Dashboard => false,
+                        ErpModule.BusinessIntelligence  => false,
+                        ErpModule.BranchManagement      => false,
+                        ErpModule.Procurement           => false,
+                        ErpModule.Payroll               => false,
+                        ErpModule.FinancialStatements   => false,
 
                         _ => false
                     };
 
+                // --------------------------------------------------------
+                // SMALL — Tenant B
+                // Full operational modules. Adds Payroll, Finance, and
+                // Supply Chain / Procurement vs Micro.
+                // No Branch Management (single-location company).
+                // BusinessIntelligence is served by Dashboard; not a
+                // separate tenant navigation module.
+                // --------------------------------------------------------
                 case ErpPlan.Small:
                     return module switch
                     {
-                        // Everything available to Micro
-                        ErpModule.POS => true,
-                        ErpModule.Inventory => true,
-                        ErpModule.Products => true,
-                        ErpModule.Orders => true,
-                        ErpModule.Repairs => true,
-                        ErpModule.Customers => true,
-                        ErpModule.Suppliers => true,
-                        ErpModule.Staff => true,
-                        ErpModule.StorePolicies => true,
-                        ErpModule.Approvals => true,
-                        ErpModule.MainGenerativeIncome => true,
-                        ErpModule.Reports => true,
-
-                        // Small additions
-                        ErpModule.SupportGenerativeIncome => true,
-                        ErpModule.BusinessIntelligence => true,
+                        ErpModule.Dashboard             => true,
+                        ErpModule.POS                   => true,
+                        ErpModule.Inventory             => true,
+                        ErpModule.Products              => true,
+                        ErpModule.Orders                => true,
+                        ErpModule.Repairs               => true,
+                        ErpModule.Customers             => true,
+                        ErpModule.Suppliers             => true,
+                        ErpModule.Staff                 => true,
+                        ErpModule.StorePolicies         => true,
+                        ErpModule.Approvals             => true,
+                        ErpModule.Payroll               => true,
+                        ErpModule.FinancialStatements   => true,
+                        ErpModule.Procurement           => true,
+                        ErpModule.MainGenerativeIncome  => true,
+                        ErpModule.Reports               => true,
 
                         // Restricted for Small
-                        ErpModule.BranchManagement => false,
-                        ErpModule.Procurement => false,
-                        ErpModule.Payroll => false,
-                        ErpModule.FinancialStatements => false,
-                        ErpModule.Dashboard => false,
+                        ErpModule.SupportGenerativeIncome => false,
+                        ErpModule.BusinessIntelligence  => false,
+                        ErpModule.BranchManagement      => false,
 
                         _ => false
                     };
 
+                // --------------------------------------------------------
+                // MEDIUM — Tenant C
+                // All Small modules plus Branch Management.
+                // BusinessIntelligence is served by Dashboard; not a
+                // separate tenant navigation module.
+                // --------------------------------------------------------
                 case ErpPlan.Medium:
                     return module switch
                     {
-                        // Everything available to Small
-                        ErpModule.POS => true,
-                        ErpModule.Inventory => true,
-                        ErpModule.Products => true,
-                        ErpModule.Orders => true,
-                        ErpModule.Repairs => true,
-                        ErpModule.Customers => true,
-                        ErpModule.Suppliers => true,
-                        ErpModule.Staff => true,
-                        ErpModule.StorePolicies => true,
-                        ErpModule.Approvals => true,
-                        ErpModule.MainGenerativeIncome => true,
-                        ErpModule.Reports => true,
-                        ErpModule.SupportGenerativeIncome => true,
-                        ErpModule.BusinessIntelligence => true,
+                        ErpModule.Dashboard             => true,
+                        ErpModule.POS                   => true,
+                        ErpModule.Inventory             => true,
+                        ErpModule.Products              => true,
+                        ErpModule.Orders                => true,
+                        ErpModule.Repairs               => true,
+                        ErpModule.Customers             => true,
+                        ErpModule.Suppliers             => true,
+                        ErpModule.Staff                 => true,
+                        ErpModule.StorePolicies         => true,
+                        ErpModule.Approvals             => true,
+                        ErpModule.Payroll               => true,
+                        ErpModule.FinancialStatements   => true,
+                        ErpModule.Procurement           => true,
+                        ErpModule.BranchManagement      => true,
+                        ErpModule.MainGenerativeIncome  => true,
+                        ErpModule.Reports               => true,
 
-                        // Medium enterprise additions
-                        ErpModule.BranchManagement => true,
-                        ErpModule.Procurement => true,
-                        ErpModule.Payroll => true,
-                        ErpModule.FinancialStatements => true,
-                        ErpModule.Dashboard => true,
+                        // Restricted for Medium tenants
+                        ErpModule.SupportGenerativeIncome => false,
+                        ErpModule.BusinessIntelligence  => false,
 
                         _ => false
                     };
 
+                // --------------------------------------------------------
+                // SUPER ADMIN — Platform / Master context only.
+                // Strictly platform management modules.
+                // No tenant operational modules are exposed.
+                // --------------------------------------------------------
                 case ErpPlan.SuperAdmin:
                     return module switch
                     {
-                        // Super Admin platform modules
-                        ErpModule.AdminPanel => true,
-                        ErpModule.TenantManagement => true,
-                        ErpModule.SubscriptionManagement => true,
+                        ErpModule.AdminPanel                  => true,
+                        ErpModule.TenantManagement            => true,
+                        ErpModule.SubscriptionManagement      => true,
                         ErpModule.PlatformBusinessIntelligence => true,
-                        ErpModule.BusinessIntelligence => true,
+                        ErpModule.BusinessIntelligence        => true,
 
                         // Super Admin MUST NOT perform tenant operational transactions
                         _ => false

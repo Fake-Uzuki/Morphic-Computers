@@ -63,7 +63,13 @@ namespace ERP.infrastructure.services
             }
 
             var options = new DbContextOptionsBuilder<TenantErpDbContext>()
-                .UseSqlServer(connectionString)
+                .UseSqlServer(connectionString, sqlOptions =>
+                {
+                    sqlOptions.EnableRetryOnFailure(
+                        maxRetryCount: 3,
+                        maxRetryDelay: TimeSpan.FromSeconds(5),
+                        errorNumbersToAdd: null);
+                })
                 .Options;
 
             return new TenantErpDbContext(options);

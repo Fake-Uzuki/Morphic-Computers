@@ -641,7 +641,7 @@ namespace ERP.winforms.UI.Views
                 _tlpKpis.Visible = false;
                 _tlpSplit.Visible = false;
                 _pnlPlanRestricted.Visible = true;
-                _lblRestrictedMsg.Text = $"Financial Statements & Executive P&L is exclusive to the Medium Enterprise Plan.\nYour current plan is '{plan ?? "Micro"}'. Please upgrade your subscription to access this module.";
+                _lblRestrictedMsg.Text = $"Financial Statements & Executive P&L is available from the Small Business Plan onwards.\nYour current plan is '{plan ?? "Micro"}'. Please upgrade your subscription to access this module.";
                 return;
             }
 
