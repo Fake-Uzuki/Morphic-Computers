@@ -599,29 +599,56 @@ namespace ERP.winforms.Services
 
         public async Task<bool> CreateStaffAsync(int companyId, StaffMember staff)
         {
+            var (ok, _, _) = await CreateStaffWithResultAsync(companyId, staff).ConfigureAwait(false);
+            return ok;
+        }
+
+        public async Task<(bool Success, string? ErrorMessage, StaffMember? CreatedStaff)> CreateStaffWithResultAsync(int companyId, StaffMember staff)
+        {
             try
             {
                 var response = await _http.PostAsJsonAsync($"/api/tenant/{companyId}/staff", staff).ConfigureAwait(false);
-                return response.IsSuccessStatusCode;
+                if (response.IsSuccessStatusCode)
+                {
+                    var created = await response.Content.ReadFromJsonAsync<StaffMember>(_jsonOptions).ConfigureAwait(false);
+                    return (true, null, created);
+                }
+
+                string error = await ExtractApiErrorMessageAsync(response).ConfigureAwait(false);
+                System.Diagnostics.Debug.WriteLine($"ApiClient CreateStaff error ({response.StatusCode}): {error}");
+                return (false, error, null);
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"ApiClient CreateStaff error: {ex.Message}");
-                return false;
+                System.Diagnostics.Debug.WriteLine($"ApiClient CreateStaff exception: {ex.Message}");
+                return (false, ex.Message, null);
             }
         }
 
         public async Task<bool> UpdateStaffAsync(int companyId, int id, StaffMember staff)
         {
+            var (ok, _) = await UpdateStaffWithResultAsync(companyId, id, staff).ConfigureAwait(false);
+            return ok;
+        }
+
+        public async Task<(bool Success, string? ErrorMessage)> UpdateStaffWithResultAsync(int companyId, int id, StaffMember staff)
+        {
             try
             {
                 var response = await _http.PutAsJsonAsync($"/api/tenant/{companyId}/staff/{id}", staff).ConfigureAwait(false);
-                return response.IsSuccessStatusCode;
+                if (response.IsSuccessStatusCode)
+                {
+                    return (true, null);
+                }
+
+                string error = await ExtractApiErrorMessageAsync(response).ConfigureAwait(false);
+                System.Diagnostics.Debug.WriteLine($"ApiClient UpdateStaff error ({response.StatusCode}): {error}");
+                return (false, error);
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"ApiClient UpdateStaff error: {ex.Message}");
-                return false;
+                System.Diagnostics.Debug.WriteLine($"ApiClient UpdateStaff exception: {ex.Message}");
+                return (false, ex.Message);
             }
         }
 
@@ -637,6 +664,28 @@ namespace ERP.winforms.Services
                 System.Diagnostics.Debug.WriteLine($"ApiClient DeactivateStaff error: {ex.Message}");
                 return false;
             }
+        }
+
+        private static async Task<string> ExtractApiErrorMessageAsync(HttpResponseMessage response)
+        {
+            try
+            {
+                string raw = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(raw))
+                {
+                    using var doc = JsonDocument.Parse(raw);
+                    if (doc.RootElement.TryGetProperty("error", out var errProp) && !string.IsNullOrWhiteSpace(errProp.GetString()))
+                    {
+                        return errProp.GetString()!;
+                    }
+                    if (doc.RootElement.TryGetProperty("message", out var msgProp) && !string.IsNullOrWhiteSpace(msgProp.GetString()))
+                    {
+                        return msgProp.GetString()!;
+                    }
+                }
+            }
+            catch { }
+            return $"Server returned {(int)response.StatusCode} ({response.ReasonPhrase})";
         }
 
         // ==========================================

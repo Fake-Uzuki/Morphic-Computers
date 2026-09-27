@@ -104,9 +104,29 @@ END";
         [HttpPost]
         public async Task<IActionResult> CreateStaff(int companyId, [FromBody] StaffMember staff)
         {
+            if (companyId <= 0)
+            {
+                return BadRequest(new { error = "Super Admin / Platform context cannot create tenant operational staff." });
+            }
+
             if (staff == null)
             {
                 return BadRequest(new { error = "Staff payload is required." });
+            }
+
+            if (string.IsNullOrWhiteSpace(staff.FullName))
+            {
+                return BadRequest(new { error = "Please enter the staff member's full name." });
+            }
+
+            if (string.IsNullOrWhiteSpace(staff.Username))
+            {
+                return BadRequest(new { error = "Please enter a login username for this staff member." });
+            }
+
+            if (string.IsNullOrWhiteSpace(staff.Role))
+            {
+                return BadRequest(new { error = "Please select a system role for this staff member." });
             }
 
             if (staff.CompanyId != 0 && staff.CompanyId != companyId)
@@ -119,26 +139,39 @@ END";
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureStaffSchemaAsync(tenantDb, companyId);
 
-                if (staff.BranchId.HasValue)
+                // Check for duplicate username within the company
+                string trimmedUsername = staff.Username.Trim().ToLowerInvariant();
+                bool usernameExists = await tenantDb.StaffMembers
+                    .AnyAsync(s => s.CompanyId == companyId && s.Username.ToLower() == trimmedUsername);
+                if (usernameExists)
                 {
-                    bool branchValid = await tenantDb.Branches.AnyAsync(b => b.BranchId == staff.BranchId.Value && b.CompanyId == companyId);
+                    return BadRequest(new { error = $"The login username '{staff.Username}' is already assigned to another staff member in this company." });
+                }
+
+                if (staff.BranchId.HasValue && staff.BranchId.Value > 0)
+                {
+                    bool branchValid = await tenantDb.Branches.AnyAsync(b => b.BranchId == staff.BranchId.Value && b.CompanyId == companyId && b.IsActive);
                     if (!branchValid)
                     {
-                        return BadRequest(new { error = $"Cross-branch or unauthorized branch assignment rejected. Branch ID {staff.BranchId.Value} does not belong to Company {companyId}." });
+                        return BadRequest(new { error = $"Cross-branch or unauthorized branch assignment rejected. Branch ID {staff.BranchId.Value} does not belong to Company {companyId} or is not active." });
                     }
                 }
 
                 staff.CompanyId = companyId;
+                staff.Username = staff.Username.Trim();
+                staff.FullName = staff.FullName.Trim();
                 if (string.IsNullOrWhiteSpace(staff.StaffCode))
                 {
                     staff.StaffCode = $"EMP-{new Random().Next(1000, 9999)}";
                 }
 
+                // Check for existing record by StaffCode to avoid duplication during outbox sync
                 var existing = await tenantDb.StaffMembers
                     .FirstOrDefaultAsync(s => s.StaffCode == staff.StaffCode && s.CompanyId == companyId);
                 if (existing != null)
                 {
                     existing.FullName = staff.FullName;
+                    existing.Username = staff.Username;
                     existing.Role = staff.Role;
                     existing.PositionTitle = staff.PositionTitle;
                     existing.Email = staff.Email;
@@ -168,9 +201,24 @@ END";
         [HttpPut("{id:int}")]
         public async Task<IActionResult> UpdateStaff(int companyId, int id, [FromBody] StaffMember updated)
         {
+            if (companyId <= 0)
+            {
+                return BadRequest(new { error = "Super Admin / Platform context cannot update tenant operational staff." });
+            }
+
             if (updated.CompanyId != 0 && updated.CompanyId != companyId)
             {
                 return BadRequest(new { error = $"Cross-tenant staff update rejected. Staff company ID {updated.CompanyId} does not match route company ID {companyId}." });
+            }
+
+            if (string.IsNullOrWhiteSpace(updated.FullName))
+            {
+                return BadRequest(new { error = "Please enter the staff member's full name." });
+            }
+
+            if (string.IsNullOrWhiteSpace(updated.Username))
+            {
+                return BadRequest(new { error = "Please enter a login username for this staff member." });
             }
 
             try
@@ -178,12 +226,21 @@ END";
                 await using var tenantDb = await _tenantFactory.CreateAsync(companyId);
                 await EnsureStaffSchemaAsync(tenantDb, companyId);
 
-                if (updated.BranchId.HasValue)
+                // Prevent username collision with other staff members
+                string trimmedUsername = updated.Username.Trim().ToLowerInvariant();
+                bool usernameExists = await tenantDb.StaffMembers
+                    .AnyAsync(s => s.CompanyId == companyId && s.StaffId != id && s.Username.ToLower() == trimmedUsername);
+                if (usernameExists)
                 {
-                    bool branchValid = await tenantDb.Branches.AnyAsync(b => b.BranchId == updated.BranchId.Value && b.CompanyId == companyId);
+                    return BadRequest(new { error = $"The login username '{updated.Username}' is already assigned to another staff member in this company." });
+                }
+
+                if (updated.BranchId.HasValue && updated.BranchId.Value > 0)
+                {
+                    bool branchValid = await tenantDb.Branches.AnyAsync(b => b.BranchId == updated.BranchId.Value && b.CompanyId == companyId && b.IsActive);
                     if (!branchValid)
                     {
-                        return BadRequest(new { error = $"Cross-branch or unauthorized branch assignment rejected. Branch ID {updated.BranchId.Value} does not belong to Company {companyId}." });
+                        return BadRequest(new { error = $"Cross-branch or unauthorized branch assignment rejected. Branch ID {updated.BranchId.Value} does not belong to Company {companyId} or is not active." });
                     }
                 }
 
@@ -193,7 +250,8 @@ END";
                     return NotFound(new { error = $"Staff ID {id} not found." });
                 }
 
-                staff.FullName = updated.FullName;
+                staff.FullName = updated.FullName.Trim();
+                staff.Username = updated.Username.Trim();
                 staff.Role = updated.Role;
                 staff.PositionTitle = updated.PositionTitle;
                 staff.Email = updated.Email;

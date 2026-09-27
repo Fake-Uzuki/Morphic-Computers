@@ -2436,10 +2436,52 @@ namespace ERP.winforms.Services
             }
         }
 
-        public bool AddStaffMember(StaffMember staff)
+        public bool AddStaffMember(StaffMember staff) => AddStaffMember(staff, out _);
+
+        public bool AddStaffMember(StaffMember staff, out string? errorMessage)
         {
-            if (staff == null) return false;
+            errorMessage = null;
+            if (staff == null)
+            {
+                errorMessage = "Staff payload is required.";
+                return false;
+            }
+
+            if (ActiveCompanyId <= 0 || string.Equals(CurrentCompany?.PlanName, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
+            {
+                errorMessage = "Super Admin cannot create tenant operational staff.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(staff.FullName))
+            {
+                errorMessage = "Please enter the staff member's full name.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(staff.Username))
+            {
+                errorMessage = "Please enter a login username for this staff member.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(staff.Role))
+            {
+                errorMessage = "Please select a system role for this staff member.";
+                return false;
+            }
+
+            // Client-side duplicate username check
+            string trimmedUsername = staff.Username.Trim().ToLowerInvariant();
+            if (StaffMembers.Any(s => s.CompanyId == ActiveCompanyId && s.Username.Trim().ToLowerInvariant() == trimmedUsername))
+            {
+                errorMessage = $"The login username '{staff.Username}' is already taken by another employee in this company.";
+                return false;
+            }
+
             staff.CompanyId = ActiveCompanyId;
+            staff.FullName = staff.FullName.Trim();
+            staff.Username = staff.Username.Trim();
             if (string.IsNullOrWhiteSpace(staff.StaffCode))
             {
                 staff.StaffCode = $"EMP-{new Random().Next(1000, 9999)}";
@@ -2451,9 +2493,9 @@ namespace ERP.winforms.Services
             {
                 OfflineAuthService.Instance.RegisterOrUpdateStaffPassword(
                     ActiveCompanyId,
-                    CurrentCompany.CompanyCode,
-                    CurrentCompany.CompanyName,
-                    CurrentCompany.PlanName,
+                    CurrentCompany?.CompanyCode ?? $"TENANT_{ActiveCompanyId}",
+                    CurrentCompany?.CompanyName ?? $"Tenant {ActiveCompanyId}",
+                    CurrentCompany?.PlanName ?? "Medium",
                     staff.Username,
                     staff.FullName,
                     staff.Role,
@@ -2464,27 +2506,26 @@ namespace ERP.winforms.Services
             bool isOnline = IsApiReachable();
             if (isOnline)
             {
-                bool apiSuccess = false;
-                try
-                {
-                    apiSuccess = Task.Run(() => _apiClient.CreateStaffAsync(ActiveCompanyId, staff)).GetAwaiter().GetResult();
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"AddStaffMember API error: {ex.Message}");
-                    apiSuccess = false;
-                }
-
+                var (apiSuccess, apiError, createdStaff) = Task.Run(() => _apiClient.CreateStaffWithResultAsync(ActiveCompanyId, staff)).GetAwaiter().GetResult();
                 if (!apiSuccess)
                 {
+                    errorMessage = apiError ?? "Failed to save staff member via API.";
                     return false;
+                }
+
+                if (createdStaff != null && createdStaff.StaffId > 0)
+                {
+                    staff.StaffId = createdStaff.StaffId;
                 }
 
                 try
                 {
                     Task.Run(() => _localDb.AddStaffMemberAsync(ActiveCompanyId, staff, enqueueSync: false)).GetAwaiter().GetResult();
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Local cache mirror note: {ex.Message}");
+                }
             }
             else
             {
@@ -2499,6 +2540,7 @@ namespace ERP.winforms.Services
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"AddStaffMember localDb error: {ex.Message}");
+                    errorMessage = ex.Message;
                     return false;
                 }
             }
@@ -2514,18 +2556,30 @@ namespace ERP.winforms.Services
             return true;
         }
 
-        public bool UpdateStaffMember(StaffMember staff)
+        public bool UpdateStaffMember(StaffMember staff) => UpdateStaffMember(staff, out _);
+
+        public bool UpdateStaffMember(StaffMember staff, out string? errorMessage)
         {
-            if (staff == null) return false;
+            errorMessage = null;
+            if (staff == null)
+            {
+                errorMessage = "Staff payload is required.";
+                return false;
+            }
+
             var existing = StaffMembers.FirstOrDefault(s => s.StaffId == staff.StaffId);
-            if (existing == null) return false;
+            if (existing == null)
+            {
+                errorMessage = $"Staff profile #{staff.StaffId} not found.";
+                return false;
+            }
 
             var updatedStaff = new StaffMember
             {
                 StaffId = existing.StaffId,
                 CompanyId = existing.CompanyId,
                 StaffCode = existing.StaffCode,
-                FullName = staff.FullName,
+                FullName = staff.FullName.Trim(),
                 Username = existing.Username,
                 Role = staff.Role,
                 PositionTitle = staff.PositionTitle,
@@ -2533,6 +2587,7 @@ namespace ERP.winforms.Services
                 PhoneNumber = staff.PhoneNumber,
                 HourlyRate = staff.HourlyRate,
                 MonthlySalary = staff.MonthlySalary,
+                BranchId = staff.BranchId ?? existing.BranchId,
                 IsActive = existing.IsActive,
                 HiredDate = existing.HiredDate,
                 InitialPassword = !string.IsNullOrWhiteSpace(staff.InitialPassword) ? staff.InitialPassword : existing.InitialPassword
@@ -2542,9 +2597,9 @@ namespace ERP.winforms.Services
             {
                 OfflineAuthService.Instance.RegisterOrUpdateStaffPassword(
                     ActiveCompanyId,
-                    CurrentCompany.CompanyCode,
-                    CurrentCompany.CompanyName,
-                    CurrentCompany.PlanName,
+                    CurrentCompany?.CompanyCode ?? $"TENANT_{ActiveCompanyId}",
+                    CurrentCompany?.CompanyName ?? $"Tenant {ActiveCompanyId}",
+                    CurrentCompany?.PlanName ?? "Medium",
                     existing.Username,
                     existing.FullName,
                     existing.Role,
@@ -2555,19 +2610,10 @@ namespace ERP.winforms.Services
             bool isOnline = IsApiReachable();
             if (isOnline)
             {
-                bool apiSuccess = false;
-                try
-                {
-                    apiSuccess = Task.Run(() => _apiClient.UpdateStaffAsync(ActiveCompanyId, staff.StaffId, updatedStaff)).GetAwaiter().GetResult();
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"UpdateStaffMember API error: {ex.Message}");
-                    apiSuccess = false;
-                }
-
+                var (apiSuccess, apiError) = Task.Run(() => _apiClient.UpdateStaffWithResultAsync(ActiveCompanyId, staff.StaffId, updatedStaff)).GetAwaiter().GetResult();
                 if (!apiSuccess)
                 {
+                    errorMessage = apiError ?? "Failed to update staff member via API.";
                     return false;
                 }
 
@@ -2586,6 +2632,7 @@ namespace ERP.winforms.Services
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"UpdateStaffMember localDb error: {ex.Message}");
+                    errorMessage = ex.Message;
                     return false;
                 }
             }
@@ -2597,6 +2644,7 @@ namespace ERP.winforms.Services
             existing.PhoneNumber = updatedStaff.PhoneNumber;
             existing.HourlyRate = updatedStaff.HourlyRate;
             existing.MonthlySalary = updatedStaff.MonthlySalary;
+            existing.BranchId = updatedStaff.BranchId;
             if (!string.IsNullOrWhiteSpace(updatedStaff.InitialPassword))
             {
                 existing.InitialPassword = updatedStaff.InitialPassword;

@@ -79,7 +79,34 @@ namespace ERP.winforms.UI.Dialogs
                 AutoSize = true
             };
 
+            string assignedBranchText = "Branch: Unassigned";
+            if (_targetStaff != null && _targetStaff.BranchId.HasValue)
+            {
+                var br = _dataService.Branches.FirstOrDefault(b => b.BranchId == _targetStaff.BranchId.Value);
+                assignedBranchText = $"Branch: {br?.BranchName ?? $"Branch #{_targetStaff.BranchId.Value}"}";
+            }
+            else if (BranchContextService.Instance.CurrentBranchId.HasValue)
+            {
+                var br = _dataService.Branches.FirstOrDefault(b => b.BranchId == BranchContextService.Instance.CurrentBranchId.Value);
+                assignedBranchText = $"Branch: {br?.BranchName ?? "Current Branch"}";
+            }
+            else if (_dataService.Branches.Count > 0)
+            {
+                var br = _dataService.Branches.FirstOrDefault(b => b.IsActive);
+                assignedBranchText = $"Branch: {br?.BranchName ?? "Main Branch"}";
+            }
+
+            Label lblBranchInfo = new Label
+            {
+                Text = $"🏢 {assignedBranchText}",
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                ForeColor = Color.White,
+                Location = new Point(310, 14),
+                AutoSize = true
+            };
+
             pnlHeader.Controls.Add(lblTitle);
+            pnlHeader.Controls.Add(lblBranchInfo);
 
             // Card Body
             SunshineCard card = new SunshineCard
@@ -210,6 +237,12 @@ namespace ERP.winforms.UI.Dialogs
 
         private void SaveStaff()
         {
+            if (_dataService.ActiveCompanyId <= 0 || string.Equals(_dataService.CurrentCompany?.PlanName, "SuperAdmin", StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show("Super Admin cannot register tenant operational staff. Please switch to a tenant company.", "Operation Prohibited", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             string name = _txtName.Text.Trim();
             string username = _txtUsername.Text.Trim();
             string password = _txtPassword.Text.Trim();
@@ -235,10 +268,28 @@ namespace ERP.winforms.UI.Dialogs
                 password = "staff123";
             }
 
+            // Client-side duplicate username check
+            string trimmedUsername = username.ToLowerInvariant();
             if (_targetStaff == null)
             {
+                if (_dataService.StaffMembers.Any(s => s.CompanyId == _dataService.ActiveCompanyId && s.Username.Trim().ToLowerInvariant() == trimmedUsername))
+                {
+                    MessageBox.Show($"The login username '{username}' is already in use by another staff member.\nPlease choose a unique username.", "Duplicate Username", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    _txtUsername.Focus();
+                    return;
+                }
+
+                // Associate with current active branch context if set
+                int? branchId = BranchContextService.Instance.CurrentBranchId;
+                if (!branchId.HasValue && _dataService.Branches.Count > 0)
+                {
+                    // Default to first active branch for multi-branch companies
+                    branchId = _dataService.Branches.FirstOrDefault(b => b.IsActive)?.BranchId;
+                }
+
                 var newStaff = new StaffMember
                 {
+                    CompanyId = _dataService.ActiveCompanyId,
                     FullName = name,
                     Username = username,
                     InitialPassword = password,
@@ -248,21 +299,31 @@ namespace ERP.winforms.UI.Dialogs
                     Email = _txtEmail.Text.Trim(),
                     HourlyRate = _numHourlyRate.Value,
                     MonthlySalary = _numMonthlySalary.Value,
-                    BranchId = BranchContextService.Instance.CurrentBranchId,
+                    BranchId = branchId,
                     IsActive = true,
                     HiredDate = DateTime.UtcNow
                 };
 
-                bool ok = _dataService.AddStaffMember(newStaff);
+                bool ok = _dataService.AddStaffMember(newStaff, out string? errorReason);
                 if (!ok)
                 {
-                    MessageBox.Show("Failed to save staff member. Please check network/database connectivity.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    string msg = string.IsNullOrWhiteSpace(errorReason)
+                        ? "Failed to save staff member. Please check network/database connectivity."
+                        : $"Failed to save staff member: {errorReason}";
+                    MessageBox.Show(msg, "Error Saving Staff", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
                 ResultStaff = newStaff;
             }
             else
             {
+                if (_dataService.StaffMembers.Any(s => s.CompanyId == _dataService.ActiveCompanyId && s.StaffId != _targetStaff.StaffId && s.Username.Trim().ToLowerInvariant() == trimmedUsername))
+                {
+                    MessageBox.Show($"The login username '{username}' is already in use by another staff member.\nPlease choose a unique username.", "Duplicate Username", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    _txtUsername.Focus();
+                    return;
+                }
+
                 _targetStaff.FullName = name;
                 _targetStaff.Username = username;
                 _targetStaff.InitialPassword = password;
@@ -273,10 +334,13 @@ namespace ERP.winforms.UI.Dialogs
                 _targetStaff.HourlyRate = _numHourlyRate.Value;
                 _targetStaff.MonthlySalary = _numMonthlySalary.Value;
 
-                bool ok = _dataService.UpdateStaffMember(_targetStaff);
+                bool ok = _dataService.UpdateStaffMember(_targetStaff, out string? errorReason);
                 if (!ok)
                 {
-                    MessageBox.Show("Failed to update staff member. Please check network/database connectivity.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    string msg = string.IsNullOrWhiteSpace(errorReason)
+                        ? "Failed to update staff member. Please check network/database connectivity."
+                        : $"Failed to update staff member: {errorReason}";
+                    MessageBox.Show(msg, "Error Updating Staff", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
                 ResultStaff = _targetStaff;
