@@ -1236,10 +1236,14 @@ namespace ERP.winforms.Services
             return request;
         }
 
-        public async Task<bool> ResolveApprovalRequestAsync(int companyId, int requestId, string status, string reviewer, string? notes, bool enqueueSync = true)
+        public async Task<bool> ResolveApprovalRequestAsync(int companyId, int requestId, string status, string reviewer, string? notes, bool enqueueSync = true, string? targetReferenceId = null, string? requestNumber = null)
         {
             await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
-            var existing = await context.ApprovalRequests.FirstOrDefaultAsync(r => r.RequestId == requestId).ConfigureAwait(false);
+            var existing = await context.ApprovalRequests.FirstOrDefaultAsync(r => 
+                (requestId > 0 && r.RequestId == requestId) ||
+                (!string.IsNullOrEmpty(requestNumber) && r.RequestNumber == requestNumber) ||
+                (!string.IsNullOrEmpty(targetReferenceId) && r.TargetReferenceId == targetReferenceId))
+                .ConfigureAwait(false);
             if (existing == null) return false;
 
             existing.Status = status;
@@ -1248,11 +1252,23 @@ namespace ERP.winforms.Services
             existing.ResolvedAt = DateTime.UtcNow;
 
             // Sync linked Purchase Order if request is a Procurement Request
-            if (!string.IsNullOrEmpty(existing.TargetReferenceId) || string.Equals(existing.RequestType, "ProcurementRequest", StringComparison.OrdinalIgnoreCase))
+            string? poNum = existing.TargetReferenceId;
+            if (string.IsNullOrWhiteSpace(poNum) && !string.IsNullOrWhiteSpace(targetReferenceId))
+            {
+                poNum = targetReferenceId;
+            }
+            if (string.IsNullOrWhiteSpace(poNum) && !string.IsNullOrWhiteSpace(existing.Title))
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(existing.Title, @"(PO-[\w-]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (match.Success) poNum = match.Groups[1].Value;
+            }
+
+            if (!string.IsNullOrEmpty(poNum) || string.Equals(existing.RequestType, "ProcurementRequest", StringComparison.OrdinalIgnoreCase))
             {
                 var po = await context.PurchaseOrders.FirstOrDefaultAsync(p =>
                     p.CompanyId == companyId &&
-                    (p.PurchaseOrderNumber == existing.TargetReferenceId || p.PurchaseOrderId.ToString() == existing.TargetReferenceId))
+                    ((!string.IsNullOrEmpty(poNum) && (p.PurchaseOrderNumber == poNum || p.PurchaseOrderId.ToString() == poNum)) ||
+                     (!string.IsNullOrEmpty(existing.TargetReferenceId) && (p.PurchaseOrderNumber == existing.TargetReferenceId || p.PurchaseOrderId.ToString() == existing.TargetReferenceId))))
                     .ConfigureAwait(false);
 
                 if (po != null)
@@ -1267,6 +1283,7 @@ namespace ERP.winforms.Services
                         po.Status = "Rejected";
                         po.ApprovedBy = $"Rejected by {reviewer}";
                     }
+                    po.UpdatedAt = DateTime.UtcNow;
                 }
             }
 
@@ -1277,7 +1294,7 @@ namespace ERP.winforms.Services
                     SyncId = Guid.NewGuid().ToString("N"),
                     CompanyId = companyId,
                     EntityType = "ApprovalRequest",
-                    EntityId = requestId.ToString(),
+                    EntityId = existing.RequestId.ToString(),
                     Operation = "Resolve",
                     PayloadJson = System.Text.Json.JsonSerializer.Serialize(new { Status = status, ReviewedBy = reviewer, ReviewNotes = notes }),
                     CreatedAt = DateTime.UtcNow,
@@ -1287,6 +1304,31 @@ namespace ERP.winforms.Services
 
             await context.SaveChangesAsync().ConfigureAwait(false);
             return true;
+        }
+
+        public async Task<bool> DeleteApprovalRequestAsync(int companyId, int requestId, string? requestNumber = null)
+        {
+            try
+            {
+                await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
+                var item = await context.ApprovalRequests.FirstOrDefaultAsync(r =>
+                    (requestId > 0 && r.RequestId == requestId) ||
+                    (!string.IsNullOrEmpty(requestNumber) && r.RequestNumber == requestNumber))
+                    .ConfigureAwait(false);
+
+                if (item != null)
+                {
+                    context.ApprovalRequests.Remove(item);
+                    await context.SaveChangesAsync().ConfigureAwait(false);
+                    return true;
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DeleteApprovalRequestAsync error: {ex.Message}");
+                return false;
+            }
         }
 
         // =========================================================================
@@ -1680,17 +1722,20 @@ namespace ERP.winforms.Services
 
         public async Task<PurchaseOrder?> UpdatePurchaseOrderAsync(int companyId, PurchaseOrder order, bool enqueueSync = true)
         {
-            if (order == null || order.PurchaseOrderId <= 0) return null;
+            if (order == null) return null;
             await using var context = await LocalTenantDbContextProvider.CreateTenantDbContextAsync(companyId).ConfigureAwait(false);
             await using var tx = await context.Database.BeginTransactionAsync().ConfigureAwait(false);
             try
             {
                 var existing = await context.PurchaseOrders
                     .Include(p => p.Items)
-                    .FirstOrDefaultAsync(p => p.PurchaseOrderId == order.PurchaseOrderId && p.CompanyId == companyId)
+                    .FirstOrDefaultAsync(p => p.CompanyId == companyId &&
+                        ((order.PurchaseOrderId > 0 && p.PurchaseOrderId == order.PurchaseOrderId) ||
+                         (!string.IsNullOrEmpty(order.PurchaseOrderNumber) && p.PurchaseOrderNumber == order.PurchaseOrderNumber)))
                     .ConfigureAwait(false);
 
                 if (existing == null) return null;
+                order.PurchaseOrderId = existing.PurchaseOrderId;
 
                 existing.PurchaseOrderNumber = order.PurchaseOrderNumber;
                 existing.SupplierId = order.SupplierId;

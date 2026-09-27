@@ -46,15 +46,6 @@ namespace ERP.winforms.UI.Views
             };
         }
 
-        protected override void OnVisibleChanged(EventArgs e)
-        {
-            base.OnVisibleChanged(e);
-            if (Visible)
-            {
-                RefreshGrid();
-            }
-        }
-
         private void InitializeLayout()
         {
             Controls.Clear();
@@ -463,10 +454,25 @@ namespace ERP.winforms.UI.Views
                 bool success = _dataService.AddPurchaseOrder(newPo);
                 if (success)
                 {
+                    // Submit linked approval request for Store Manager / Administrator decision
+                    var approvalReq = new ApprovalRequest
+                    {
+                        CompanyId = _dataService.ActiveCompanyId,
+                        RequestType = "ProcurementRequest",
+                        Title = $"Procurement Order #{newPo.PurchaseOrderNumber} - {selectedSup.SupplierName}",
+                        ReasonDescription = $"Procurement requested by {_currentUser}: {qty}x {txtItem.Text.Trim()} from {selectedSup.SupplierName}. Total: ₱{(qty * unitCost):N2}. Remarks: {newPo.Notes ?? "Standard replenishment purchase order"}",
+                        RequestedBy = _currentUser,
+                        RequestedAmount = qty * unitCost,
+                        Status = "Pending",
+                        TargetReferenceId = newPo.PurchaseOrderNumber,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _dataService.AddApprovalRequest(approvalReq);
+
                     RefreshGrid();
                     dlg.DialogResult = DialogResult.OK;
                     dlg.Close();
-                    MessageBox.Show($"Purchase Order {newPo.PurchaseOrderNumber} created with status 'Pending Approval' and submitted to Approvals module.\n\nA Store Manager or Administrator can now review, approve, or reject this request.", "Order Submitted for Approval", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show($"Purchase Order {newPo.PurchaseOrderNumber} created and linked to Approvals module.\n\nA Store Manager or Administrator can now review, approve, or reject this request.", "Order Submitted for Approval", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 else
                 {
@@ -502,18 +508,6 @@ namespace ERP.winforms.UI.Views
             var selected = _gridPOs.SelectedRows[0].DataBoundItem as PurchaseOrder;
             if (selected == null) return;
 
-            if (selected.Status == "Pending Approval" || selected.Status == "Pending")
-            {
-                MessageBox.Show("Cannot receive items for a purchase order that is still pending approval. It must first be approved by a Store Manager or Administrator in the Approvals module.", "Approval Required", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            if (selected.Status == "Rejected")
-            {
-                MessageBox.Show("Cannot receive items for a purchase order that was rejected.", "Order Rejected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
             if (selected.Status == "Received")
             {
                 MessageBox.Show("This purchase order has already been received.", "Information", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -526,18 +520,29 @@ namespace ERP.winforms.UI.Views
                 return;
             }
 
-            selected.Status = "Received";
-            selected.ReceivedDate = DateTime.UtcNow;
+            if (selected.Status == "Rejected")
+            {
+                MessageBox.Show("Cannot receive items for a purchase order that was rejected.", "Order Rejected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
-            bool success = _dataService.UpdatePurchaseOrder(selected);
+            // Only approved/in-transit POs can proceed to receiving
+            if (!string.Equals(selected.Status, "In Transit", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(selected.Status, "Approved", StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show("Only approved / in-transit purchase orders can proceed to receiving. Please wait for a Store Manager or Administrator to approve this order in the Approvals module.", "Approval Required", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            bool success = _dataService.ReceivePurchaseOrder(selected);
             if (success)
             {
                 RefreshGrid();
-                MessageBox.Show($"Shipment for {selected.PoNumber} marked as Received.", "Fulfillment", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show($"Shipment for {selected.PoNumber} received successfully.\nInventory quantities and product records have been updated.", "Fulfillment Completed", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             else
             {
-                MessageBox.Show("Failed to update purchase order status.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Failed to receive purchase order. Please verify that the order is approved.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 

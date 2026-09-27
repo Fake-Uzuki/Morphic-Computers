@@ -175,7 +175,7 @@ namespace ERP.winforms.Services
                     MigrateJsonExpensesIfAvailable(ActiveCompanyId);
                 }
                 PurchaseOrders = Task.Run(() => _localDb.GetPurchaseOrdersAsync(ActiveCompanyId)).GetAwaiter().GetResult() ?? new();
-                SyncPendingProcurementApprovals();
+                CleanupDuplicateProcurementApprovals();
             }
             catch (Exception ex)
             {
@@ -690,6 +690,7 @@ namespace ERP.winforms.Services
                     if (ActiveCompanyId == targetCompanyId)
                     {
                         ApprovalRequests = liveApprovals;
+                        CleanupDuplicateProcurementApprovals();
                         SaveApprovalsToLocalCache();
                         ApprovalRequestsChanged?.Invoke();
                     }
@@ -702,6 +703,7 @@ namespace ERP.winforms.Services
                         if (localApprovals != null && ActiveCompanyId == targetCompanyId)
                         {
                             ApprovalRequests = localApprovals;
+                            CleanupDuplicateProcurementApprovals();
                             SaveApprovalsToLocalCache();
                             ApprovalRequestsChanged?.Invoke();
                         }
@@ -1034,8 +1036,6 @@ namespace ERP.winforms.Services
             }
 
             if (ActiveCompanyId != targetCompanyId) return;
-
-            SyncPendingProcurementApprovals();
 
             IsUsingLiveCloudDatabase = anyApiSucceeded;
             ConnectionStatusChanged?.Invoke(anyApiSucceeded);
@@ -2846,6 +2846,62 @@ namespace ERP.winforms.Services
             }
         }
 
+        public void CleanupDuplicateProcurementApprovals()
+        {
+            if (ApprovalRequests == null || ApprovalRequests.Count == 0) return;
+
+            var procurementRequests = ApprovalRequests
+                .Where(r => string.Equals(r.RequestType, "ProcurementRequest", StringComparison.OrdinalIgnoreCase) ||
+                            (!string.IsNullOrEmpty(r.TargetReferenceId) && r.TargetReferenceId.StartsWith("PO-", StringComparison.OrdinalIgnoreCase)) ||
+                            (r.Title != null && r.Title.Contains("Procurement Order #", StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            var grouped = procurementRequests.GroupBy(r =>
+            {
+                if (!string.IsNullOrWhiteSpace(r.TargetReferenceId)) return r.TargetReferenceId.Trim();
+                if (!string.IsNullOrWhiteSpace(r.Title))
+                {
+                    var m = System.Text.RegularExpressions.Regex.Match(r.Title, @"(PO-[\w-]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (m.Success) return m.Groups[1].Value.Trim();
+                }
+                return r.RequestNumber;
+            }).Where(g => g.Count() > 1).ToList();
+
+            bool changed = false;
+            foreach (var group in grouped)
+            {
+                // Prefer keeping a resolved request over pending, then newest
+                var best = group
+                    .OrderByDescending(r => !string.Equals(r.Status, "Pending", StringComparison.OrdinalIgnoreCase))
+                    .ThenByDescending(r => r.RequestId)
+                    .ThenByDescending(r => r.CreatedAt)
+                    .First();
+
+                if (string.IsNullOrWhiteSpace(best.TargetReferenceId))
+                {
+                    best.TargetReferenceId = group.Key;
+                }
+
+                var duplicates = group.Where(r => r != best).ToList();
+                foreach (var dup in duplicates)
+                {
+                    ApprovalRequests.Remove(dup);
+                    changed = true;
+                    try
+                    {
+                        Task.Run(() => _localDb.DeleteApprovalRequestAsync(ActiveCompanyId, dup.RequestId, dup.RequestNumber)).GetAwaiter().GetResult();
+                    }
+                    catch { }
+                }
+            }
+
+            if (changed)
+            {
+                SaveApprovalsToLocalCache();
+                ApprovalRequestsChanged?.Invoke();
+            }
+        }
+
         public bool AddApprovalRequest(ApprovalRequest request)
         {
             if (request == null) return false;
@@ -2856,8 +2912,8 @@ namespace ERP.winforms.Services
             {
                 var duplicate = ApprovalRequests.FirstOrDefault(r =>
                     r.CompanyId == request.CompanyId &&
-                    string.Equals(r.RequestType, request.RequestType, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(r.TargetReferenceId, request.TargetReferenceId, StringComparison.OrdinalIgnoreCase));
+                    (string.Equals(r.TargetReferenceId, request.TargetReferenceId, StringComparison.OrdinalIgnoreCase) ||
+                     (r.Title != null && r.Title.Contains(request.TargetReferenceId, StringComparison.OrdinalIgnoreCase))));
 
                 if (duplicate != null)
                 {
@@ -2868,12 +2924,12 @@ namespace ERP.winforms.Services
 
             if (string.IsNullOrWhiteSpace(request.RequestNumber))
             {
-                request.RequestNumber = $"REQ-{DateTime.UtcNow:yyyyMMdd}-{Random.Shared.Next(100, 999)}";
+                request.RequestNumber = $"REQ-{DateTime.UtcNow:yyyyMMdd}-{new Random().Next(100, 999)}";
             }
             request.CreatedAt = DateTime.UtcNow;
             if (string.IsNullOrWhiteSpace(request.Status))
             {
-                request.Status = ApprovalRequest.StatusPending;
+                request.Status = "Pending";
             }
 
             bool isOnline = IsApiReachable();
@@ -2939,11 +2995,17 @@ namespace ERP.winforms.Services
 
         public bool ResolveApprovalRequest(int requestId, string status, string reviewer, string? notes)
         {
-            var request = ApprovalRequests.FirstOrDefault(r => r.RequestId == requestId);
-            if (request == null) return false;
+            var request = ApprovalRequests.FirstOrDefault(r => 
+                (requestId > 0 && r.RequestId == requestId) ||
+                (r.RequestId == requestId));
+            if (request == null)
+            {
+                request = ApprovalRequests.FirstOrDefault(r => r.RequestId == requestId);
+                if (request == null) return false;
+            }
 
             bool isOnline = IsApiReachable();
-            if (isOnline)
+            if (isOnline && requestId > 0)
             {
                 bool apiSuccess = false;
                 try
@@ -2960,16 +3022,15 @@ namespace ERP.winforms.Services
                 {
                     try
                     {
-                        Task.Run(() => _localDb.ResolveApprovalRequestAsync(ActiveCompanyId, requestId, status, reviewer, notes, enqueueSync: false)).GetAwaiter().GetResult();
+                        Task.Run(() => _localDb.ResolveApprovalRequestAsync(ActiveCompanyId, requestId, status, reviewer, notes, enqueueSync: false, request.TargetReferenceId, request.RequestNumber)).GetAwaiter().GetResult();
                     }
                     catch { }
                 }
                 else
                 {
-                    // Fallback to local DB and enqueue sync if API failed or returned error
                     try
                     {
-                        Task.Run(() => _localDb.ResolveApprovalRequestAsync(ActiveCompanyId, requestId, status, reviewer, notes, enqueueSync: true)).GetAwaiter().GetResult();
+                        Task.Run(() => _localDb.ResolveApprovalRequestAsync(ActiveCompanyId, requestId, status, reviewer, notes, enqueueSync: true, request.TargetReferenceId, request.RequestNumber)).GetAwaiter().GetResult();
                     }
                     catch (Exception ex)
                     {
@@ -2981,7 +3042,7 @@ namespace ERP.winforms.Services
             {
                 try
                 {
-                    Task.Run(() => _localDb.ResolveApprovalRequestAsync(ActiveCompanyId, requestId, status, reviewer, notes, enqueueSync: true)).GetAwaiter().GetResult();
+                    Task.Run(() => _localDb.ResolveApprovalRequestAsync(ActiveCompanyId, requestId, status, reviewer, notes, enqueueSync: true, request.TargetReferenceId, request.RequestNumber)).GetAwaiter().GetResult();
                 }
                 catch (Exception ex)
                 {
@@ -2995,33 +3056,47 @@ namespace ERP.winforms.Services
             request.ResolvedAt = DateTime.UtcNow;
 
             // Link to Purchase Order when this is a Procurement Request
-            if (string.Equals(request.RequestType, ApprovalRequest.TypeProcurementRequest, StringComparison.OrdinalIgnoreCase) ||
-                !string.IsNullOrEmpty(request.TargetReferenceId))
+            string? poNum = request.TargetReferenceId;
+            if (string.IsNullOrWhiteSpace(poNum) && !string.IsNullOrWhiteSpace(request.Title))
             {
-                var po = PurchaseOrders.FirstOrDefault(p =>
-                    (!string.IsNullOrEmpty(request.TargetReferenceId) &&
-                        (string.Equals(p.PurchaseOrderNumber, request.TargetReferenceId, StringComparison.OrdinalIgnoreCase) ||
-                         string.Equals(p.PoNumber, request.TargetReferenceId, StringComparison.OrdinalIgnoreCase))) ||
-                    (p.PurchaseOrderId.ToString() == request.TargetReferenceId));
-
-                if (po != null)
+                var match = System.Text.RegularExpressions.Regex.Match(request.Title, @"(PO-[\w-]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (match.Success)
                 {
-                    if (status.Equals("Approved", StringComparison.OrdinalIgnoreCase))
-                    {
-                        po.Status = "In Transit";
-                        po.ApprovedBy = reviewer;
-                    }
-                    else if (status.Equals("Rejected", StringComparison.OrdinalIgnoreCase))
-                    {
-                        po.Status = "Rejected";
-                        po.ApprovedBy = $"Rejected by {reviewer}";
-                    }
-                    UpdatePurchaseOrder(po);
+                    poNum = match.Groups[1].Value;
                 }
+            }
+
+            var po = PurchaseOrders.FirstOrDefault(p =>
+                (!string.IsNullOrEmpty(poNum) &&
+                    (string.Equals(p.PurchaseOrderNumber, poNum, StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(p.PoNumber, poNum, StringComparison.OrdinalIgnoreCase) ||
+                     p.PurchaseOrderId.ToString() == poNum)) ||
+                (!string.IsNullOrEmpty(request.TargetReferenceId) &&
+                    (string.Equals(p.PurchaseOrderNumber, request.TargetReferenceId, StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(p.PoNumber, request.TargetReferenceId, StringComparison.OrdinalIgnoreCase) ||
+                     p.PurchaseOrderId.ToString() == request.TargetReferenceId)) ||
+                (!string.IsNullOrWhiteSpace(p.PurchaseOrderNumber) && request.Title != null && request.Title.Contains(p.PurchaseOrderNumber, StringComparison.OrdinalIgnoreCase)));
+
+            if (po != null)
+            {
+                request.TargetReferenceId = po.PurchaseOrderNumber;
+                if (status.Equals("Approved", StringComparison.OrdinalIgnoreCase))
+                {
+                    po.Status = "In Transit";
+                    po.ApprovedBy = reviewer;
+                }
+                else if (status.Equals("Rejected", StringComparison.OrdinalIgnoreCase))
+                {
+                    po.Status = "Rejected";
+                    po.ApprovedBy = $"Rejected by {reviewer}";
+                }
+                po.UpdatedAt = DateTime.UtcNow;
+                UpdatePurchaseOrder(po);
             }
 
             SaveApprovalsToLocalCache();
             ApprovalRequestsChanged?.Invoke();
+            PurchaseOrdersChanged?.Invoke();
             return true;
         }
 
@@ -4227,6 +4302,7 @@ namespace ERP.winforms.Services
                 return null;
             }
 
+            // Only pending approval POs should have a pending approval request
             if (!string.Equals(order.Status, "Pending Approval", StringComparison.OrdinalIgnoreCase))
             {
                 return null;
@@ -4235,23 +4311,28 @@ namespace ERP.winforms.Services
             // Prevent duplicate approval requests for the same PO
             var existing = ApprovalRequests.FirstOrDefault(r =>
                 r.CompanyId == order.CompanyId &&
-                string.Equals(r.RequestType, ApprovalRequest.TypeProcurementRequest, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(r.TargetReferenceId, order.PurchaseOrderNumber, StringComparison.OrdinalIgnoreCase));
+                (string.Equals(r.TargetReferenceId, order.PurchaseOrderNumber, StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(r.TargetReferenceId, order.PoNumber, StringComparison.OrdinalIgnoreCase) ||
+                 (!string.IsNullOrWhiteSpace(order.PurchaseOrderNumber) && r.Title != null && r.Title.Contains(order.PurchaseOrderNumber, StringComparison.OrdinalIgnoreCase))));
 
             if (existing != null)
             {
+                if (string.IsNullOrWhiteSpace(existing.TargetReferenceId))
+                {
+                    existing.TargetReferenceId = order.PurchaseOrderNumber;
+                }
                 return existing;
             }
 
             var approvalReq = new ApprovalRequest
             {
                 CompanyId = order.CompanyId,
-                RequestType = ApprovalRequest.TypeProcurementRequest,
+                RequestType = "ProcurementRequest",
                 Title = $"Procurement Order #{order.PurchaseOrderNumber} - {order.SupplierName}",
                 ReasonDescription = $"Procurement purchase order requested by {order.CreatedBy ?? "Staff"}: {order.Quantity}x {order.ItemDescription} from {order.SupplierName}. Total: ₱{order.TotalAmount:N2}. Remarks: {order.Notes ?? "Standard replenishment purchase order"}",
                 RequestedBy = order.CreatedBy ?? "Staff",
                 RequestedAmount = order.TotalAmount,
-                Status = ApprovalRequest.StatusPending,
+                Status = "Pending",
                 TargetReferenceId = order.PurchaseOrderNumber,
                 CreatedAt = DateTime.UtcNow
             };
@@ -4262,11 +4343,106 @@ namespace ERP.winforms.Services
 
         public void SyncPendingProcurementApprovals()
         {
+            CleanupDuplicateProcurementApprovals();
+
             if (PurchaseOrders == null || PurchaseOrders.Count == 0) return;
             foreach (var po in PurchaseOrders.Where(p => string.Equals(p.Status, "Pending Approval", StringComparison.OrdinalIgnoreCase)).ToList())
             {
                 EnsureProcurementApprovalRequest(po);
             }
+        }
+
+        public bool ReceivePurchaseOrder(PurchaseOrder order)
+        {
+            if (order == null) return false;
+
+            // Only approved/in-transit POs can proceed to receiving
+            if (!string.Equals(order.Status, "In Transit", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(order.Status, "Approved", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            int? targetBranchId = ActiveBranch.IsAllBranches ? null : ActiveBranch.BranchId;
+
+            var itemsToReceive = order.Items != null && order.Items.Count > 0
+                ? order.Items.ToList()
+                : new List<PurchaseOrderItem>
+                {
+                    new PurchaseOrderItem
+                    {
+                        ItemDescription = !string.IsNullOrWhiteSpace(order.ItemDescription) ? order.ItemDescription : (order.Notes ?? $"PO Item #{order.PurchaseOrderNumber}"),
+                        Quantity = order.Quantity > 0 ? order.Quantity : 1,
+                        UnitCost = order.Quantity > 0 ? Math.Round(order.TotalAmount / order.Quantity, 2) : order.TotalAmount,
+                        TotalAmount = order.TotalAmount
+                    }
+                };
+
+            foreach (var item in itemsToReceive)
+            {
+                int qtyToReceive = item.Quantity > 0 ? item.Quantity : 1;
+                Product? matchedProduct = null;
+
+                if (item.ProductId.HasValue && item.ProductId.Value > 0)
+                {
+                    matchedProduct = Products.FirstOrDefault(p => p.ProductId == item.ProductId.Value);
+                }
+
+                if (matchedProduct == null && !string.IsNullOrWhiteSpace(item.ItemDescription))
+                {
+                    matchedProduct = Products.FirstOrDefault(p =>
+                        string.Equals(p.ProductName, item.ItemDescription.Trim(), StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(p.ProductCode, item.ItemDescription.Trim(), StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (matchedProduct != null)
+                {
+                    // Existing product: keep the same ProductId and increase its inventory quantity
+                    matchedProduct.StockQuantity += qtyToReceive;
+                    if (!string.IsNullOrWhiteSpace(order.SupplierName) && string.IsNullOrWhiteSpace(matchedProduct.SupplierName))
+                    {
+                        matchedProduct.SupplierName = order.SupplierName;
+                        matchedProduct.SupplierId = order.SupplierId;
+                    }
+                    UpdateProduct(matchedProduct);
+                    item.ProductId = matchedProduct.ProductId;
+                }
+                else
+                {
+                    // New product: create the Product first, then create/link its inventory using the new ProductId
+                    string skuCode = $"SKU-PO-{DateTime.UtcNow:yyMMddHHmmss}-{Random.Shared.Next(10, 99)}";
+                    var newProd = new Product
+                    {
+                        ProductId = 0,
+                        ProductCode = skuCode,
+                        ProductName = string.IsNullOrWhiteSpace(item.ItemDescription) ? $"Item from {order.PurchaseOrderNumber}" : item.ItemDescription.Trim(),
+                        UnitPrice = item.UnitCost > 0 ? Math.Round(item.UnitCost * 1.25m, 2) : 1000m,
+                        StockQuantity = qtyToReceive,
+                        CategoryName = "General Hardware",
+                        SupplierName = order.SupplierName,
+                        SupplierId = order.SupplierId > 0 ? order.SupplierId : null,
+                        CompanyId = order.CompanyId > 0 ? order.CompanyId : ActiveCompanyId,
+                        Description = $"Procured from {order.SupplierName} via PO #{order.PurchaseOrderNumber}",
+                        IsActive = true,
+                        CreatedAt = DateTime.UtcNow
+                    };
+
+                    bool added = AddProduct(newProd);
+                    if (added)
+                    {
+                        item.ProductId = newProd.ProductId;
+                    }
+                }
+            }
+
+            order.Status = "Received";
+            order.ReceivedDate = DateTime.UtcNow;
+            order.UpdatedAt = DateTime.UtcNow;
+
+            bool updated = UpdatePurchaseOrder(order);
+            PurchaseOrdersChanged?.Invoke();
+            ProductsChanged?.Invoke();
+            return updated;
         }
 
         public bool AddPurchaseOrder(PurchaseOrder order)
@@ -4390,10 +4566,7 @@ namespace ERP.winforms.Services
             // Offline or API failure: persist locally and enqueue SyncOutbox
             try
             {
-                if (order.PurchaseOrderId > 0)
-                {
-                    Task.Run(() => _localDb.UpdatePurchaseOrderAsync(ActiveCompanyId, order, enqueueSync: true)).GetAwaiter().GetResult();
-                }
+                Task.Run(() => _localDb.UpdatePurchaseOrderAsync(ActiveCompanyId, order, enqueueSync: true)).GetAwaiter().GetResult();
                 int idx = PurchaseOrders.FindIndex(p => 
                     (order.PurchaseOrderId > 0 && p.PurchaseOrderId == order.PurchaseOrderId) ||
                     (!string.IsNullOrEmpty(order.PurchaseOrderNumber) && p.PurchaseOrderNumber == order.PurchaseOrderNumber));

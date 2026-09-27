@@ -141,9 +141,10 @@ namespace ERP.domain.security
                 // --------------------------------------------------------
                 // MICRO — Tenant A
                 // Core POS/Inventory/Sales operations only.
+                // Keeps Main Generative Income.
                 // No staff team, no customers, no suppliers, no repairs,
                 // no policies, no payroll, no finance, no procurement,
-                // no branch management, no generative income addons.
+                // no branch management.
                 // --------------------------------------------------------
                 case ErpPlan.Micro:
                     return module switch
@@ -154,9 +155,9 @@ namespace ERP.domain.security
                         ErpModule.Products              => true,
                         ErpModule.Orders                => true,
                         ErpModule.Reports               => true,
+                        ErpModule.MainGenerativeIncome  => true,
 
                         // Restricted for Micro
-                        ErpModule.MainGenerativeIncome  => false,
                         ErpModule.Repairs               => false,
                         ErpModule.Customers             => false,
                         ErpModule.Suppliers             => false,
@@ -177,9 +178,8 @@ namespace ERP.domain.security
                 // SMALL — Tenant B
                 // Full operational modules. Adds Payroll, Finance, and
                 // Supply Chain / Procurement vs Micro.
+                // Keeps existing Repair Services module; removes Main Generative Income.
                 // No Branch Management (single-location company).
-                // BusinessIntelligence is served by Dashboard; not a
-                // separate tenant navigation module.
                 // --------------------------------------------------------
                 case ErpPlan.Small:
                     return module switch
@@ -198,10 +198,10 @@ namespace ERP.domain.security
                         ErpModule.Payroll               => true,
                         ErpModule.FinancialStatements   => true,
                         ErpModule.Procurement           => true,
-                        ErpModule.MainGenerativeIncome  => true,
                         ErpModule.Reports               => true,
 
                         // Restricted for Small
+                        ErpModule.MainGenerativeIncome  => false,
                         ErpModule.SupportGenerativeIncome => false,
                         ErpModule.BusinessIntelligence  => false,
                         ErpModule.BranchManagement      => false,
@@ -212,8 +212,7 @@ namespace ERP.domain.security
                 // --------------------------------------------------------
                 // MEDIUM — Tenant C
                 // All Small modules plus Branch Management.
-                // BusinessIntelligence is served by Dashboard; not a
-                // separate tenant navigation module.
+                // Keeps existing Repair Services module; removes Main Generative Income.
                 // --------------------------------------------------------
                 case ErpPlan.Medium:
                     return module switch
@@ -233,10 +232,10 @@ namespace ERP.domain.security
                         ErpModule.FinancialStatements   => true,
                         ErpModule.Procurement           => true,
                         ErpModule.BranchManagement      => true,
-                        ErpModule.MainGenerativeIncome  => true,
                         ErpModule.Reports               => true,
 
                         // Restricted for Medium tenants
+                        ErpModule.MainGenerativeIncome  => false,
                         ErpModule.SupportGenerativeIncome => false,
                         ErpModule.BusinessIntelligence  => false,
 

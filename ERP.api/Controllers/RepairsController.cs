@@ -29,8 +29,15 @@ namespace ERP.api.Controllers
 
         private async Task<(bool Allowed, string? ErrorMessage, int StatusCode)> CheckPlanAccessAsync(int companyId)
         {
-            return await PlanAccessHelper.CheckPlanAccessAsync(
+            var repairsAccess = await PlanAccessHelper.CheckPlanAccessAsync(
                 _masterDb, companyId, ErpModule.Repairs, "Repair Services", "Small or Medium");
+            if (repairsAccess.Allowed) return repairsAccess;
+
+            var incomeAccess = await PlanAccessHelper.CheckPlanAccessAsync(
+                _masterDb, companyId, ErpModule.MainGenerativeIncome, "Main Generative Income", "Micro");
+            if (incomeAccess.Allowed) return incomeAccess;
+
+            return repairsAccess;
         }
 
         private static async Task EnsureRepairsSchemaAsync(TenantErpDbContext db, int companyId)

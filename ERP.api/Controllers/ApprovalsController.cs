@@ -118,7 +118,35 @@ END";
                         TargetReferenceId = r.TargetReferenceId
                     })
                     .ToListAsync();
-                return Ok(requests);
+
+                // Deduplicate multiple procurement requests for the same PO
+                var deduplicated = new List<ApprovalRequest>();
+                var seenPoNumbers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var req in requests)
+                {
+                    string? poNumber = req.TargetReferenceId;
+                    if (string.IsNullOrWhiteSpace(poNumber) && !string.IsNullOrWhiteSpace(req.Title))
+                    {
+                        var match = System.Text.RegularExpressions.Regex.Match(req.Title, @"(PO-[\w-]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        if (match.Success) poNumber = match.Groups[1].Value;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(poNumber) && 
+                        (string.Equals(req.RequestType, "ProcurementRequest", StringComparison.OrdinalIgnoreCase) || poNumber.StartsWith("PO-", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        if (seenPoNumbers.Contains(poNumber))
+                        {
+                            continue; // Skip duplicate
+                        }
+                        seenPoNumbers.Add(poNumber);
+                        req.TargetReferenceId = poNumber;
+                    }
+
+                    deduplicated.Add(req);
+                }
+
+                return Ok(deduplicated);
             }
             catch (Exception ex)
             {
@@ -146,11 +174,33 @@ END";
                     request.RequestNumber = $"REQ-{DateTime.UtcNow:yyyyMMdd}-{new Random().Next(100, 999)}";
                 }
 
+                // Prevent duplicate requests by RequestNumber
                 var existing = await tenantDb.ApprovalRequests
                     .FirstOrDefaultAsync(r => r.RequestNumber == request.RequestNumber && r.CompanyId == companyId);
                 if (existing != null)
                 {
                     return Ok(existing);
+                }
+
+                // Prevent duplicate procurement approval requests by TargetReferenceId or Title
+                string? targetRef = request.TargetReferenceId;
+                if (string.IsNullOrWhiteSpace(targetRef) && !string.IsNullOrWhiteSpace(request.Title))
+                {
+                    var m = System.Text.RegularExpressions.Regex.Match(request.Title, @"(PO-[\w-]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (m.Success) targetRef = m.Groups[1].Value;
+                }
+
+                if (!string.IsNullOrWhiteSpace(targetRef))
+                {
+                    var existingTarget = await tenantDb.ApprovalRequests
+                        .FirstOrDefaultAsync(r => r.CompanyId == companyId &&
+                            (r.TargetReferenceId == targetRef ||
+                             (r.Title != null && r.Title.Contains(targetRef))));
+                    if (existingTarget != null)
+                    {
+                        return Ok(existingTarget);
+                    }
+                    request.TargetReferenceId = targetRef;
                 }
 
                 request.CreatedAt = DateTime.UtcNow;
@@ -203,11 +253,19 @@ END";
                 existing.ResolvedAt = resolvedAt;
 
                 // Sync linked Purchase Order if request is a Procurement Request
-                if (!string.IsNullOrEmpty(existing.TargetReferenceId) || existing.RequestType == "ProcurementRequest")
+                string? poNum = existing.TargetReferenceId;
+                if (string.IsNullOrWhiteSpace(poNum) && !string.IsNullOrWhiteSpace(existing.Title))
+                {
+                    var match = System.Text.RegularExpressions.Regex.Match(existing.Title, @"(PO-[\w-]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (match.Success) poNum = match.Groups[1].Value;
+                }
+
+                if (!string.IsNullOrEmpty(poNum) || string.Equals(existing.RequestType, "ProcurementRequest", StringComparison.OrdinalIgnoreCase))
                 {
                     var po = await tenantDb.PurchaseOrders.FirstOrDefaultAsync(p =>
                         p.CompanyId == companyId &&
-                        (p.PurchaseOrderNumber == existing.TargetReferenceId || p.PurchaseOrderId.ToString() == existing.TargetReferenceId));
+                        ((!string.IsNullOrEmpty(poNum) && (p.PurchaseOrderNumber == poNum || p.PurchaseOrderId.ToString() == poNum)) ||
+                         (!string.IsNullOrEmpty(existing.TargetReferenceId) && (p.PurchaseOrderNumber == existing.TargetReferenceId || p.PurchaseOrderId.ToString() == existing.TargetReferenceId))));
 
                     if (po != null)
                     {
@@ -221,6 +279,7 @@ END";
                             po.Status = "Rejected";
                             po.ApprovedBy = $"Rejected by {dto.ReviewedBy}";
                         }
+                        po.UpdatedAt = resolvedAt;
                     }
                 }
 
