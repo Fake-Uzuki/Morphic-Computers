@@ -25,11 +25,7 @@ namespace ERP.api.Controllers
 
         public record PlanUpgradeRequest(string PlanName);
 
-        /// <summary>
-        /// Retrieves all registered companies/tenants.
-        /// Returns HTTP 503 Service Unavailable when the cloud Master database is unreachable.
-        /// Does not return fake/demo companies.
-        /// </summary>
+       
         [HttpGet]
         public async Task<IActionResult> GetCompanies()
         {
